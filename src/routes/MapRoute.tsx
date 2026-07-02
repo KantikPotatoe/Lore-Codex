@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db, addMap, addPin, addRegion, deleteMap, pinType, regionStyle,
-  mapBreadcrumb, ancestorMapIds, createPage, findPageIdByTitle,
-  TYPE_COLORS, type MapPin, type MapRegion, type InfoboxTemplate,
+  db, pageRepo, mapRepo, pinType, regionStyle,
+  mapBreadcrumb, ancestorMapIds,
+  TYPE_COLORS, type InfoboxTemplate,
 } from '../db'
 import MapView, { type PinMarkerStyle, type FocusTarget } from '../components/MapView'
 import MapPreviewCard from '../components/MapPreviewCard'
@@ -17,7 +17,7 @@ export default function MapRoute() {
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const mapsData = useLiveQuery(() => db.maps.orderBy('createdAt').toArray(), [])
+  const mapsData = useLiveQuery(() => mapRepo.listMaps(), [])
   const maps = useMemo(() => mapsData ?? [], [mapsData])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [addMode, setAddMode] = useState(false)
@@ -39,7 +39,7 @@ export default function MapRoute() {
   useEffect(() => {
     if (!focusPinId) return
     let cancelled = false
-    db.pins.get(focusPinId).then((pin) => {
+    mapRepo.getPin(focusPinId).then((pin) => {
       if (cancelled || !pin) return
       setActiveId(pin.mapId)
       setSelectedPinId(pin.id)
@@ -53,20 +53,20 @@ export default function MapRoute() {
   const mapId = currentMap?.id ?? ''
 
   const pinsData = useLiveQuery(
-    () => (mapId ? db.pins.where('mapId').equals(mapId).toArray() : Promise.resolve([] as MapPin[])),
+    () => mapRepo.listPinsForMap(mapId),
     [mapId],
   )
-  const allPagesData = useLiveQuery(() => db.pages.orderBy('title').toArray(), [])
+  const allPagesData = useLiveQuery(() => pageRepo.listByTitle(), [])
   const templatesData = useLiveQuery(() => db.templates.toArray(), [])
   // Stable empty-array fallbacks so downstream useMemo deps don't change every render.
   const regionsData = useLiveQuery(
-    () => (mapId ? db.regions.where('mapId').equals(mapId).toArray() : Promise.resolve([] as MapRegion[])),
+    () => mapRepo.listRegionsForMap(mapId),
     [mapId],
   )
   // All pins/regions across every map — needed to derive the breadcrumb (which
   // portal opens this map) and the cycle-exclusion set for the portal picker.
-  const allPinsData = useLiveQuery(() => db.pins.toArray(), [])
-  const allRegionsData = useLiveQuery(() => db.regions.toArray(), [])
+  const allPinsData = useLiveQuery(() => mapRepo.listPins(), [])
+  const allRegionsData = useLiveQuery(() => mapRepo.listRegions(), [])
   const regions = useMemo(() => regionsData ?? [], [regionsData])
   const pins = useMemo(() => pinsData ?? [], [pinsData])
   const allPages = useMemo(() => allPagesData ?? [], [allPagesData])
@@ -262,14 +262,14 @@ export default function MapRoute() {
     const dataUrl = await compressImage(file, 8192, 0.92)
     const { width, height } = await imageSize(dataUrl)
     const name = file.name.replace(/\.[^.]+$/, '')
-    const id = await addMap(name, dataUrl, width, height)
+    const id = await mapRepo.addMap(name, dataUrl, width, height)
     setActiveId(id)
     e.target.value = ''
   }
 
   async function handleMapClick(lat: number, lng: number) {
     if (addMode && currentMap) {
-      const id = await addPin(currentMap.id, lat, lng)
+      const id = await mapRepo.addPin(currentMap.id, lat, lng)
       setSelectedPinId(id)
       setPanelMode('preview')
       setAddMode(false)
@@ -289,13 +289,13 @@ export default function MapRoute() {
     const title = label.trim() || 'New page'
     // Reuse an existing page with this title rather than creating a duplicate
     // (createPage now rejects a title clash).
-    const id = (await findPageIdByTitle(title)) ?? (await createPage({ title }))
+    const id = (await pageRepo.findIdByTitle(title)) ?? (await pageRepo.create({ title }))
     link(id)
   }
 
   async function handleRegionCreate(points: [number, number][]) {
     if (!currentMap) return
-    const id = await addRegion(currentMap.id, points)
+    const id = await mapRepo.addRegion(currentMap.id, points)
     setDrawMode(false)
     setSelectedPinId(null)
     setSelectedRegionId(id)
@@ -377,7 +377,7 @@ export default function MapRoute() {
             selectedPinId={selectedPinId}
             onMapClick={handleMapClick}
             onPinClick={(id) => { setSelectedPinId(id); setSelectedRegionId(null); setPanelMode('preview') }}
-            onPinMove={(id, lat, lng) => db.pins.update(id, { lat, lng })}
+            onPinMove={(id, lat, lng) => mapRepo.updatePin(id, { lat, lng })}
             focusPinId={focusPinId}
             regions={visibleRegions}
             regionStyles={regionFills}
@@ -385,7 +385,7 @@ export default function MapRoute() {
             drawMode={drawMode}
             onRegionClick={(id) => { setSelectedRegionId(id); setSelectedPinId(null); setPanelMode('preview') }}
             onRegionCreate={handleRegionCreate}
-            onRegionEdit={(id, points) => db.regions.update(id, { points })}
+            onRegionEdit={(id, points) => mapRepo.updateRegion(id, { points })}
             focusTarget={focusTarget}
             previewTarget={previewTarget}
             previewCard={previewCard}
@@ -448,13 +448,13 @@ export default function MapRoute() {
             <label>Label</label>
             <input
               value={selectedPin.label}
-              onChange={(e) => db.pins.update(selectedPin.id, { label: e.target.value })}
+              onChange={(e) => mapRepo.updatePin(selectedPin.id, { label: e.target.value })}
             />
             <label>Linked page</label>
             <div className="pin-link-row">
               <select
                 value={selectedPin.pageId ?? ''}
-                onChange={(e) => db.pins.update(selectedPin.id, { pageId: e.target.value || null })}
+                onChange={(e) => mapRepo.updatePin(selectedPin.id, { pageId: e.target.value || null })}
               >
                 <option value="">— none —</option>
                 {allPages.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
@@ -463,7 +463,7 @@ export default function MapRoute() {
                 <button
                   className="mini-btn"
                   title="Create a new page from this pin's label"
-                  onClick={() => createLinkedPage(selectedPin.label, (id) => db.pins.update(selectedPin.id, { pageId: id }))}
+                  onClick={() => createLinkedPage(selectedPin.label, (id) => mapRepo.updatePin(selectedPin.id, { pageId: id }))}
                 >
                   ＋ New
                 </button>
@@ -474,8 +474,8 @@ export default function MapRoute() {
               value={selectedPin.childMapId ?? ''}
               onChange={(e) => {
                 const v = e.target.value
-                if (v) db.pins.update(selectedPin.id, { childMapId: v })
-                else db.pins.update(selectedPin.id, (p) => { delete p.childMapId })
+                if (v) mapRepo.updatePin(selectedPin.id, { childMapId: v })
+                else mapRepo.updatePin(selectedPin.id, (p) => { delete p.childMapId })
               }}
             >
               <option value="">— none —</option>
@@ -490,7 +490,7 @@ export default function MapRoute() {
               )}
               <button
                 className="ghost-btn danger"
-                onClick={() => { db.pins.delete(selectedPin.id); setSelectedPinId(null) }}
+                onClick={() => { mapRepo.removePin(selectedPin.id); setSelectedPinId(null) }}
               >
                 Delete pin
               </button>
@@ -507,13 +507,13 @@ export default function MapRoute() {
             <label>Label</label>
             <input
               value={selectedRegion.label}
-              onChange={(e) => db.regions.update(selectedRegion.id, { label: e.target.value })}
+              onChange={(e) => mapRepo.updateRegion(selectedRegion.id, { label: e.target.value })}
             />
             <label>Linked page</label>
             <div className="pin-link-row">
               <select
                 value={selectedRegion.pageId ?? ''}
-                onChange={(e) => db.regions.update(selectedRegion.id, { pageId: e.target.value || null })}
+                onChange={(e) => mapRepo.updateRegion(selectedRegion.id, { pageId: e.target.value || null })}
               >
                 <option value="">— none —</option>
                 {allPages.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
@@ -522,7 +522,7 @@ export default function MapRoute() {
                 <button
                   className="mini-btn"
                   title="Create a new page from this region's label"
-                  onClick={() => createLinkedPage(selectedRegion.label, (id) => db.regions.update(selectedRegion.id, { pageId: id }))}
+                  onClick={() => createLinkedPage(selectedRegion.label, (id) => mapRepo.updateRegion(selectedRegion.id, { pageId: id }))}
                 >
                   ＋ New
                 </button>
@@ -533,7 +533,7 @@ export default function MapRoute() {
               <button
                 className={selectedRegion.color ? 'region-swatch derive' : 'region-swatch derive active'}
                 title="Derive from linked page type"
-                onClick={() => db.regions.update(selectedRegion.id, (r) => { delete r.color })}
+                onClick={() => mapRepo.updateRegion(selectedRegion.id, (r) => { delete r.color })}
               >
                 Auto
               </button>
@@ -543,7 +543,7 @@ export default function MapRoute() {
                   className={selectedRegion.color === c ? 'region-swatch active' : 'region-swatch'}
                   style={{ background: c }}
                   title={c}
-                  onClick={() => db.regions.update(selectedRegion.id, { color: c })}
+                  onClick={() => mapRepo.updateRegion(selectedRegion.id, { color: c })}
                 />
               ))}
             </div>
@@ -552,8 +552,8 @@ export default function MapRoute() {
               value={selectedRegion.childMapId ?? ''}
               onChange={(e) => {
                 const v = e.target.value
-                if (v) db.regions.update(selectedRegion.id, { childMapId: v })
-                else db.regions.update(selectedRegion.id, (r) => { delete r.childMapId })
+                if (v) mapRepo.updateRegion(selectedRegion.id, { childMapId: v })
+                else mapRepo.updateRegion(selectedRegion.id, (r) => { delete r.childMapId })
               }}
             >
               <option value="">— none —</option>
@@ -568,7 +568,7 @@ export default function MapRoute() {
               )}
               <button
                 className="ghost-btn danger"
-                onClick={() => { db.regions.delete(selectedRegion.id); setSelectedRegionId(null) }}
+                onClick={() => { mapRepo.removeRegion(selectedRegion.id); setSelectedRegionId(null) }}
               >
                 Delete region
               </button>
@@ -587,7 +587,7 @@ export default function MapRoute() {
           if (!currentMap) return
           setSelectedPinId(null)
           setActiveId(null)
-          await deleteMap(currentMap.id)
+          await mapRepo.removeMap(currentMap.id)
         }}
         onCancel={() => setConfirmDeleteMap(false)}
       >

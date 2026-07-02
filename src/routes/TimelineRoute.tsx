@@ -1,7 +1,7 @@
 // src/routes/TimelineRoute.tsx
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type TimelineEvent } from '../db'
+import { db, pageRepo, type TimelineEvent } from '../db'
 import CalendarEditor from '../components/CalendarEditor'
 import EmptyState from '../components/EmptyState'
 import EventEditor from '../components/EventEditor'
@@ -11,7 +11,7 @@ import TimelineHorizontal from '../components/TimelineHorizontal'
 export default function TimelineRoute() {
   const calendars = useLiveQuery(() => db.calendars.orderBy('createdAt').toArray(), []) ?? []
   const events    = useLiveQuery(() => db.events.orderBy('startAbsolute').toArray(), []) ?? []
-  const allPages  = useLiveQuery(() => db.pages.orderBy('title').toArray(), []) ?? []
+  const allPages  = useLiveQuery(() => pageRepo.listByTitle(), []) ?? []
 
   const [displayCalId, setDisplayCalId]     = useState<string | null>(null)
   const [view, setView]                     = useState<'vertical' | 'horizontal'>('vertical')

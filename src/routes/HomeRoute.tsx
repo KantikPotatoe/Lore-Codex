@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db,
-  createPage,
+  pageRepo,
+  mapRepo,
   getMeta,
   setMeta,
   categoryColor,
@@ -62,12 +62,9 @@ export default function HomeRoute() {
   }
   const cfg: HomeConfig = draft ?? { ...DEFAULT_HOME, ...(savedConfig ?? {}) }
 
-  const pages = useLiveQuery(() => db.pages.toArray(), []) ?? NO_PAGES
-  const recent = useLiveQuery(
-    () => db.pages.orderBy('updatedAt').reverse().limit(8).toArray(),
-    [],
-  ) ?? []
-  const mapCount = useLiveQuery(() => db.maps.count(), []) ?? 0
+  const pages = useLiveQuery(() => pageRepo.list(), []) ?? NO_PAGES
+  const recent = useLiveQuery(() => pageRepo.listRecent(8), []) ?? []
+  const mapCount = useLiveQuery(() => mapRepo.countMaps(), []) ?? 0
 
   // -- overview figures -----------------------------------------------------
   const total = pages.length
@@ -107,7 +104,7 @@ export default function HomeRoute() {
   }
 
   async function handleNew() {
-    const id = await createPage()
+    const id = await pageRepo.create()
     navigate(`/page/${id}`)
   }
 

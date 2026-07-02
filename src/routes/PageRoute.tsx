@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, createPage, updatePage, renamePage, deletePage, findPageIdByTitle, defaultInfobox, applyTemplate, STATUSES, categoryColor, statusColor, pageStatus, type Infobox as InfoboxType, type LorePage } from '../db'
+import { db, pageRepo, mapRepo, defaultInfobox, applyTemplate, STATUSES, categoryColor, statusColor, pageStatus, type Infobox as InfoboxType, type LorePage } from '../db'
 import LoreEditor from '../components/LoreEditor'
 import References from '../components/References'
 import Infobox from '../components/Infobox'
@@ -20,7 +20,7 @@ import { getSettings } from '../settings'
 export default function PageRoute() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const page = useLiveQuery(() => db.pages.get(id), [id])
+  const page = useLiveQuery(() => pageRepo.get(id), [id])
   const templates = useLiveQuery(() => db.templates.orderBy('name').toArray(), []) ?? []
 
   const [editing, setEditing] = useState(false)
@@ -43,14 +43,14 @@ export default function PageRoute() {
 
   // Lowercased titles of all existing pages — drives broken-link styling.
   const knownTitles = useLiveQuery(
-    async () => new Set((await db.pages.toArray()).map((p) => p.title.trim().toLowerCase())),
+    async () => new Set((await pageRepo.list()).map((p) => p.title.trim().toLowerCase())),
     [],
   )
 
   // Canonical titles of every OTHER page — the autolinker's vocabulary. Excluding
   // this page's own title is the self-link skip.
   const autolinkTitles = useLiveQuery(
-    async () => (await db.pages.toArray()).filter((p) => p.id !== id).map((p) => p.title),
+    async () => (await pageRepo.list()).filter((p) => p.id !== id).map((p) => p.title),
     [id],
   )
   // Global per-world toggle (default on when settings haven't loaded yet).
@@ -60,9 +60,9 @@ export default function PageRoute() {
   // Pins that link to this page, with their map names — drives the "Location"
   // block. pageId is indexed, so the where() is cheap.
   const pinLocations = useLiveQuery(async () => {
-    const linking = await db.pins.where('pageId').equals(id).toArray()
+    const linking = await mapRepo.listPinsForPage(id)
     if (linking.length === 0) return []
-    const mapName = new Map((await db.maps.toArray()).map((m) => [m.id, m.name]))
+    const mapName = new Map((await mapRepo.listMaps()).map((m) => [m.id, m.name]))
     return linking.map((p) => ({
       pinId: p.id,
       label: p.label,
@@ -93,7 +93,7 @@ export default function PageRoute() {
   if (page.id !== id) return <div className="content-pad">Loading…</div>
 
   async function followWikiLink(title: string) {
-    const existing = await findPageIdByTitle(title)
+    const existing = await pageRepo.findIdByTitle(title)
     if (existing) {
       navigate(`/page/${existing}`)
       return
@@ -105,7 +105,7 @@ export default function PageRoute() {
     const title = pendingLink
     setPendingLink(null)
     if (!title) return
-    const newId = await createPage({ title, status: 'Stub' })
+    const newId = await pageRepo.create({ title, status: 'Stub' })
     navigate(`/page/${newId}`)
   }
 
@@ -115,7 +115,7 @@ export default function PageRoute() {
     setTitleDraft(null)
     if (!next || next === page!.title) return
     try {
-      await renamePage(id, next)
+      await pageRepo.rename(id, next)
     } catch (err) {
       setRenameError(err instanceof Error ? err.message : 'Could not rename the page.')
     }
@@ -124,12 +124,12 @@ export default function PageRoute() {
   async function addTag() {
     const t = tagInput.trim()
     if (!t || page!.tags.includes(t)) return setTagInput('')
-    await updatePage(id, { tags: [...page!.tags, t] })
+    await pageRepo.update(id, { tags: [...page!.tags, t] })
     setTagInput('')
   }
 
   async function removeTag(tag: string) {
-    await updatePage(id, { tags: page!.tags.filter((t) => t !== tag) })
+    await pageRepo.update(id, { tags: page!.tags.filter((t) => t !== tag) })
   }
 
   // Changing a page's type also re-seeds its infobox from that template
@@ -138,12 +138,12 @@ export default function PageRoute() {
     const changes: Partial<LorePage> = { category }
     const tpl = templates.find((t) => t.name === category)
     if (tpl && page!.infobox) changes.infobox = applyTemplate(page!.infobox, tpl)
-    await updatePage(id, changes)
+    await pageRepo.update(id, changes)
   }
 
   async function handleDelete() {
     setConfirmDelete(false)
-    await deletePage(id)
+    await pageRepo.remove(id)
     navigate('/home')
   }
 
@@ -217,7 +217,7 @@ export default function PageRoute() {
             <select
               className="category-select"
               value={pageStatus(page)}
-              onChange={(e) => updatePage(id, { status: e.target.value })}
+              onChange={(e) => pageRepo.update(id, { status: e.target.value })}
             >
               {STATUSES.map((s) => (
                 <option key={s.name} value={s.name}>{s.name}</option>
@@ -233,7 +233,7 @@ export default function PageRoute() {
             <DraftInput
               className="summary-input"
               value={page.summary}
-              onCommit={(v) => updatePage(id, { summary: v })}
+              onCommit={(v) => pageRepo.update(id, { summary: v })}
               placeholder="One-line summary…"
             />
           ) : (
@@ -273,7 +273,7 @@ export default function PageRoute() {
             key={id}
             content={page.content}
             editable={editing}
-            onChange={(html) => updatePage(id, { content: html })}
+            onChange={(html) => pageRepo.update(id, { content: html })}
             onWikiClick={followWikiLink}
             onCitationClick={scrollToReference}
             knownTitles={knownTitles}
@@ -299,8 +299,8 @@ export default function PageRoute() {
               editable={editing}
               title={page.title}
               accent={categoryColor(page.category)}
-              onChange={(box: InfoboxType) => updatePage(id, { infobox: box })}
-              onRemove={() => updatePage(id, { infobox: undefined })}
+              onChange={(box: InfoboxType) => pageRepo.update(id, { infobox: box })}
+              onRemove={() => pageRepo.update(id, { infobox: undefined })}
               onWikiClick={followWikiLink}
               knownTitles={knownTitles}
             />
@@ -308,7 +308,7 @@ export default function PageRoute() {
             editing && (
               <button
                 className="ghost-btn add-infobox-btn"
-                onClick={async () => updatePage(id, { infobox: await defaultInfobox(page.category) })}
+                onClick={async () => pageRepo.update(id, { infobox: await defaultInfobox(page.category) })}
               >
                 ＋ Add infobox
               </button>

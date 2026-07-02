@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useWikiHoverTarget, cancelWikiHoverClose, scheduleWikiHoverClose } from '../wikiLinkHover'
-import { findPageIdByTitle, categoryColor, db } from '../db'
+import { pageRepo, categoryColor } from '../db'
 import type { LorePage } from '../db'
 
 type PageState =
@@ -27,10 +27,10 @@ export default function WikiLinkPopover() {
     // the title lookup; wiki-link hovers resolve the title first.
     const resolveId = target.pageId
       ? Promise.resolve(target.pageId)
-      : findPageIdByTitle(target.title)
+      : pageRepo.findIdByTitle(target.title)
     resolveId.then(async (id) => {
       if (cancelled) return
-      const page = id ? await db.pages.get(id) : undefined
+      const page = id ? await pageRepo.get(id) : undefined
       if (cancelled) return
       setResolved({ title: target.title, state: page ? { status: 'found', page } : { status: 'missing' } })
     })

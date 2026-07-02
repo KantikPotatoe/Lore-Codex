@@ -8,7 +8,7 @@ import { TableKit } from '@tiptap/extension-table'
 import { WikiLink } from '../extensions/WikiLink'
 import { Citation } from '../extensions/Citation'
 import { Autolink, autolinkKey } from '../extensions/Autolink'
-import { db } from '../db'
+import { pageRepo } from '../db'
 import { compressImage } from '../imageUtils'
 import { showWikiHover, scheduleWikiHoverClose } from '../wikiLinkHover'
 import { findOpenWikiQuery, rankWikiTitles } from '../wikiAutocomplete'
@@ -126,7 +126,7 @@ export default function LoreEditor({ content, editable, onChange, onWikiClick, k
   const [cite, setCite] = useState<CiteDraft | null>(null)
   // Titles of all pages, for the suggestion menu. Indexed by title in Dexie.
   const pageTitles = useLiveQuery(
-    () => db.pages.orderBy('title').toArray().then((ps) => ps.map((p) => p.title)),
+    () => pageRepo.listByTitle().then((ps) => ps.map((p) => p.title)),
     [],
   )
   const items = useMemo(

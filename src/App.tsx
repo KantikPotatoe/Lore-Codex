@@ -19,7 +19,7 @@ import SettingsRoute from './routes/SettingsRoute'
 import ManuscriptRoute from './routes/ManuscriptRoute'
 import BookRoute from './routes/BookRoute'
 import { requestPersistentStorage } from './backup'
-import { seedTemplates, seedDefaultCalendar, db } from './db'
+import { seedTemplates, seedDefaultCalendar, pageRepo } from './db'
 import { maybeTakeSnapshot } from './snapshots'
 import { syncIndex } from './search'
 import { bootstrapDefaultLore } from './lores'
@@ -49,7 +49,7 @@ export default function App() {
   // table on every edit, but syncIndex only re-indexes the deltas (see search.ts) —
   // the first emission builds, later ones apply just the changed/added/removed pages.
   useEffect(() => {
-    const sub = liveQuery(() => db.pages.toArray()).subscribe((pages) => {
+    const sub = liveQuery(() => pageRepo.list()).subscribe((pages) => {
       syncIndex(pages)
     })
     return () => sub.unsubscribe()
