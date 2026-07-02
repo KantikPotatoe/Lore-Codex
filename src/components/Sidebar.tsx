@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, createPage, categoryColor, statusColor, pageStatus, type LorePage } from '../db'
+import { db, pageRepo, categoryColor, statusColor, pageStatus, type LorePage } from '../db'
 import { getLore, currentLoreId } from '../lores'
 import { showPageHover, scheduleWikiHoverClose } from '../wikiLinkHover'
 import { getRecent, pruneRecent, subscribeRecents } from '../recents'
@@ -31,7 +31,7 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
   const navigate = useNavigate()
   const location = useLocation()
 
-  const pages = useLiveQuery(() => db.pages.orderBy('title').toArray(), []) ?? NO_PAGES
+  const pages = useLiveQuery(() => pageRepo.listByTitle(), []) ?? NO_PAGES
   const templates = useLiveQuery(() => db.templates.toArray(), []) ?? []
   const activeLore = useLiveQuery(() => getLore(currentLoreId()), [])
   const loreName = activeLore?.name ?? 'Lore Codex'
@@ -69,7 +69,7 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
   }, [pages, loreId])
 
   async function handleNew() {
-    const id = await createPage()
+    const id = await pageRepo.create()
     navigate(`/page/${id}`)
   }
 

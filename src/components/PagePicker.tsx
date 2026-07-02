@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, categoryColor, type LorePage } from '../db'
+import { pageRepo, categoryColor, type LorePage } from '../db'
 
 interface PagePickerProps {
   value: string[]
@@ -18,7 +18,7 @@ export default function PagePicker({
   value, onChange, multiple = true, category, placeholder = 'Add page…',
 }: PagePickerProps) {
   const [query, setQuery] = useState('')
-  const pages = useLiveQuery(() => db.pages.orderBy('title').toArray(), []) ?? NO_PAGES
+  const pages = useLiveQuery(() => pageRepo.listByTitle(), []) ?? NO_PAGES
   const byId = new Map(pages.map((p) => [p.id, p]))
   const selected = new Set(value)
 

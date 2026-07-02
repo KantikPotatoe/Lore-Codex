@@ -53,6 +53,13 @@ describe('db barrel', () => {
     expect(db.db).toBeInstanceOf(db.LoreDB)
   })
 
+  it('re-exports the pageRepo / mapRepo seam', () => {
+    expect(typeof db.pageRepo.get).toBe('function')
+    expect(typeof db.pageRepo.create).toBe('function')
+    expect(typeof db.mapRepo.listMaps).toBe('function')
+    expect(typeof db.mapRepo.updatePin).toBe('function')
+  })
+
   it('re-exports the category/status/template constants', () => {
     expect(Array.isArray(db.CATEGORIES)).toBe(true)
     expect(Array.isArray(db.STATUSES)).toBe(true)

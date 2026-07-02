@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db, getAttachedDocuments, getDocumentAttachedTo,
+  pageRepo, getAttachedDocuments, getDocumentAttachedTo,
   attachDocument, detachDocument, reorderAttachedDocuments,
   categoryColor, type LorePage,
 } from '../db'
@@ -159,7 +159,7 @@ function DocPicker({
 }) {
   const [query, setQuery] = useState('')
   const candidates = useLiveQuery(
-    () => (category ? db.pages.where('category').equals(category).toArray() : db.pages.toArray()),
+    () => (category ? pageRepo.listByCategory(category) : pageRepo.list()),
     [category],
   ) ?? []
 

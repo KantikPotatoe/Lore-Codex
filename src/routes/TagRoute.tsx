@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db'
+import { pageRepo } from '../db'
 import BrowseGrid from '../components/BrowseGrid'
 
 const NO_PAGES: import('../db').LorePage[] = []
@@ -8,11 +8,7 @@ const NO_PAGES: import('../db').LorePage[] = []
 export default function TagRoute() {
   const { tag = '' } = useParams<{ tag: string }>()
 
-  const pages =
-    useLiveQuery(
-      () => db.pages.filter((p) => p.tags.includes(tag)).sortBy('title'),
-      [tag],
-    ) ?? NO_PAGES
+  const pages = useLiveQuery(() => pageRepo.listByTag(tag), [tag]) ?? NO_PAGES
 
   return (
     <BrowseGrid

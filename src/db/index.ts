@@ -19,6 +19,7 @@
 //   calendar.ts   — timeline calendar/event CRUD (cached absolute-day upkeep)
 //   backup.ts     — exportAll / importAll / parseBackup
 //   snapshots.ts  — automatic local version history
+//   repositories  — pageRepo / mapRepo: the storage-agnostic seam over Dexie
 
 export * from './types'
 export * from './schema'
@@ -32,3 +33,4 @@ export * from './graph'
 export * from './calendar'
 export * from './backup'
 export * from './snapshots'
+export * from './repositories'

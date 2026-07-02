@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, createPage, findPageIdByTitle, parseRefTitles, serializeRefTitles } from '../db'
+import { pageRepo, parseRefTitles, serializeRefTitles } from '../db'
 
 interface Props {
   /** Current field value, e.g. "[[Iron Guild]] [[Free Companies]]". */
@@ -20,7 +20,7 @@ export default function RefField({ value, refType, onChange }: Props) {
 
   // Pages of the bound type, reactive to DB changes.
   const candidates = useLiveQuery(
-    () => db.pages.where('category').equals(refType).toArray(),
+    () => pageRepo.listByCategory(refType),
     [refType],
   ) ?? []
 
@@ -49,8 +49,8 @@ export default function RefField({ value, refType, onChange }: Props) {
     // A page with this title may already exist (e.g. it's linked elsewhere so it's
     // filtered out of the suggestions); reuse it rather than creating a duplicate,
     // which createPage now rejects.
-    const existing = await findPageIdByTitle(title)
-    if (!existing) await createPage({ title, category: refType })
+    const existing = await pageRepo.findIdByTitle(title)
+    if (!existing) await pageRepo.create({ title, category: refType })
     addTitle(title)
   }
 

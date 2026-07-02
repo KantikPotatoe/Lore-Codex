@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { getBacklinks, categoryColor } from '../db'
+import { pageRepo, categoryColor } from '../db'
 import { showPageHover, scheduleWikiHoverClose } from '../wikiLinkHover'
 
 // Shows every other page that links to this one (via [[wiki links]] in their
 // body or infobox). Re-runs automatically whenever any page changes.
 export default function Backlinks({ pageId }: { pageId: string }) {
-  const backlinks = useLiveQuery(() => getBacklinks(pageId), [pageId])
+  const backlinks = useLiveQuery(() => pageRepo.backlinks(pageId), [pageId])
 
   // While loading, or when nothing links here, keep the panel quiet.
   if (!backlinks || backlinks.length === 0) {

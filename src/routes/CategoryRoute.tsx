@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, createPage, categoryColor } from '../db'
+import { pageRepo, categoryColor } from '../db'
 import BrowseGrid from '../components/BrowseGrid'
 
 const NO_PAGES: import('../db').LorePage[] = []
@@ -10,13 +10,10 @@ export default function CategoryRoute() {
   const navigate = useNavigate()
 
   const pages =
-    useLiveQuery(
-      () => db.pages.where('category').equals(category).sortBy('title'),
-      [category],
-    ) ?? NO_PAGES
+    useLiveQuery(() => pageRepo.listByCategory(category), [category]) ?? NO_PAGES
 
   async function handleNew() {
-    const id = await createPage({ category })
+    const id = await pageRepo.create({ category })
     navigate(`/page/${id}`)
   }
 

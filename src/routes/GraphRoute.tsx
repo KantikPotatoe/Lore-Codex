@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
-import { db, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, createPage, findPageIdByTitle, type GraphNode, type LorePage } from '../db'
+import { pageRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, type GraphNode, type LorePage } from '../db'
 import { useGraphPrefs } from '../useGraphPrefs'
 import GraphView from '../components/GraphView'
 import EmptyState from '../components/EmptyState'
@@ -18,7 +18,7 @@ const NO_PAGES: LorePage[] = []
 const EMPTY_ISLAND_COLORS = new Map<string, string>()
 
 export default function GraphRoute() {
-  const pages = useLiveQuery(() => db.pages.toArray(), []) ?? NO_PAGES
+  const pages = useLiveQuery(() => pageRepo.list(), []) ?? NO_PAGES
 
   const full = useMemo(() => buildGraphData(pages), [pages])
 
@@ -173,7 +173,7 @@ export default function GraphRoute() {
     setPendingGhost(null)
     // If the page already exists (e.g. created since the ghost was drawn), open it
     // instead of creating a duplicate (createPage now rejects a title clash).
-    const id = (await findPageIdByTitle(title)) ?? (await createPage({ title, status: 'Stub' }))
+    const id = (await pageRepo.findIdByTitle(title)) ?? (await pageRepo.create({ title, status: 'Stub' }))
     navigate(`/page/${id}`)
   }
 
