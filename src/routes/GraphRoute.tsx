@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useNavigate } from 'react-router-dom'
 import { pageRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, type GraphNode, type LorePage } from '../db'
 import { useGraphPrefs } from '../useGraphPrefs'
+import { useWikiLinkNavigation } from '../useWikiLinkNavigation'
 import GraphView from '../components/GraphView'
 import EmptyState from '../components/EmptyState'
 import HubsOrphansPanel from '../components/HubsOrphansPanel'
@@ -22,7 +22,7 @@ export default function GraphRoute() {
 
   const full = useMemo(() => buildGraphData(pages), [pages])
 
-  const navigate = useNavigate()
+  const wiki = useWikiLinkNavigation()
   const {
     hidden, toggleCategory,
     hiddenStatuses, toggleStatus,
@@ -39,7 +39,6 @@ export default function GraphRoute() {
   } = useGraphPrefs()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [pendingGhost, setPendingGhost] = useState<string | null>(null)
   const [exportMsg, setExportMsg] = useState<string | null>(null)
   const lore = useLiveQuery(() => getLore(currentLoreId()), [])
   const loreName = lore?.name ?? 'World'
@@ -167,14 +166,6 @@ export default function GraphRoute() {
           : 'Export failed — try again',
       )
     }
-  }
-
-  async function createGhost(title: string) {
-    setPendingGhost(null)
-    // If the page already exists (e.g. created since the ghost was drawn), open it
-    // instead of creating a duplicate (createPage now rejects a title clash).
-    const id = (await pageRepo.findIdByTitle(title)) ?? (await pageRepo.create({ title, status: 'Stub' }))
-    navigate(`/page/${id}`)
   }
 
   if (pages.length === 0) {
@@ -382,7 +373,7 @@ export default function GraphRoute() {
                 colorBy={colorBy}
                 highlightTag={tag}
                 islandColors={islandColors}
-                onGhostClick={setPendingGhost}
+                onGhostClick={wiki.stageCreate}
               />
             </Suspense>
           ) : (
@@ -394,7 +385,7 @@ export default function GraphRoute() {
               islandColors={islandColors}
               selectedId={selectedId}
               onSelect={setSelectedId}
-              onGhostClick={setPendingGhost}
+              onGhostClick={wiki.stageCreate}
               onPinNode={pinNode}
               initialCam={cam}
               onCamChange={setCam}
@@ -407,13 +398,13 @@ export default function GraphRoute() {
       </div>
 
       <ConfirmDialog
-        open={pendingGhost !== null}
+        open={wiki.pendingTitle !== null}
         title="Create page?"
         confirmLabel="Create"
-        onConfirm={() => pendingGhost && createGhost(pendingGhost)}
-        onCancel={() => setPendingGhost(null)}
+        onConfirm={wiki.confirmCreate}
+        onCancel={wiki.cancelCreate}
       >
-        "{pendingGhost}" doesn't exist yet. Create it?
+        "{wiki.pendingTitle}" doesn't exist yet. Create it?
       </ConfirmDialog>
     </div>
   )

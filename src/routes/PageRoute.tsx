@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, pageRepo, mapRepo, defaultInfobox, applyTemplate, STATUSES, categoryColor, statusColor, pageStatus, type Infobox as InfoboxType, type LorePage } from '../db'
+import { pageRepo, mapRepo, defaultInfobox, STATUSES, categoryColor, statusColor, pageStatus, type Infobox as InfoboxType } from '../db'
+import { usePage } from '../usePage'
+import { useWikiLinkNavigation } from '../useWikiLinkNavigation'
 import LoreEditor from '../components/LoreEditor'
 import References from '../components/References'
 import Infobox from '../components/Infobox'
@@ -20,14 +22,13 @@ import { getSettings } from '../settings'
 export default function PageRoute() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const page = useLiveQuery(() => pageRepo.get(id), [id])
-  const templates = useLiveQuery(() => db.templates.orderBy('name').toArray(), []) ?? []
+  const { page, templates, update, rename, addTag, removeTag, changeCategory, remove } = usePage(id)
+  const wiki = useWikiLinkNavigation()
 
   const [editing, setEditing] = useState(false)
   const [tagInput, setTagInput] = useState('')
   const [titleDraft, setTitleDraft] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [pendingLink, setPendingLink] = useState<string | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
   const mainRef = useRef<HTMLDivElement>(null)
 
@@ -92,58 +93,27 @@ export default function PageRoute() {
   // editor would mount with stale content and keep it (see key={id} below).
   if (page.id !== id) return <div className="content-pad">Loading…</div>
 
-  async function followWikiLink(title: string) {
-    const existing = await pageRepo.findIdByTitle(title)
-    if (existing) {
-      navigate(`/page/${existing}`)
-      return
-    }
-    setPendingLink(title.trim())
-  }
-
-  async function createPendingLink() {
-    const title = pendingLink
-    setPendingLink(null)
-    if (!title) return
-    const newId = await pageRepo.create({ title, status: 'Stub' })
-    navigate(`/page/${newId}`)
-  }
-
   async function commitTitle() {
     if (titleDraft === null) return
     const next = titleDraft.trim()
     setTitleDraft(null)
     if (!next || next === page!.title) return
     try {
-      await pageRepo.rename(id, next)
+      await rename(next)
     } catch (err) {
       setRenameError(err instanceof Error ? err.message : 'Could not rename the page.')
     }
   }
 
-  async function addTag() {
-    const t = tagInput.trim()
-    if (!t || page!.tags.includes(t)) return setTagInput('')
-    await pageRepo.update(id, { tags: [...page!.tags, t] })
+  // Commit the tag input: add it (the hook guards empty/duplicate), then clear.
+  async function commitTag() {
+    await addTag(tagInput)
     setTagInput('')
-  }
-
-  async function removeTag(tag: string) {
-    await pageRepo.update(id, { tags: page!.tags.filter((t) => t !== tag) })
-  }
-
-  // Changing a page's type also re-seeds its infobox from that template
-  // (keeping any values already filled in).
-  async function changeCategory(category: string) {
-    const changes: Partial<LorePage> = { category }
-    const tpl = templates.find((t) => t.name === category)
-    if (tpl && page!.infobox) changes.infobox = applyTemplate(page!.infobox, tpl)
-    await pageRepo.update(id, changes)
   }
 
   async function handleDelete() {
     setConfirmDelete(false)
-    await pageRepo.remove(id)
+    await remove()
     navigate('/home')
   }
 
@@ -217,7 +187,7 @@ export default function PageRoute() {
             <select
               className="category-select"
               value={pageStatus(page)}
-              onChange={(e) => pageRepo.update(id, { status: e.target.value })}
+              onChange={(e) => update({ status: e.target.value })}
             >
               {STATUSES.map((s) => (
                 <option key={s.name} value={s.name}>{s.name}</option>
@@ -233,7 +203,7 @@ export default function PageRoute() {
             <DraftInput
               className="summary-input"
               value={page.summary}
-              onCommit={(v) => pageRepo.update(id, { summary: v })}
+              onCommit={(v) => update({ summary: v })}
               placeholder="One-line summary…"
             />
           ) : (
@@ -260,8 +230,8 @@ export default function PageRoute() {
               placeholder="add tag…"
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addTag()}
-              onBlur={addTag}
+              onKeyDown={(e) => e.key === 'Enter' && commitTag()}
+              onBlur={commitTag}
             />
           )}
         </div>
@@ -273,8 +243,8 @@ export default function PageRoute() {
             key={id}
             content={page.content}
             editable={editing}
-            onChange={(html) => pageRepo.update(id, { content: html })}
-            onWikiClick={followWikiLink}
+            onChange={(html) => update({ content: html })}
+            onWikiClick={wiki.follow}
             onCitationClick={scrollToReference}
             knownTitles={knownTitles}
             autolinkTitles={autolinkTitles}
@@ -285,7 +255,7 @@ export default function PageRoute() {
           <References
             content={page.content}
             knownTitles={knownTitles}
-            onWikiClick={followWikiLink}
+            onWikiClick={wiki.follow}
             onBackref={scrollToMarker}
           />
           <DocumentLinks page={page} editable={editing} />
@@ -299,16 +269,16 @@ export default function PageRoute() {
               editable={editing}
               title={page.title}
               accent={categoryColor(page.category)}
-              onChange={(box: InfoboxType) => pageRepo.update(id, { infobox: box })}
-              onRemove={() => pageRepo.update(id, { infobox: undefined })}
-              onWikiClick={followWikiLink}
+              onChange={(box: InfoboxType) => update({ infobox: box })}
+              onRemove={() => update({ infobox: undefined })}
+              onWikiClick={wiki.follow}
               knownTitles={knownTitles}
             />
           ) : (
             editing && (
               <button
                 className="ghost-btn add-infobox-btn"
-                onClick={async () => pageRepo.update(id, { infobox: await defaultInfobox(page.category) })}
+                onClick={async () => update({ infobox: await defaultInfobox(page.category) })}
               >
                 ＋ Add infobox
               </button>
@@ -348,13 +318,13 @@ export default function PageRoute() {
       </ConfirmDialog>
 
       <ConfirmDialog
-        open={pendingLink !== null}
+        open={wiki.pendingTitle !== null}
         title="Create page?"
         confirmLabel="Create"
-        onConfirm={createPendingLink}
-        onCancel={() => setPendingLink(null)}
+        onConfirm={wiki.confirmCreate}
+        onCancel={wiki.cancelCreate}
       >
-        “{pendingLink}” doesn’t exist yet. Create it?
+        “{wiki.pendingTitle}” doesn’t exist yet. Create it?
       </ConfirmDialog>
 
       <ConfirmDialog
