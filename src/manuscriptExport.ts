@@ -1,7 +1,7 @@
 import JSZip from 'jszip'
 import { sanitizeHtml } from './sanitize'
 import { db } from './db'
-import { saveFile } from './platform'
+import { saveFile, printHtml } from './platform'
 import type { Book, Chapter, Scene } from './db'
 
 function escapeHtml(s: string): string {
@@ -147,11 +147,7 @@ export async function exportBookEpub(bookId: string): Promise<void> {
 export async function printBook(bookId: string): Promise<void> {
   const { book, chapters, scenes } = await loadBook(bookId)
   if (!book) return
-  const html = compileBookHtml(book, chapters, scenes)
-  const win = window.open('', '_blank')
-  if (!win) return
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  win.print()
+  // Hidden-iframe print via the platform seam — window.open + print() is
+  // popup-blocker-prone in browsers and unreliable in the shell's webview.
+  await printHtml(compileBookHtml(book, chapters, scenes))
 }
