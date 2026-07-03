@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   db,
+  LoreDB,
   migrateBackup,
   parseBackup,
   exportAll,
   importAll,
+  importBackupInto,
   createPage,
   attachDocument,
   CURRENT_SCHEMA_VERSION,
@@ -442,4 +444,31 @@ describe('meta in backups (schema v12)', () => {
     const out = migrateBackup({ schemaVersion: 11, pages: [] })
     expect(out.meta).toEqual([])
   })
+})
+
+// The migration wizard imports a backup into a freshly created world's DB —
+// which is NOT the module-bound active `db` (that only rebinds on reload).
+describe('importBackupInto — parameterized target', () => {
+  it('fills the target database and leaves the active one untouched', async () => {
+    await db.pages.add(samplePage('active-page'))
+    const target = new LoreDB('lore-app-wizard-test')
+    try {
+      const json = JSON.stringify({
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        pages: [samplePage('migrated-page')],
+      })
+      await importBackupInto(target, json)
+
+      expect(await target.pages.get('migrated-page')).toBeDefined()
+      // The active DB neither gained the imported page nor lost its own.
+      expect(await db.pages.get('migrated-page')).toBeUndefined()
+      expect(await db.pages.get('active-page')).toBeDefined()
+    } finally {
+      await target.delete()
+    }
+  })
+
+  // Sanitization-on-import for importBackupInto is covered in
+  // import-sanitize.test.ts — DOMPurify needs the jsdom environment
+  // (happy-dom's parser lets <script> survive).
 })

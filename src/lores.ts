@@ -45,11 +45,50 @@ export function getLore(id: string): Promise<Lore | undefined> {
   return registry.lores.get(id)
 }
 
-export async function createLore(name = 'Untitled World'): Promise<void> {
+/** Add a world to the registry WITHOUT switching to it. Returns the new id.
+ *  The migration wizard needs this split: it must fill the new world's DB
+ *  before switchLore() reloads the page. */
+export async function registerLore(name: string): Promise<string> {
   const id = crypto.randomUUID()
   const now = Date.now()
-  await registry.lores.add({ id, name, banner: null, createdAt: now, updatedAt: now })
+  await registry.lores.add({
+    id,
+    name: name.trim() || 'Untitled World',
+    banner: null,
+    createdAt: now,
+    updatedAt: now,
+  })
+  return id
+}
+
+export async function createLore(name = 'Untitled World'): Promise<void> {
+  const id = await registerLore(name)
   switchLore(id)
+}
+
+/**
+ * The migration-wizard core: create a new world and import a backup into it —
+ * validating the backup FIRST so an invalid file never leaves a half-made
+ * world behind. The caller decides whether to switchLore(id) afterwards.
+ * Built-ins missing from old backups are seeded by the App start effect once
+ * the world is switched to.
+ */
+export async function importLoreFromBackup(name: string, json: string): Promise<string> {
+  const { importBackupInto, parseBackup, LoreDB } = await import('./db')
+  parseBackup(json) // throws on an invalid file before anything is created
+  const id = await registerLore(name)
+  const target = new LoreDB(dbNameFor(id))
+  try {
+    await importBackupInto(target, json)
+  } catch (err) {
+    // Roll the registry entry back so a failed import leaves no ghost world.
+    await registry.lores.delete(id)
+    await Dexie.delete(dbNameFor(id))
+    throw err
+  } finally {
+    target.close()
+  }
+  return id
 }
 
 export async function renameLore(id: string, name: string): Promise<void> {
