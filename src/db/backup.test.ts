@@ -262,13 +262,13 @@ describe('importAll — round-trips', () => {
 })
 
 describe('schema version', () => {
-  it('is at 11 for the manuscript tables', () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(11)
+  it('is at 12 for the portable meta rows', () => {
+    expect(CURRENT_SCHEMA_VERSION).toBe(12)
   })
 
   it('stamps an older backup up to current with no data loss', () => {
     const out = migrateBackup({ schemaVersion: 6, pages: [], regions: [] })
-    expect(out.schemaVersion).toBe(11)
+    expect(out.schemaVersion).toBe(12)
     expect(out.regions).toEqual([])
   })
 })
@@ -343,8 +343,8 @@ describe('docLinks in backups', () => {
 })
 
 describe('manuscript tables in backups', () => {
-  it('CURRENT_SCHEMA_VERSION is 11', () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(11)
+  it('arrived at schema version 11', () => {
+    expect(CURRENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(11)
   })
 
   it('round-trips books/chapters/scenes/plotlines/beats', async () => {
@@ -371,5 +371,75 @@ describe('manuscript tables in backups', () => {
     const { data, counts } = parseBackup(JSON.stringify({ schemaVersion: 10, pages: [] }))
     expect(data.books).toEqual([])
     expect(counts.books).toBe(0)
+  })
+})
+
+// v12 adds the portable `meta` rows to backups: per-lore settings, home-page
+// config, graph prefs. Two keys are deliberately device-local and must never
+// travel in a backup: `lastBackupAt` (an imported value would wrongly silence
+// the backup-overdue banner) and `snapshot-last-time` (would suppress
+// auto-snapshots). Import MERGES meta (bulkPut, no clear) so restoring an old
+// meta-less backup or snapshot never wipes current settings.
+describe('meta in backups (schema v12)', () => {
+  beforeEach(() => db.meta.clear())
+
+  it('exports portable meta rows and excludes device-local bookkeeping keys', async () => {
+    await db.meta.bulkPut([
+      { key: 'lore-settings', value: { autolinkEnabled: false } },
+      { key: 'lastBackupAt', value: 123 },
+      { key: 'snapshot-last-time', value: 456 },
+    ])
+    const parsed = JSON.parse(await exportAll())
+    expect(parsed.meta).toEqual([{ key: 'lore-settings', value: { autolinkEnabled: false } }])
+  })
+
+  it('round-trips portable meta rows through export → import', async () => {
+    await db.meta.put({ key: 'home-config', value: { tagline: 'Ours is the fury', showAbout: false } })
+    const json = await exportAll()
+    await db.meta.clear()
+    await importAll(json)
+    expect((await db.meta.get('home-config'))?.value).toEqual({ tagline: 'Ours is the fury', showAbout: false })
+  })
+
+  it('applies portable rows from a backup but never its device-local keys', async () => {
+    await db.meta.put({ key: 'lastBackupAt', value: 123 })
+    const json = JSON.stringify({
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      pages: [],
+      meta: [
+        { key: 'home-config', value: { tagline: 'Imported' } },
+        { key: 'lastBackupAt', value: 999 },
+        { key: 'snapshot-last-time', value: 999 },
+      ],
+    })
+    await importAll(json)
+    expect((await db.meta.get('home-config'))?.value).toEqual({ tagline: 'Imported' })
+    // This device's backup bookkeeping is preserved, and the incoming
+    // snapshot timestamp is dropped rather than created.
+    expect((await db.meta.get('lastBackupAt'))?.value).toBe(123)
+    expect(await db.meta.get('snapshot-last-time')).toBeUndefined()
+  })
+
+  // Guards the merge-vs-clear design choice: an old backup (or snapshot taken
+  // before v12) carries no meta, and restoring it must not wipe settings.
+  it('importing a pre-v12 backup leaves existing meta untouched', async () => {
+    await db.meta.put({ key: 'lore-settings', value: { snapshotRetention: 5 } })
+    await importAll(JSON.stringify({ schemaVersion: 11, pages: [] }))
+    expect((await db.meta.get('lore-settings'))?.value).toEqual({ snapshotRetention: 5 })
+  })
+
+  it('drops malformed meta rows from an untrusted backup', async () => {
+    const json = JSON.stringify({
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      pages: [],
+      meta: [{ key: 42, value: 'x' }, 'junk', null, { value: 'no key' }, { key: 'ok', value: 1 }],
+    })
+    await importAll(json)
+    expect(await db.meta.toArray()).toEqual([{ key: 'ok', value: 1 }])
+  })
+
+  it('MIGRATIONS: a v11 backup migrates with an empty meta array', () => {
+    const out = migrateBackup({ schemaVersion: 11, pages: [] })
+    expect(out.meta).toEqual([])
   })
 })

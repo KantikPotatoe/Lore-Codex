@@ -1,7 +1,7 @@
-import { db, exportAll, getMeta, setMeta, saveSnapshot } from './db'
+// SNAPSHOT_TIME_KEY is defined in db/backup.ts so exports can blacklist it
+// (it's device-local bookkeeping that must not travel in a backup).
+import { db, exportAll, getMeta, setMeta, saveSnapshot, SNAPSHOT_TIME_KEY } from './db'
 import { getSettings } from './settings'
-
-const SNAPSHOT_TIME_KEY = 'snapshot-last-time'
 
 // Coalesces overlapping calls: the App start effect double-invokes under React
 // StrictMode in dev, and edit sessions can overlap. Without this guard two callers
