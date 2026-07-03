@@ -37,6 +37,11 @@ describe('pageRepo', () => {
   it('listRecent returns the most-recently-updated pages newest first', async () => {
     const a = await pageRepo.create({ title: 'A' })
     const b = await pageRepo.create({ title: 'B' })
+    // updatedAt has millisecond resolution; on a fast run the update below
+    // lands in the same ms as B's creation, ties on the updatedAt index, and
+    // sorts by uuid instead of recency. Wait out the tick so A is strictly newer.
+    const t = Date.now()
+    while (Date.now() === t) await new Promise((r) => setTimeout(r, 1))
     // Bump A so it becomes the most recent.
     await pageRepo.update(a, { summary: 'touched' })
     const recent = await pageRepo.listRecent(1)
