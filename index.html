@@ -4,12 +4,8 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=EB+Garamond:ital@0;1&family=Inter:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Fonts are self-hosted via @fontsource imports in src/main.tsx so the
+         app works offline and inside the desktop shell's CSP (no CDN). -->
     <title>Lore Codex</title>
     <!-- Paint the app's dark base immediately so a full reload (e.g. switching
          worlds, which rebinds the per-lore DB) doesn't flash white before the

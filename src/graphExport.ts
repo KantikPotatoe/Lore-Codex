@@ -1,5 +1,6 @@
 import { radiusFor } from './graphGeometry'
 import { nodeFill, type ColorBy } from './graphColor'
+import { saveFile } from './platform'
 import type { GraphData, GraphNode, GraphLink } from './db'
 
 // Solid dark background matching the live graph canvas, so the light labels and
@@ -244,16 +245,10 @@ export function sceneToPng(scene: GraphScene): Promise<Blob> {
   })
 }
 
-/** Trigger a browser download of a Blob (same idiom as backup.ts). */
-export function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+/** Save a Blob to a user-visible file via the platform seam (browser
+ *  download, or a native Save-As dialog in the desktop shell). */
+export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
+  await saveFile(blob, filename)
 }
 
 /** Build a filename-safe export name: graph-<slug>-YYYY-MM-DD.<ext>. */

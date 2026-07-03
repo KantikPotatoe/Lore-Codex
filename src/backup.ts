@@ -1,4 +1,5 @@
 import { db, exportAll, setMeta, LAST_BACKUP_KEY } from './db'
+import { saveFile } from './platform'
 
 // ---------------------------------------------------------------------------
 // Backup & storage-safety helpers
@@ -24,24 +25,14 @@ export async function isStoragePersisted(): Promise<boolean> {
   return navigator.storage.persisted()
 }
 
-/** Build a JSON blob and trigger a browser download of it. */
-function triggerDownload(json: string, filename: string): void {
-  const blob = new Blob([json], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-}
-
-/** Download a timestamped JSON backup of everything and record the time. */
+/** Save a timestamped JSON backup of everything and record the time.
+ *  Goes through the platform seam: browser download, or a native Save-As
+ *  dialog in the desktop shell — where the user can cancel, in which case
+ *  the last-backup time is deliberately NOT stamped. */
 export async function downloadBackup(): Promise<void> {
   const json = await exportAll()
-  triggerDownload(json, `lore-backup-${backupStamp()}.json`)
-  await setMeta(LAST_BACKUP_KEY, Date.now())
+  const saved = await saveFile(json, `lore-backup-${backupStamp()}.json`)
+  if (saved) await setMeta(LAST_BACKUP_KEY, Date.now())
 }
 
 /**
@@ -61,7 +52,7 @@ export async function downloadPreImportBackup(): Promise<void> {
   ])
   if (pages + maps + pins + templates + calendars + events === 0) return
   const json = await exportAll()
-  triggerDownload(json, `lore-pre-import-${backupStamp()}.json`)
+  await saveFile(json, `lore-pre-import-${backupStamp()}.json`)
 }
 
 /** The most recent time any tracked data changed — i.e. the data we'd lose.

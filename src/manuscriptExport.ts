@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import { sanitizeHtml } from './sanitize'
 import { db } from './db'
+import { saveFile } from './platform'
 import type { Book, Chapter, Scene } from './db'
 
 function escapeHtml(s: string): string {
@@ -140,12 +141,7 @@ export async function exportBookEpub(bookId: string): Promise<void> {
     zip.file(path, content)
   }
   const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${book.title.replace(/[^\w.-]+/g, '_') || 'book'}.epub`
-  a.click()
-  URL.revokeObjectURL(url)
+  await saveFile(blob, `${book.title.replace(/[^\w.-]+/g, '_') || 'book'}.epub`)
 }
 
 export async function printBook(bookId: string): Promise<void> {
