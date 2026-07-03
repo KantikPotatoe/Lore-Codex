@@ -107,13 +107,16 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
         <button className="primary-btn" onClick={handleNew}>+ New page</button>
       </div>
 
-      <input
-        className="search-box"
-        placeholder="Search lore…"
-        readOnly
-        onFocus={onOpenSearch}
-        onClick={onOpenSearch}
-      />
+      <div className="search-box-wrap">
+        <input
+          className="search-box"
+          placeholder="Search lore…"
+          readOnly
+          onFocus={onOpenSearch}
+          onClick={onOpenSearch}
+        />
+        <kbd className="search-kbd">Ctrl K</kbd>
+      </div>
 
       <div className="page-list">
         {recentPages.length > 0 && (
