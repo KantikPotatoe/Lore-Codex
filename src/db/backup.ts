@@ -13,6 +13,7 @@ import type {
   LorePage,
   MapPin,
   MapRegion,
+  MetaEntry,
   PageImage,
   Plotline,
   Scene,
@@ -30,7 +31,20 @@ import type {
  * changes, and add a MIGRATIONS step (below) for the new version so older
  * backups keep importing.
  */
-export const CURRENT_SCHEMA_VERSION = 11
+export const CURRENT_SCHEMA_VERSION = 12
+
+/**
+ * Meta keys that describe this device/install rather than the world, so they
+ * must never travel in a backup: they are excluded from exportAll() and
+ * dropped on import. An imported `lastBackupAt` would wrongly silence the
+ * backup-overdue banner; an imported `snapshot-last-time` would suppress
+ * auto-snapshots. These are the canonical definitions — src/backup.ts and
+ * src/snapshots.ts import them from here (they can't be defined there:
+ * those modules import from the db barrel, which would be a cycle).
+ */
+export const LAST_BACKUP_KEY = 'lastBackupAt'
+export const SNAPSHOT_TIME_KEY = 'snapshot-last-time'
+export const LOCAL_ONLY_META_KEYS: readonly string[] = [LAST_BACKUP_KEY, SNAPSHOT_TIME_KEY]
 
 /** The shape produced by exportAll() and accepted by importAll().
  *  `schemaVersion`/`appVersion` were added in schema v5's tooling; legacy
@@ -53,6 +67,7 @@ export interface BackupData {
   scenes?: Scene[]
   plotlines?: Plotline[]
   beats?: Beat[]
+  meta?: MetaEntry[]
 }
 
 /** Counts of each record kind in a backup, for the import confirmation. */
@@ -118,6 +133,10 @@ const MIGRATIONS: Record<number, (d: BackupData) => BackupData> = {
     plotlines: asArray(d.plotlines),
     beats: asArray(d.beats),
   }),
+  // v12 added the portable meta rows (settings, home config, graph prefs);
+  // fill them in for older backups. Import merges meta rather than replacing
+  // it, so an empty array here leaves existing rows untouched.
+  11: (d) => ({ ...d, meta: asArray(d.meta) }),
 }
 
 /**
@@ -188,7 +207,7 @@ export function parseBackup(
 
 export async function exportAll(): Promise<string> {
   const [pages, maps, pins, regions, templates, calendars, events, images, docLinks,
-    books, chapters, scenes, plotlines, beats] = await Promise.all([
+    books, chapters, scenes, plotlines, beats, allMeta] = await Promise.all([
     db.pages.toArray(),
     db.maps.toArray(),
     db.pins.toArray(),
@@ -203,7 +222,10 @@ export async function exportAll(): Promise<string> {
     db.scenes.toArray(),
     db.plotlines.toArray(),
     db.beats.toArray(),
+    db.meta.toArray(),
   ])
+  // Only the portable meta rows travel; device-local bookkeeping stays home.
+  const meta = allMeta.filter((m) => !LOCAL_ONLY_META_KEYS.includes(m.key))
   return JSON.stringify({
     schemaVersion: CURRENT_SCHEMA_VERSION,
     appVersion: pkg.version,
@@ -222,6 +244,7 @@ export async function exportAll(): Promise<string> {
     scenes,
     plotlines,
     beats,
+    meta,
   })
 }
 
@@ -260,13 +283,22 @@ function sanitizeBackup(data: BackupData): BackupData {
         (l) => pageIds.has(l.pageId) && pageIds.has(l.documentId),
       )
     })(),
+    // Meta values are arbitrary JSON rendered only as React text (settings,
+    // home config, graph prefs) — no HTML sink, so no sanitizing. Do drop
+    // malformed rows (bulkPut would throw on a non-string key) and the
+    // device-local keys, which must not clobber this install's bookkeeping.
+    meta: asArray(data.meta).filter(
+      (m): m is MetaEntry =>
+        !!m && typeof m === 'object' && typeof m.key === 'string' &&
+        !LOCAL_ONLY_META_KEYS.includes(m.key),
+    ),
   }
 }
 
 export async function importAll(json: string): Promise<void> {
   const { data: parsed } = parseBackup(json) // throws before any clear(); migrated to the current shape
   const data = sanitizeBackup(parsed) // strip XSS from untrusted HTML before it touches the DB
-  await db.transaction('rw', [db.pages, db.maps, db.pins, db.regions, db.templates, db.calendars, db.events, db.images, db.docLinks, db.books, db.chapters, db.scenes, db.plotlines, db.beats], async () => {
+  await db.transaction('rw', [db.pages, db.maps, db.pins, db.regions, db.templates, db.calendars, db.events, db.images, db.docLinks, db.books, db.chapters, db.scenes, db.plotlines, db.beats, db.meta], async () => {
     await Promise.all([
       db.pages.clear(), db.maps.clear(), db.pins.clear(), db.regions.clear(),
       db.templates.clear(), db.calendars.clear(), db.events.clear(), db.images.clear(),
@@ -287,6 +319,11 @@ export async function importAll(json: string): Promise<void> {
     await db.scenes.bulkAdd(asArray(data.scenes))
     await db.plotlines.bulkAdd(asArray(data.plotlines))
     await db.beats.bulkAdd(asArray(data.beats))
+    // Meta is MERGED (put over existing keys), not cleared-and-replaced: a
+    // pre-v12 backup or snapshot carries no meta, and restoring one must not
+    // wipe this world's settings/home config. Device-local keys were already
+    // dropped from `data.meta` by sanitizeBackup, so they survive here too.
+    await db.meta.bulkPut(asArray(data.meta))
   })
   // Older backups have no templates / calendars — make sure the built-ins exist.
   await seedTemplates()

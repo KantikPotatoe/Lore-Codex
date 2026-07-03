@@ -1,4 +1,4 @@
-import { db, exportAll, setMeta } from './db'
+import { db, exportAll, setMeta, LAST_BACKUP_KEY } from './db'
 
 // ---------------------------------------------------------------------------
 // Backup & storage-safety helpers
@@ -8,7 +8,9 @@ import { db, exportAll, setMeta } from './db'
 // you last backed up, and download timestamped backup files you can keep in a
 // synced folder (Dropbox / OneDrive / Google Drive) for off-device safety.
 
-export const LAST_BACKUP_KEY = 'lastBackupAt'
+// The key lives in db/backup.ts (it's on the export blacklist there); re-export
+// so existing call sites (BackupBanner, SettingsRoute) keep importing from here.
+export { LAST_BACKUP_KEY } from './db'
 
 /** Ask the browser not to auto-evict our data. Returns whether it's persisted. */
 export async function requestPersistentStorage(): Promise<boolean> {

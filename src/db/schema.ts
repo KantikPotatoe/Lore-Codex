@@ -245,6 +245,27 @@ export class LoreDB extends Dexie {
       plotlines: 'id, bookId, order',
       beats: 'id, bookId, plotlineId, sceneId',
     })
+    // v12 changes no stores or data — it exists only to keep this ladder in
+    // lockstep with the backup format, which gained the portable meta rows
+    // (see CURRENT_SCHEMA_VERSION in ./backup.ts: "bump both together").
+    this.version(12).stores({
+      pages: 'id, title, category, updatedAt',
+      maps: 'id, name, createdAt',
+      pins: 'id, mapId, pageId, childMapId',
+      regions: 'id, mapId, pageId, childMapId',
+      meta: '&key',
+      templates: 'id, name',
+      snapshots: '++id, timestamp',
+      calendars: 'id, name, createdAt',
+      events: 'id, calendarId, startAbsolute, pageId',
+      images: 'id, pageId, order',
+      docLinks: 'id, pageId, documentId',
+      books: 'id, order',
+      chapters: 'id, bookId, order',
+      scenes: 'id, bookId, chapterId, order, updatedAt',
+      plotlines: 'id, bookId, order',
+      beats: 'id, bookId, plotlineId, sceneId',
+    })
   }
 }
 
