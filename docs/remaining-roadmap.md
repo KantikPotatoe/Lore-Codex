@@ -20,8 +20,10 @@ Sources: `roadmap.md`, `graph-improvement-ideas.md`, `map-roadmap.md`,
 2. **Documents arc** → Linked documents → Manuscripts → outlining/plotlines (the
    biggest untouched product area; closes the gap with Campfire/World Anvil).
 3. **Reader-facing gating** → Spoilers → Secrets/reader-advancement (do in order).
-4. **Architecture prep for desktop** → repository abstraction + routes-to-hooks,
-   ahead of any Electron move.
+4. **Desktop transition** → phased per `desktop-transition-investigation.md`:
+   pre-work (meta in backups, v12) + Phase 0 (Tauri shell, platform seam,
+   self-hosted fonts) have shipped; Phase 1 (native open/import dialogs,
+   first-run migration wizard, CSP, print fix) is next.
 
 ---
 
@@ -50,7 +52,8 @@ Sources: `roadmap.md`, `graph-improvement-ideas.md`, `map-roadmap.md`,
 
 ## Maps
 - 🔴 `blocked` **Map resolution** — quality is capped by browser-storage compression;
-  revisit once data lives on disk in the desktop app. _roadmap #13._
+  unblocks at desktop-transition **Phase 3a** (assets stored as real files instead of
+  data-URLs in IndexedDB — see `desktop-transition-investigation.md` §9). _roadmap #13._
 
 > Map phases 1–4 (typed pins, wiki integration, regions, management), pins-inside-regions,
 > and preview-before-edit have all shipped.
@@ -119,16 +122,21 @@ Sources: `roadmap.md`, `graph-improvement-ideas.md`, `map-roadmap.md`,
 ## Architecture & futureproofing
 
 > Futureproofing Tiers 1–3 (strict TS, Vitest, CI, db split, versioned exports, incremental
-> search, ErrorBoundary + quota surfacing, import sanitization) have all shipped.
+> search, ErrorBoundary + quota surfacing, import sanitization) have all shipped. So have the
+> desktop-prep items: repository seam (`pageRepo`/`mapRepo`, #140), routes-to-hooks
+> (`usePage` + `useWikiLinkNavigation`, #141), and **desktop Phase 0** (Tauri v2 shell,
+> `src/platform.ts` save seam, self-hosted fonts, #163) plus its pre-work (portable `meta`
+> in backups, schema v12, #162).
 
-- 🟡 **Repository abstraction over Dexie** — components/routes call `updatePage`/`db.pages.get`
-  directly; a `pageRepository` seam would ease an Electron / cloud-sync / storage swap later.
-  _Improvements_Temp1._
-- 🟡 **Move route business logic into hooks/services** — `PageRoute` etc. accrete controller
-  logic (`addTag`, `changeCategory`, `followWikiLink`…); extract `usePage`/`useTags`-style
-  hooks before they grow further. _Improvements_Temp1._
-- 🔴 `blocked` **Desktop-app (Electron + on-disk JSON) move** — the pivot several items above
-  ("Map resolution", true file/asset storage, Git-style history) depend on. _cross-cutting._
+- 🔴 **Desktop transition, remaining phases** — the plan lives in
+  `desktop-transition-investigation.md` (§9). Next: **Phase 1** (native open/import dialogs,
+  first-run migration wizard from Firefox backups, CSP, `alert`/`confirm` → `ConfirmDialog`,
+  print fix, release workflow) → **Phase 2** (auto-mirrored per-world `.lore` files on disk)
+  → optional **Phase 3a** (assets to real files; unblocks "Map resolution") / **3b** (SQLite,
+  only if still needed after 3a).
+- 🟡 **Finish the repository sweep** — templates/manuscript/calendar/meta still use raw
+  `db.*` in ~15 UI files; only needed if desktop **Phase 3b** (storage swap) ever happens —
+  don't do it speculatively.
 - 🔴 `parked` **Git-style version history** beyond snapshots. _feature-roadmap Phase 3._
 
 ### Residual test coverage (from futureproofing #2)

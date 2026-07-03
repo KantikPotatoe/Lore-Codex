@@ -1,6 +1,6 @@
 # Lore Codex — Desktop Transition Investigation
 
-**Status:** design document (read-only investigation, no code changed) · **Date:** 2026-07-03
+**Status:** in execution — pre-work (schema v12 `meta` in backups, #162) and **Phase 0** (Tauri v2 shell, `src/platform.ts` save seam, self-hosted fonts, #163) shipped 2026-07-03; the version-sync and WebView2-profile spikes from §10 are resolved (profile: `%LOCALAPPDATA%\com.lorecodex.app\EBWebView`). Next: Phase 1. · **Written:** 2026-07-03
 **Scope:** evaluate moving Lore Codex from a localhost-served browser SPA to a Windows desktop app; recommend a shell framework and a data-layer strategy; produce a phased, low-risk migration plan.
 
 ---
