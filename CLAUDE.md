@@ -15,9 +15,11 @@ npm run lint       # ESLint
 npm run preview    # serve built dist/
 npm test           # Vitest (watch)
 npm run test:run   # Vitest (CI, one-shot)
+npm run tauri dev    # desktop shell w/ hot reload (needs Rust toolchain)
+npm run tauri build  # desktop NSIS installer → src-tauri/target/release/bundle/
 ```
 
-- **Port pinned to 5174** (`strictPort` in `vite.config.ts`; `start-lore-codex.cmd` opens Firefox there). IndexedDB is origin-keyed, so a drifting port shows an empty DB that looks like lost data — change it in **both** places or neither.
+- **Port pinned to 5174** (`strictPort` in `vite.config.ts`; `start-lore-codex.cmd` opens Firefox there; `src-tauri/tauri.conf.json` `devUrl` points at it too). IndexedDB is origin-keyed, so a drifting port shows an empty DB that looks like lost data — change it in **all** places or none.
 - TS `strict`. CI (`.github/workflows/ci.yml`) runs lint + build + test on PRs/pushes to `main`; run all three before claiming done.
 - Tests: Vitest + happy-dom + fake-indexeddb (`*.test.{ts,tsx}`). **DOMPurify tests need jsdom** — add `// @vitest-environment jsdom` (happy-dom's parser lets `<script>` survive).
 - **Version labels on every PR.** `.github/workflows/version-bump.yml` bumps `package.json` + tags `vX.Y.Z` on merge to `main`, driven by the PR's label. **Always add one** when opening a PR: `version:minor` for a new feature, `version:patch` for a bug fix or chore, `version:major` for a breaking change. No label ⇒ patch. (If PR checks ever fail to start, suspect a transient GitHub event-delivery incident — check githubstatus.com — not the config; an empty-commit push re-triggers once it recovers.)
@@ -115,6 +117,10 @@ FlexSearch `Index` (tokenize `'forward'`, res 5), synced on every `db.pages` cha
 **Versioned exports:** payload stamps `schemaVersion` (`CURRENT_SCHEMA_VERSION`, mirrors Dexie store version) + `appVersion`. `parseBackup()` runs `migrateBackup()` (a `MIGRATIONS` ladder); no version ⇒ legacy v1. **When the exported shape changes, bump `CURRENT_SCHEMA_VERSION` and add a `MIGRATIONS` step.** `importAll()` coerces tables to arrays defensively. Since **v12**, portable `meta` rows (settings, home config, graph prefs) travel in backups and are **merged on import** (bulkPut, never cleared — so old meta-less backups/snapshots don't wipe settings); device-local keys (`LAST_BACKUP_KEY`, `SNAPSHOT_TIME_KEY`, defined in `db/backup.ts`) are excluded on export and dropped on import.
 
 `src/backup.ts` (storage helpers): `downloadBackup`, `downloadPreImportBackup`, `requestPersistentStorage`, and the change-tracking driving `BackupBanner`/Home overdue state (pages, maps, events). **Backups stay download-based** (Firefox lacks the File System Access API).
+
+### Desktop shell — `src-tauri/` + `src/platform.ts` (transition Phase 0)
+
+Tauri v2 wraps the unchanged web app (WebView2; data still in IndexedDB inside the webview). See `docs/desktop-transition-investigation.md` for the full plan. **`src/platform.ts` is the only place allowed to call `@tauri-apps/*` APIs or trigger an `<a download>`** — `saveFile(data, name)` picks browser download vs native Save-As by `isTauri()` (wry silently ignores `<a download>`, so shell saves MUST go through it; it returns `false` on dialog cancel, and `downloadBackup()` only stamps `lastBackupAt` when saved). All four save sinks (backup JSON, graph PNG/SVG, HTML-site zip, EPUB) go through the seam. Shell permissions live in `src-tauri/capabilities/default.json` (deliberately minimal: save dialog + write to the dialog-picked path); Rust side is config-only (`src-tauri/src/lib.rs` registers the dialog/fs plugins). `tauri.conf.json` reads `version` from `package.json` (one bump drives both). Fonts are self-hosted via `@fontsource` imports in `main.tsx` (no CDN → works offline; keep `index.html` CDN-free). Web build/tests are unaffected — the shell path is behind feature detection.
 
 ### Other
 

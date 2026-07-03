@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main-window permissions. Deliberately minimal (desktop transition Phase 0): the only shell capability the frontend uses is saveFile in src/platform.ts — a Save-As dialog plus a write to the path the user picked. The dialog plugin adds the chosen path to the fs scope at runtime, so no static fs path scope is granted here.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:allow-save",
+    "fs:allow-write-file",
+    "fs:allow-write-text-file"
+  ]
+}

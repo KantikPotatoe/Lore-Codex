@@ -2,6 +2,7 @@ import JSZip from 'jszip'
 import { db } from './db'
 import type { LorePage, PageImage } from './db'
 import { parseCitations } from './citations'
+import { saveFile } from './platform'
 
 /** Escape HTML special characters in a plain-text field before it is
  *  interpolated into the exported markup. In-app these fields render as React
@@ -212,10 +213,5 @@ export async function exportAsHtml(): Promise<void> {
   for (const [path, content] of Object.entries(files)) zip.file(path, content)
 
   const blob = await zip.generateAsync({ type: 'blob' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `lore-export-${new Date().toISOString().slice(0, 10)}.zip`
-  a.click()
-  URL.revokeObjectURL(url)
+  await saveFile(blob, `lore-export-${new Date().toISOString().slice(0, 10)}.zip`)
 }
