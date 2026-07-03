@@ -24,6 +24,7 @@ import { maybeTakeSnapshot } from './snapshots'
 import { syncIndex } from './search'
 import { bootstrapDefaultLore } from './lores'
 import { installStorageErrorListener } from './storageError'
+import { shouldOpenSearch } from './searchShortcut'
 
 export default function App() {
   const location = useLocation()
@@ -35,6 +36,18 @@ export default function App() {
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0 })
   }, [location.pathname])
+
+  // Open search from anywhere: Ctrl/Cmd+K always, `/` when not typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shouldOpenSearch(e, e.target)) {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     installStorageErrorListener() // surface IndexedDB quota/eviction write failures
