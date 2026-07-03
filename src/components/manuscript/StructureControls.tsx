@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   db, applyStructure, removeStructure, updateBeat,
   type Scene, type Plotline, type Beat, type StructureType,
 } from '../../db'
 import { STRUCTURES } from '../../manuscriptStructures'
+import ConfirmDialog from '../ConfirmDialog'
 
 const NO_SCENES: Scene[] = []
 const NO_PLOTLINES: Plotline[] = []
@@ -24,14 +25,23 @@ export default function StructureControls({ bookId }: { bookId: string }) {
     [beats, structureLane],
   )
 
+  // Replacing/removing an applied structure loses beat placements — confirmed
+  // through the in-app dialog (host confirm() is unreliable in the shell's
+  // webview). `pendingPick` holds the choice awaiting confirmation.
+  const [pendingPick, setPendingPick] = useState<string | null>(null)
+
+  function applyPick(value: string) {
+    if (value === 'none') removeStructure(bookId)
+    else applyStructure(bookId, value as StructureType)
+  }
+
   function onPick(value: string) {
-    if (value === 'none') {
-      if (structureLane && !confirm('Remove the story-structure track and its beats?')) return
-      removeStructure(bookId)
+    // No structure applied yet ⇒ nothing is lost; apply without ceremony.
+    if (!structureLane) {
+      if (value !== 'none') applyPick(value)
       return
     }
-    if (structureLane && !confirm('Replace the current story structure? Beat placements will be reset.')) return
-    applyStructure(bookId, value as StructureType)
+    setPendingPick(value)
   }
 
   return (
@@ -70,6 +80,25 @@ export default function StructureControls({ bookId }: { bookId: string }) {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingPick !== null}
+        danger
+        title={pendingPick === 'none' ? 'Remove story structure?' : 'Replace story structure?'}
+        confirmLabel={pendingPick === 'none' ? 'Remove' : 'Replace'}
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          if (pendingPick !== null) applyPick(pendingPick)
+          setPendingPick(null)
+        }}
+        onCancel={() => setPendingPick(null)}
+      >
+        <p>
+          {pendingPick === 'none'
+            ? 'This removes the story-structure track and its beats.'
+            : 'This replaces the current story structure. Beat placements will be reset.'}
+        </p>
+      </ConfirmDialog>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { db, exportAll, setMeta, LAST_BACKUP_KEY } from './db'
-import { saveFile } from './platform'
+import { saveFile, writeAppData } from './platform'
 
 // ---------------------------------------------------------------------------
 // Backup & storage-safety helpers
@@ -52,7 +52,12 @@ export async function downloadPreImportBackup(): Promise<void> {
   ])
   if (pages + maps + pins + templates + calendars + events === 0) return
   const json = await exportAll()
-  await saveFile(json, `lore-pre-import-${backupStamp()}.json`)
+  const filename = `lore-pre-import-${backupStamp()}.json`
+  // In the shell the safety copy lands silently in <app-data>/backups — a
+  // Save-As dialog here would interrupt the restore the user just confirmed.
+  // In the browser it stays a download (writeAppData reports false there).
+  const stored = await writeAppData(`backups/${filename}`, json)
+  if (!stored) await saveFile(json, filename)
 }
 
 /** The most recent time any tracked data changed — i.e. the data we'd lose.
