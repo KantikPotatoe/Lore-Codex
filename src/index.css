@@ -2007,9 +2007,9 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .lightbox-nav:hover { background: rgba(0,0,0,.7); }
 
 /* Route transition: content fades in and rises slightly on navigation. */
-.route-fade { height: 100%; animation: route-fade-in 120ms ease-out; }
+.route-fade { height: 100%; animation: route-fade-in var(--dur-3) var(--ease-settle); }
 @keyframes route-fade-in {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: none; }
 }
 
