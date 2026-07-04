@@ -13,6 +13,7 @@ export default function TagRoute() {
   return (
     <BrowseGrid
       title={`#${tag}`}
+      glyph="🏷️"
       pages={pages}
       empty={{
         icon: '🏷️',
