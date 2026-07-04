@@ -25,9 +25,15 @@ describe('BrowseGrid', () => {
     renderGrid(<BrowseGrid title="Spell" pages={pages} empty={EMPTY} />)
 
     expect(screen.getByRole('heading', { name: /Spell/ })).toBeTruthy()
-    expect(screen.getByText('2')).toBeTruthy()
+    expect(screen.getByText('2 pages')).toBeTruthy()
     expect(screen.getByText('Fireball')).toBeTruthy()
     expect(screen.getByText('Frostbite')).toBeTruthy()
+  })
+
+  it('uses the singular for one page and renders the glyph when given', () => {
+    renderGrid(<BrowseGrid title="Spell" glyph="✨" pages={[makePage()]} empty={EMPTY} />)
+    expect(screen.getByText('1 page')).toBeTruthy()
+    expect(screen.getByText('✨')).toBeTruthy()
   })
 
   it('shows the empty state (and no cards) when there are no pages', () => {
@@ -35,7 +41,7 @@ describe('BrowseGrid', () => {
 
     expect(screen.getByText('Nothing here')).toBeTruthy()
     expect(screen.queryByRole('link')).toBeNull()
-    expect(screen.getByText('0')).toBeTruthy()
+    expect(screen.getByText('0 pages')).toBeTruthy()
   })
 
   it('renders the optional action control', () => {

@@ -974,6 +974,13 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .browse-header {
   display: flex; align-items: center; gap: 16px; margin-bottom: 28px; flex-wrap: wrap;
 }
+.browse-header.browse-hero {
+  border-left: 3px solid var(--hero-color, var(--accent));
+  border-radius: 0 8px 8px 0;
+  padding: 14px 18px 12px;
+  background: linear-gradient(to right, color-mix(in srgb, var(--hero-color, var(--accent)) 11%, transparent), transparent 62%);
+}
+.browse-hero-glyph { font-size: 32px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5)); }
 .browse-title {
   font-family: var(--display); font-size: 28px; margin: 0; display: flex; align-items: baseline; gap: 10px;
 }

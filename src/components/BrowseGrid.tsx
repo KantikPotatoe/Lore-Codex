@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { LorePage } from '../db'
 import BrowseCard from './BrowseCard'
 import EmptyState from './EmptyState'
@@ -10,20 +10,24 @@ export interface BrowseEmpty {
   message: string
 }
 
-/** Shared layout for the "list of pages" screens (a category, a tag): a titled
- *  header with a live count and optional action, then either a card grid or an
- *  empty state. CategoryRoute / TagRoute differ only in the query and this copy. */
+/** Shared layout for the "list of pages" screens (a category, a tag): an
+ *  identity hero (accent bar + colour wash, mirroring .page-header), then
+ *  either a card grid or an empty state. CategoryRoute / TagRoute differ only
+ *  in the query and this copy. */
 export default function BrowseGrid({
   title,
   titleColor,
+  glyph,
   action,
   pages,
   empty,
 }: {
   /** Heading content (e.g. a category name, or `#tag`). */
   title: ReactNode
-  /** Optional accent colour for the heading. */
+  /** Accent colour driving the hero's bar + wash (defaults to gold). */
   titleColor?: string
+  /** Optional page-type emoji shown large beside the title. */
+  glyph?: string
   /** Optional header control, e.g. a "+ New" button. */
   action?: ReactNode
   pages: LorePage[]
@@ -31,13 +35,19 @@ export default function BrowseGrid({
 }) {
   return (
     <div className="browse-route">
-      <div className="browse-header">
-        <h1 className="browse-title" style={titleColor ? { color: titleColor } : undefined}>
+      <header
+        className="browse-header browse-hero"
+        style={{ '--hero-color': titleColor ?? 'var(--accent)' } as CSSProperties}
+      >
+        {glyph && <span className="browse-hero-glyph">{glyph}</span>}
+        <h1 className="browse-title">
           {title}
-          <span className="browse-count">{pages.length}</span>
+          <span className="browse-count">
+            {pages.length === 1 ? '1 page' : `${pages.length} pages`}
+          </span>
         </h1>
         {action}
-      </div>
+      </header>
 
       {pages.length === 0 ? (
         <EmptyState icon={empty.icon} title={empty.title} message={empty.message} />
