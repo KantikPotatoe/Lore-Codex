@@ -22,8 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+Thumbs.db
 
-# Claude Code local settings & worktrees
+# Tauri / Rust (src-tauri also has its own .gitignore for target/ + gen/schemas)
+src-tauri/target/
+src-tauri/gen/schemas/
+**/*.rs.bk
+
+# Claude Code local settings, skills & worktrees
 .claude/
+.superpowers/
 AUDIT_INSTRUCTIONS.md
 AUDIT_REPORT.md
