@@ -80,54 +80,63 @@ export default function TimelineVertical({
                     return formatDate(displayCal, ey, em, ed, { showEra: false })
                   })()
                 : null
-              const dateLabel = endLabel ? `${startLabel} — ${endLabel}` : startLabel
               const linkedPage = event.pageId ? pageById.get(event.pageId) : null
               const accent = event.color ?? 'var(--accent)'
               const headerBg = event.color ? event.color + '22' : 'rgba(201,162,75,0.13)'
               const thumbImage = linkedPage?.infobox?.image
 
               return (
-                <div
-                  key={event.id}
-                  className="tl-event-card"
-                  onClick={() => onEdit(event)}
-                >
-                  <div className="tl-card-header" style={{ background: headerBg }}>
-                    <div className="tl-card-header-left">
-                      {event.icon && <span className="tl-card-icon">{event.icon}</span>}
-                      {event.category && (
-                        <span className="tl-card-cat" style={{ color: accent }}>
-                          {event.category}
-                        </span>
-                      )}
-                    </div>
-                    <span className="tl-card-date">{dateLabel}</span>
+                <div key={event.id} className="tl-row">
+                  <div className="tl-gutter">
+                    <span className="tl-gutter-date">{startLabel}</span>
+                    {endLabel && <span className="tl-gutter-end">— {endLabel}</span>}
                   </div>
 
-                  <div className="tl-card-body">
-                    <div className="tl-card-body-text">
-                      <div className="tl-event-title">{event.title}</div>
-                      {event.description && (
-                        <div
-                          className="tl-event-desc"
-                          // Defence-in-depth: event descriptions are sanitized on import
-                          // (db/backup.ts), but this is the one raw HTML render sink, so
-                          // scrub again here in case content predates that pass. See #8.
-                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(event.description) }}
-                        />
-                      )}
-                      {linkedPage && (
-                        <button
-                          className="ghost-btn tl-page-link"
-                          onClick={(e) => { e.stopPropagation(); navigate(`/page/${linkedPage.id}`) }}
-                        >
-                          → {linkedPage.title}
-                        </button>
+                  <div className="tl-node" style={{ borderColor: accent }}>
+                    {event.icon
+                      ? <span className="tl-node-icon">{event.icon}</span>
+                      : <span className="tl-node-dot" style={{ background: accent }} />}
+                  </div>
+
+                  <div
+                    className="tl-event-card"
+                    onClick={() => onEdit(event)}
+                  >
+                    <div className="tl-card-header" style={{ background: headerBg }}>
+                      <div className="tl-card-header-left">
+                        {event.category && (
+                          <span className="tl-card-cat" style={{ color: accent }}>
+                            {event.category}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="tl-card-body">
+                      <div className="tl-card-body-text">
+                        <div className="tl-event-title">{event.title}</div>
+                        {event.description && (
+                          <div
+                            className="tl-event-desc"
+                            // Defence-in-depth: event descriptions are sanitized on import
+                            // (db/backup.ts), but this is the one raw HTML render sink, so
+                            // scrub again here in case content predates that pass. See #8.
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(event.description) }}
+                          />
+                        )}
+                        {linkedPage && (
+                          <button
+                            className="ghost-btn tl-page-link"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/page/${linkedPage.id}`) }}
+                          >
+                            → {linkedPage.title}
+                          </button>
+                        )}
+                      </div>
+                      {thumbImage && (
+                        <img src={thumbImage} alt="" className="tl-card-thumb" />
                       )}
                     </div>
-                    {thumbImage && (
-                      <img src={thumbImage} alt="" className="tl-card-thumb" />
-                    )}
                   </div>
                 </div>
               )
