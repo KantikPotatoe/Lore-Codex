@@ -197,6 +197,11 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
   font-size: 10px; line-height: 1; padding: 6px 2px 4px 4px; cursor: pointer; flex-shrink: 0;
 }
 .group-toggle:hover { color: var(--ink); }
+.group-toggle .chev {
+  display: inline-block;
+  transition: transform var(--dur-1) var(--ease-out);
+}
+.group-toggle .chev--open { transform: rotate(90deg); }
 .group-head .group-label { flex: 1; min-width: 0; }
 .group-label-static {
   font-family: var(--display); font-size: 12px; text-transform: uppercase;
@@ -235,6 +240,9 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .ghost-btn:hover { background: var(--panel-2); }
 .ghost-btn.danger { color: var(--danger); }
 .ghost-btn.danger:hover { background: #2e1c1a; }
+
+/* Press feedback — buttons dip 1px while held. */
+.ghost-btn:active, .primary-btn:active, .nav-item:active { transform: translateY(1px); }
 
 /* --- Modal ---------------------------------------------------------------- */
 .modal-overlay {

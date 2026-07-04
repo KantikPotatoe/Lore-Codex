@@ -127,7 +127,7 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
                 aria-expanded={!collapsed.has(RECENT_GROUP)}
                 onClick={() => toggle(RECENT_GROUP)}
               >
-                {collapsed.has(RECENT_GROUP) ? '▸' : '▾'}
+                <span className={collapsed.has(RECENT_GROUP) ? 'chev' : 'chev chev--open'}>▸</span>
               </button>
               <span className="group-label group-label-static">Recent</span>
             </div>
@@ -147,7 +147,7 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
                 aria-expanded={!collapsed.has(category)}
                 onClick={() => toggle(category)}
               >
-                {collapsed.has(category) ? '▸' : '▾'}
+                <span className={collapsed.has(category) ? 'chev' : 'chev chev--open'}>▸</span>
               </button>
               <Link
                 to={`/browse/${encodeURIComponent(category)}`}
@@ -172,7 +172,7 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
                 aria-expanded={!collapsed.has(TAGS_GROUP)}
                 onClick={() => toggle(TAGS_GROUP)}
               >
-                {collapsed.has(TAGS_GROUP) ? '▸' : '▾'}
+                <span className={collapsed.has(TAGS_GROUP) ? 'chev' : 'chev chev--open'}>▸</span>
               </button>
               <span className="group-label group-label-static">Tags</span>
             </div>
