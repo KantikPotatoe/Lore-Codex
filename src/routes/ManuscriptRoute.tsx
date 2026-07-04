@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import type { CSSProperties } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link, useNavigate } from 'react-router-dom'
 import { db, createBook, type Book, type Scene } from '../db'
@@ -37,10 +38,15 @@ export default function ManuscriptRoute() {
         <p className="empty-hint">No books yet. Start your first manuscript!</p>
       ) : (
         <div className="book-grid">
-          {books.map((b) => {
+          {books.map((b, i) => {
             const st = stats.get(b.id) ?? { count: 0, words: 0 }
             return (
-              <Link key={b.id} to={`/book/${b.id}`} className="book-card">
+              <Link
+                key={b.id}
+                to={`/book/${b.id}`}
+                className="book-card"
+                style={{ '--stagger-i': Math.min(i, 12) } as CSSProperties}
+              >
                 <span className="book-card-title">{b.title}</span>
                 {b.synopsis && <span className="book-card-synopsis">{b.synopsis}</span>}
                 <span className="book-card-stats">

@@ -53,8 +53,8 @@ export default function BrowseGrid({
         <EmptyState icon={empty.icon} title={empty.title} message={empty.message} />
       ) : (
         <div className="browse-grid">
-          {pages.map((page) => (
-            <BrowseCard key={page.id} page={page} />
+          {pages.map((page, i) => (
+            <BrowseCard key={page.id} page={page} index={i} />
           ))}
         </div>
       )}
