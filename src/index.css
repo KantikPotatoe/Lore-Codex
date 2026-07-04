@@ -1778,7 +1778,29 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   letter-spacing: 1.5px; text-transform: uppercase;
 }
 
-.tl-era-events { display: flex; flex-direction: column; gap: 10px; padding-left: 0; }
+.tl-era-events { display: flex; flex-direction: column; gap: 10px; padding-left: 0; position: relative; }
+/* The spine: a continuous line behind the node column.
+   left = gutter 96px + 12px column gap + node centre 11px − 1px (half the line). */
+.tl-era-events::before {
+  content: ''; position: absolute; top: 6px; bottom: 6px; left: 118px;
+  width: 2px; background: var(--border);
+}
+.tl-row { display: grid; grid-template-columns: 96px 22px 1fr; gap: 0 12px; align-items: start; }
+.tl-gutter { display: flex; flex-direction: column; gap: 2px; text-align: right; padding-top: 6px; }
+.tl-gutter-date { font-family: var(--display); font-size: 12px; color: var(--ink-dim); }
+.tl-gutter-end { font-size: 11px; color: var(--ink-faint); }
+.tl-node {
+  position: relative; z-index: 1; width: 22px; height: 22px; margin-top: 4px;
+  border-radius: 50%; background: var(--bg); border: 2px solid var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; line-height: 1;
+}
+.tl-node-dot { width: 8px; height: 8px; border-radius: 50%; }
+@media (max-width: 640px) {
+  .tl-row { grid-template-columns: 64px 22px 1fr; }
+  .tl-era-events::before { left: 86px; }
+  .tl-gutter-date { font-size: 11px; }
+}
 
 .tl-event-card {
   background: var(--panel); border: 1px solid var(--border);
@@ -1798,10 +1820,6 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
   text-transform: uppercase; font-family: var(--sans);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.tl-card-date {
-  font-size: 10px; color: var(--ink-dim); font-family: var(--sans);
-  white-space: nowrap; flex-shrink: 0;
 }
 
 .tl-card-body { padding: 8px 12px 10px; display: flex; gap: 10px; }
