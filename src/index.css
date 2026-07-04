@@ -1337,6 +1337,11 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 .search-result-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .search-result-snippet { font-size: 0.78rem; color: var(--ink-dim); line-height: 1.4; }
+.search-section-label {
+  padding: 10px 14px 4px; font-family: var(--display); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 1px; color: var(--ink-faint);
+}
+.search-result.search-create { color: var(--accent-soft); font-weight: 600; }
 .search-result-snippet mark {
   background: transparent; font-weight: 700; color: var(--accent);
 }
