@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import type { CSSProperties } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   listLores,
@@ -117,12 +118,13 @@ export default function LoreSelectorRoute() {
 
       {/* Worlds grid */}
       <div className="lore-grid">
-        {lores.map((lore) => {
+        {lores.map((lore, i) => {
           const isActive = lore.id === activeId
           return (
             <div
               key={lore.id}
               className={`world-card${isActive ? ' world-card--active' : ''}`}
+              style={{ '--stagger-i': Math.min(i, 12) } as CSSProperties}
             >
               {/* Banner / placeholder */}
               <div
@@ -187,6 +189,7 @@ export default function LoreSelectorRoute() {
             className="world-card-add"
             onClick={handleCreate}
             disabled={creating}
+            style={{ '--stagger-i': Math.min(lores.length, 12) } as CSSProperties}
           >
             <span className="world-card-add-icon">＋</span>
             <span>{creating ? 'Creating…' : 'New World'}</span>

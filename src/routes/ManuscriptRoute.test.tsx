@@ -46,4 +46,16 @@ describe('ManuscriptRoute', () => {
     render(<MemoryRouter><ManuscriptRoute /></MemoryRouter>)
     expect(await screen.findByText(/1 scene · 3 words/i)).toBeTruthy()
   })
+
+  it('staggers book cards by index, capped at 12', async () => {
+    const books = Array.from({ length: 15 }, (_, i) => ({
+      id: `b${i}`, title: `Book ${i}`, synopsis: '', order: i, createdAt: 1, updatedAt: 1,
+    }))
+    await db.books.bulkAdd(books)
+    render(<MemoryRouter><ManuscriptRoute /></MemoryRouter>)
+    const first = (await screen.findByText('Book 0')).closest('.book-card') as HTMLElement
+    const last = (await screen.findByText('Book 14')).closest('.book-card') as HTMLElement
+    expect(first.style.getPropertyValue('--stagger-i')).toBe('0')
+    expect(last.style.getPropertyValue('--stagger-i')).toBe('12')
+  })
 })

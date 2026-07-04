@@ -95,6 +95,15 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes rise-in { from { opacity: 0; transform: translateY(6px); } }
 
+/* Staggered grid entrances. Components set --stagger-i (capped at 12 so big
+   grids don't ripple for seconds; everything past 12 arrives with the last
+   wave). fill-mode backwards holds the `from` frame during the delay —
+   without it, delayed cards flash visible then vanish. */
+.browse-card, .book-card, .world-card, .world-card-add {
+  animation: rise-in var(--dur-3) var(--ease-settle) backwards;
+  animation-delay: calc(var(--stagger-i, 0) * 25ms);
+}
+
 /* --- Parchment grain ------------------------------------------------------ *
    A faint greyscale noise layered over the (solid) panel fills so chrome reads
    as material, not flat colour. The reading surface (.ProseMirror) is excluded
