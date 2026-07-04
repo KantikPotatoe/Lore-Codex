@@ -82,10 +82,10 @@ WebView2; no View Transitions API dependency). Retime: `--dur-3`, 4px rise,
 
 ### 5. Reduced motion & accessibility
 
-The existing global `prefers-reduced-motion` clamp (animations/transitions
-forced to 0.01ms) automatically neuters everything added here. All entrance
-animations end at the element's natural resting state, so content is never
-invisible without its animation.
+The existing global `prefers-reduced-motion` clamp (animation/transition
+durations forced to 0.01ms, delays to 0s) automatically neuters everything
+added here. All entrance animations end at the element's natural resting
+state, so content is never invisible without its animation.
 
 ## Out of scope (follow-on sessions)
 
