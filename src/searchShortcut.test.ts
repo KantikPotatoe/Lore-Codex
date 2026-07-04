@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { shouldOpenSearch } from './searchShortcut'
 
-function key(over: Partial<{ key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean }> = {}) {
-  return { key: '/', ctrlKey: false, metaKey: false, altKey: false, ...over }
+function key(over: Partial<{ key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) {
+  return { key: '/', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...over }
 }
 
 describe('shouldOpenSearch', () => {
@@ -38,5 +38,9 @@ describe('shouldOpenSearch', () => {
     expect(shouldOpenSearch(key({ key: 'k', ctrlKey: true, altKey: true }), null)).toBe(false)
     expect(shouldOpenSearch(key({ key: 'a' }), document.body)).toBe(false)
     expect(shouldOpenSearch(key({ key: '/', ctrlKey: true }), document.body)).toBe(false)
+  })
+
+  it('Ctrl+Shift+K is left to the browser (devtools)', () => {
+    expect(shouldOpenSearch(key({ key: 'K', ctrlKey: true, shiftKey: true }), null)).toBe(false)
   })
 })

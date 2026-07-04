@@ -23,6 +23,9 @@ export default function SearchModal({ onClose }: Props) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Guards the create row against double-activation (Enter auto-repeat /
+  // double-click) while the async create is in flight.
+  const creating = useRef(false)
 
   const q = query.trim()
   const results = useMemo(() => searchPages(query), [query])
@@ -76,8 +79,19 @@ export default function SearchModal({ onClose }: Props) {
       go(row.id)
       return
     }
-    const id = await pageRepo.create({ title: row.title })
-    go(id)
+    if (creating.current) return
+    creating.current = true
+    try {
+      const id = await pageRepo.create({ title: row.title })
+      go(id)
+    } catch {
+      // Title clash — a page with this name already exists (e.g. the page
+      // list hadn't loaded yet when the row was offered). Go there instead.
+      const existing = await pageRepo.findIdByTitle(row.title)
+      if (existing) go(existing)
+    } finally {
+      creating.current = false
+    }
   }
 
   function handleKey(e: React.KeyboardEvent) {
