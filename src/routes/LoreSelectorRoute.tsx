@@ -8,10 +8,21 @@ import {
   renameLore,
   deleteLore,
   setLoreBanner,
+  importLoreFromBackup,
   type Lore,
 } from '../lores'
+import { parseBackup, type BackupCounts } from '../db'
+import { openTextFile } from '../platform'
 import { compressImage } from '../imageUtils'
 import ConfirmDialog from '../components/ConfirmDialog'
+
+/** A world name derived from a backup's filename — the stem, unless it's one
+ *  of our own timestamped export names, which make poor world names. */
+function nameFromFilename(filename: string): string {
+  const stem = filename.replace(/\.json$/i, '').trim()
+  if (!stem || /^lore-(backup|pre-import|export)/i.test(stem)) return 'Imported World'
+  return stem
+}
 
 export default function LoreSelectorRoute() {
   const [pendingDelete, setPendingDelete] = useState<Lore | null>(null)
@@ -20,6 +31,14 @@ export default function LoreSelectorRoute() {
   const [creating, setCreating] = useState(false)
   const bannerInputRef = useRef<HTMLInputElement>(null)
   const [bannerTargetId, setBannerTargetId] = useState<string | null>(null)
+  // Import-world wizard (desktop transition: how Firefox-era worlds migrate).
+  const [pendingWizard, setPendingWizard] = useState<{
+    json: string
+    counts: BackupCounts
+    name: string
+  } | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const lores = useLiveQuery(listLores, []) ?? []
   const activeId = currentLoreId()
@@ -27,6 +46,32 @@ export default function LoreSelectorRoute() {
   async function handleCreate() {
     setCreating(true)
     await createLore() // triggers reload — setCreating never resolves visually
+  }
+
+  async function handleImportWorld() {
+    const opened = await openTextFile()
+    if (!opened) return
+    try {
+      const { counts } = parseBackup(opened.text)
+      setPendingWizard({ json: opened.text, counts, name: nameFromFilename(opened.name) })
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'That file could not be read.')
+    }
+  }
+
+  async function confirmImportWorld() {
+    if (!pendingWizard || importing) return
+    setImporting(true)
+    try {
+      const id = await importLoreFromBackup(pendingWizard.name, pendingWizard.json)
+      setPendingWizard(null)
+      switchLore(id) // reloads into the new world; App's start effect seeds any missing built-ins
+    } catch (err) {
+      setPendingWizard(null)
+      setNotice(err instanceof Error ? err.message : 'The import failed. Nothing was created.')
+    } finally {
+      setImporting(false)
+    }
   }
 
   function startRename(lore: Lore) {
@@ -63,6 +108,9 @@ export default function LoreSelectorRoute() {
         <div className="lore-hero-actions">
           <button className="primary-btn" onClick={handleCreate} disabled={creating}>
             {creating ? 'Creating…' : '＋ New World'}
+          </button>
+          <button className="ghost-btn" onClick={handleImportWorld} disabled={importing}>
+            {importing ? 'Importing…' : '⬆ Import World'}
           </button>
         </div>
       </header>
@@ -154,6 +202,10 @@ export default function LoreSelectorRoute() {
           <button className="primary-btn" onClick={handleCreate} disabled={creating}>
             {creating ? 'Creating…' : 'Create your first world'}
           </button>
+          <p className="empty-hint">
+            Coming from the browser version? Use <strong>Import World</strong> above with a
+            backup file (Settings → Back up now, once per world) to bring each world across.
+          </p>
         </div>
       )}
 
@@ -182,6 +234,49 @@ export default function LoreSelectorRoute() {
         onCancel={() => setPendingDelete(null)}
       >
         <p>This permanently deletes all pages, maps, templates, and snapshots in this world. <strong>This cannot be undone.</strong></p>
+      </ConfirmDialog>
+
+      {/* Import-world confirmation (name + counts) */}
+      <ConfirmDialog
+        open={pendingWizard !== null}
+        title="Import as a new world?"
+        confirmLabel={importing ? 'Importing…' : 'Import world'}
+        cancelLabel="Cancel"
+        onConfirm={confirmImportWorld}
+        onCancel={() => setPendingWizard(null)}
+      >
+        {pendingWizard && (
+          <>
+            <p>
+              This backup contains {pendingWizard.counts.pages} pages ·{' '}
+              {pendingWizard.counts.maps} maps · {pendingWizard.counts.events} events ·{' '}
+              {pendingWizard.counts.books} books. It becomes a brand-new world — nothing
+              existing is touched.
+            </p>
+            <label className="settings-field">
+              <span>World name</span>
+              <input
+                value={pendingWizard.name}
+                autoFocus
+                onChange={(e) =>
+                  setPendingWizard((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                }
+              />
+            </label>
+          </>
+        )}
+      </ConfirmDialog>
+
+      {/* Import problem notice */}
+      <ConfirmDialog
+        open={notice !== null}
+        hideCancel
+        title="Could not import"
+        confirmLabel="OK"
+        onConfirm={() => setNotice(null)}
+        onCancel={() => setNotice(null)}
+      >
+        <p>{notice}</p>
       </ConfirmDialog>
     </div>
   )

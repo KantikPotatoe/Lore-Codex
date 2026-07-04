@@ -1,4 +1,4 @@
-import { db, now } from './schema'
+import { db, now, type LoreDB } from './schema'
 import { seedTemplates } from './templates'
 import { seedDefaultCalendar } from './calendar'
 import { sanitizeHtml } from '../sanitize'
@@ -295,36 +295,48 @@ function sanitizeBackup(data: BackupData): BackupData {
   }
 }
 
-export async function importAll(json: string): Promise<void> {
+/**
+ * Validate, sanitize, and load a backup into `target` — which need not be the
+ * module-bound active `db`: the migration wizard imports into a freshly
+ * created world's DB before switching to it (the singleton only rebinds on
+ * reload). Does NOT re-seed built-ins — `importAll` does that for the active
+ * world, and a wizard-created world is seeded by the App start effect right
+ * after the switch reloads.
+ */
+export async function importBackupInto(target: LoreDB, json: string): Promise<void> {
   const { data: parsed } = parseBackup(json) // throws before any clear(); migrated to the current shape
   const data = sanitizeBackup(parsed) // strip XSS from untrusted HTML before it touches the DB
-  await db.transaction('rw', [db.pages, db.maps, db.pins, db.regions, db.templates, db.calendars, db.events, db.images, db.docLinks, db.books, db.chapters, db.scenes, db.plotlines, db.beats, db.meta], async () => {
+  await target.transaction('rw', [target.pages, target.maps, target.pins, target.regions, target.templates, target.calendars, target.events, target.images, target.docLinks, target.books, target.chapters, target.scenes, target.plotlines, target.beats, target.meta], async () => {
     await Promise.all([
-      db.pages.clear(), db.maps.clear(), db.pins.clear(), db.regions.clear(),
-      db.templates.clear(), db.calendars.clear(), db.events.clear(), db.images.clear(),
-      db.docLinks.clear(), db.books.clear(), db.chapters.clear(), db.scenes.clear(),
-      db.plotlines.clear(), db.beats.clear(),
+      target.pages.clear(), target.maps.clear(), target.pins.clear(), target.regions.clear(),
+      target.templates.clear(), target.calendars.clear(), target.events.clear(), target.images.clear(),
+      target.docLinks.clear(), target.books.clear(), target.chapters.clear(), target.scenes.clear(),
+      target.plotlines.clear(), target.beats.clear(),
     ])
-    await db.pages.bulkAdd(asArray(data.pages))
-    await db.maps.bulkAdd(asArray(data.maps))
-    await db.pins.bulkAdd(asArray(data.pins))
-    await db.regions.bulkAdd(asArray(data.regions))
-    await db.templates.bulkAdd(asArray(data.templates))
-    await db.calendars.bulkAdd(asArray(data.calendars))
-    await db.events.bulkAdd(asArray(data.events))
-    await db.images.bulkAdd(asArray(data.images))
-    await db.docLinks.bulkAdd(asArray(data.docLinks))
-    await db.books.bulkAdd(asArray(data.books))
-    await db.chapters.bulkAdd(asArray(data.chapters))
-    await db.scenes.bulkAdd(asArray(data.scenes))
-    await db.plotlines.bulkAdd(asArray(data.plotlines))
-    await db.beats.bulkAdd(asArray(data.beats))
+    await target.pages.bulkAdd(asArray(data.pages))
+    await target.maps.bulkAdd(asArray(data.maps))
+    await target.pins.bulkAdd(asArray(data.pins))
+    await target.regions.bulkAdd(asArray(data.regions))
+    await target.templates.bulkAdd(asArray(data.templates))
+    await target.calendars.bulkAdd(asArray(data.calendars))
+    await target.events.bulkAdd(asArray(data.events))
+    await target.images.bulkAdd(asArray(data.images))
+    await target.docLinks.bulkAdd(asArray(data.docLinks))
+    await target.books.bulkAdd(asArray(data.books))
+    await target.chapters.bulkAdd(asArray(data.chapters))
+    await target.scenes.bulkAdd(asArray(data.scenes))
+    await target.plotlines.bulkAdd(asArray(data.plotlines))
+    await target.beats.bulkAdd(asArray(data.beats))
     // Meta is MERGED (put over existing keys), not cleared-and-replaced: a
     // pre-v12 backup or snapshot carries no meta, and restoring one must not
     // wipe this world's settings/home config. Device-local keys were already
     // dropped from `data.meta` by sanitizeBackup, so they survive here too.
-    await db.meta.bulkPut(asArray(data.meta))
+    await target.meta.bulkPut(asArray(data.meta))
   })
+}
+
+export async function importAll(json: string): Promise<void> {
+  await importBackupInto(db, json)
   // Older backups have no templates / calendars — make sure the built-ins exist.
   await seedTemplates()
   await seedDefaultCalendar()

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   db,
@@ -21,10 +21,10 @@ import {
 import { exportAsHtml } from '../htmlExport'
 import { getSettings, updateSettings, DEFAULT_SETTINGS, type LoreSettings } from '../settings'
 import { deleteLore, currentLoreId } from '../lores'
+import { openTextFile, isTauri } from '../platform'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function SettingsRoute() {
-  const fileRef = useRef<HTMLInputElement>(null)
   const [persisted, setPersisted] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -34,6 +34,9 @@ export default function SettingsRoute() {
     current: BackupCounts
     incoming: BackupCounts
   } | null>(null)
+  // In-app acknowledgement dialog — host alert() is unreliable in the shell's
+  // webview (and jarring in the browser).
+  const [notice, setNotice] = useState<{ title: string; body: string } | null>(null)
 
   const snapshots = useLiveQuery(() => getSnapshots(), []) ?? []
   const lastBackup = useLiveQuery(async () => (await db.meta.get(LAST_BACKUP_KEY))?.value as number | undefined, [])
@@ -93,20 +96,20 @@ export default function SettingsRoute() {
     }
   }
 
-  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const text = await file.text()
+  async function handleRestore() {
+    const opened = await openTextFile() // native Open dialog in the shell, file input in the browser
+    if (!opened) return
     let incoming: BackupCounts
     try {
-      incoming = parseBackup(text).counts
+      incoming = parseBackup(opened.text).counts
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'That file could not be read.')
-      e.target.value = ''
+      setNotice({
+        title: 'Could not read backup',
+        body: err instanceof Error ? err.message : 'That file could not be read.',
+      })
       return
     }
-    setPendingImport({ json: text, current: await loadCounts(), incoming })
-    e.target.value = ''
+    setPendingImport({ json: opened.text, current: await loadCounts(), incoming })
   }
 
   async function confirmImport() {
@@ -117,12 +120,15 @@ export default function SettingsRoute() {
     try {
       await downloadPreImportBackup()
       await importAll(json)
-      alert('Backup restored.')
+      setNotice({ title: 'Backup restored', body: 'Your codex was replaced with the backup contents.' })
     } catch (err) {
       // importAll rolls the transaction back on failure (e.g. a crafted backup with
       // duplicate ids), so the current data survives — but the user still needs to
       // know it didn't take, rather than seeing nothing happen.
-      alert(err instanceof Error ? `Import failed: ${err.message}` : 'Import failed. Your data was not changed.')
+      setNotice({
+        title: 'Import failed',
+        body: err instanceof Error ? `${err.message} Your data was not changed.` : 'Import failed. Your data was not changed.',
+      })
     } finally { setBusy(false) }
   }
 
@@ -238,25 +244,36 @@ export default function SettingsRoute() {
           <button className="primary-btn" disabled={busy} onClick={handleBackup}>
             {busy ? 'Backing up…' : '⭳ Back up now'}
           </button>
-          <button className="ghost-btn" onClick={() => fileRef.current?.click()}>⭱ Restore from backup</button>
-          <input ref={fileRef} type="file" accept="application/json" hidden onChange={handleImport} />
+          <button className="ghost-btn" onClick={handleRestore}>⭱ Restore from backup</button>
           <button className="ghost-btn" disabled={exporting} onClick={handleExportHtml}>
             {exporting ? 'Exporting…' : 'Export as HTML'}
           </button>
         </div>
 
-        <div className="backup-tip">
-          <strong>💡 Make backups automatic &amp; safe (recommended):</strong>
-          <p>
-            Your lore is saved inside Firefox. To keep a copy that survives even if the browser is
-            cleared, point Firefox's downloads at a cloud-synced folder:
-          </p>
-          <ol>
-            <li>Make a folder inside <em>Dropbox</em>, <em>OneDrive</em>, or <em>Google Drive</em> (e.g. <code>Lore Backups</code>).</li>
-            <li>In Firefox: <em>Settings → General → Files and Applications → Downloads</em>, set "Save files to" to that folder.</li>
-            <li>Click <strong>Back up now</strong> whenever the warning appears — the file lands in your synced folder and is copied to the cloud automatically.</li>
-          </ol>
-        </div>
+        {isTauri() ? (
+          <div className="backup-tip">
+            <strong>💡 Keep backups safe (recommended):</strong>
+            <p>
+              <strong>Back up now</strong> opens a Save dialog — point it at a folder inside{' '}
+              <em>Dropbox</em>, <em>OneDrive</em>, or <em>Google Drive</em> so every backup is
+              copied off this machine automatically. A recovery copy is also written to the
+              app's data folder before any restore.
+            </p>
+          </div>
+        ) : (
+          <div className="backup-tip">
+            <strong>💡 Make backups automatic &amp; safe (recommended):</strong>
+            <p>
+              Your lore is saved inside Firefox. To keep a copy that survives even if the browser is
+              cleared, point Firefox's downloads at a cloud-synced folder:
+            </p>
+            <ol>
+              <li>Make a folder inside <em>Dropbox</em>, <em>OneDrive</em>, or <em>Google Drive</em> (e.g. <code>Lore Backups</code>).</li>
+              <li>In Firefox: <em>Settings → General → Files and Applications → Downloads</em>, set "Save files to" to that folder.</li>
+              <li>Click <strong>Back up now</strong> whenever the warning appears — the file lands in your synced folder and is copied to the cloud automatically.</li>
+            </ol>
+          </div>
+        )}
       </section>
 
       {/* Danger zone */}
@@ -282,7 +299,7 @@ export default function SettingsRoute() {
               <strong>Current:</strong> {fmtCounts(pendingImport.current)}<br />
               <strong>Incoming:</strong> {fmtCounts(pendingImport.incoming)}
             </p>
-            <p>Your current data will be downloaded as a recovery file first. <strong>This cannot be undone.</strong></p>
+            <p>A recovery copy of your current data is saved first. <strong>This cannot be undone.</strong></p>
           </>
         )}
       </ConfirmDialog>
@@ -298,6 +315,17 @@ export default function SettingsRoute() {
       >
         <p><strong>This permanently deletes the active world and everything in it.</strong></p>
         <p>This cannot be undone. Make sure you have a backup first.</p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={notice !== null}
+        hideCancel
+        title={notice?.title ?? ''}
+        confirmLabel="OK"
+        onConfirm={() => setNotice(null)}
+        onCancel={() => setNotice(null)}
+      >
+        <p>{notice?.body}</p>
       </ConfirmDialog>
     </div>
   )

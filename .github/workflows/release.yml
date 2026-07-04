@@ -1,0 +1,49 @@
+name: Release
+
+# Builds the Windows installer and attaches it to a GitHub Release whenever a
+# version tag lands. Tags are pushed by version-bump.yml using BUMP_PAT — a
+# PAT-pushed tag DOES trigger workflows (a GITHUB_TOKEN-pushed one would not).
+# Unsigned on purpose: personal tool; SmartScreen's "More info → Run anyway"
+# on first run is the accepted cost (see docs/desktop-transition-investigation.md §6).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Runs beforeBuildCommand (tsc -b && vite build), compiles the shell,
+      # bundles the NSIS installer, and uploads it to a release for the tag.
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Lore Codex ${{ github.ref_name }}'
+          releaseBody: 'Windows installer for Lore Codex ${{ github.ref_name }}. Unsigned — SmartScreen will ask for "More info → Run anyway" on first launch.'
+          releaseDraft: false
+          prerelease: false

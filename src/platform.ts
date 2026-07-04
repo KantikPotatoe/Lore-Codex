@@ -57,3 +57,116 @@ export async function saveFile(data: Blob | string, suggestedName: string): Prom
   URL.revokeObjectURL(url)
   return true
 }
+
+export interface OpenedFile {
+  /** The picked file's base name (no directories). */
+  name: string
+  text: string
+}
+
+/**
+ * Let the user pick a text file and read it.
+ *
+ * - **Browser:** a transient `<input type="file">` (the same mechanism the
+ *   Settings import previously wired by hand).
+ * - **Tauri:** the native Open dialog + a scoped read of the picked path.
+ *
+ * Resolves `null` when the picker is dismissed.
+ */
+export async function openTextFile(): Promise<OpenedFile | null> {
+  if (isTauri()) {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const path = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: 'JSON backup', extensions: ['json'] }],
+    })
+    if (typeof path !== 'string') return null
+    const { readTextFile } = await import('@tauri-apps/plugin-fs')
+    const text = await readTextFile(path)
+    const name = path.split(/[\\/]/).pop() ?? path
+    return { name, text }
+  }
+
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,application/json'
+    // Marker attribute so tests (and debugging) can find the transient input.
+    input.setAttribute('data-platform-open', '')
+    input.hidden = true
+    const done = async () => {
+      const file = input.files?.[0]
+      input.remove()
+      resolve(file ? { name: file.name, text: await file.text() } : null)
+    }
+    input.addEventListener('change', done)
+    // Modern browsers fire `cancel` on a dismissed picker; if a browser
+    // doesn't, the orphaned listener resolves nothing and the input is
+    // simply removed with the page — no leak that matters.
+    input.addEventListener('cancel', () => {
+      input.remove()
+      resolve(null)
+    })
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+/**
+ * Print a self-contained HTML document via a hidden same-window iframe.
+ * Replaces the old `window.open('') + document.write + win.print()` idiom,
+ * which popup blockers interfere with in browsers and which is unreliable in
+ * the shell's webview (Tauri's window.open is not a full popup). The frame is
+ * removed on `afterprint`, with a timed fallback for engines that don't fire
+ * it. The caller is responsible for sanitizing `html` (printBook feeds it
+ * DOMPurify-scrubbed markup via compileBookHtml/toXhtml).
+ */
+export async function printHtml(html: string): Promise<void> {
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('data-platform-print', '')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.position = 'fixed'
+  iframe.style.right = '100%'
+  iframe.style.bottom = '100%'
+  document.body.appendChild(iframe)
+  const doc = iframe.contentDocument
+  const win = iframe.contentWindow
+  if (!doc || !win) {
+    iframe.remove()
+    throw new Error('Printing is not available in this environment.')
+  }
+  doc.open()
+  doc.write(html)
+  doc.close()
+  await new Promise<void>((resolve) => {
+    if (doc.readyState === 'complete') resolve()
+    else win.addEventListener('load', () => resolve(), { once: true })
+  })
+  const cleanup = () => iframe.remove()
+  win.addEventListener('afterprint', cleanup, { once: true })
+  // Engines that never fire afterprint (or a cancelled dialog) still get the
+  // frame cleaned up eventually; it's invisible meanwhile.
+  setTimeout(cleanup, 60_000)
+  win.focus()
+  win.print()
+}
+
+/**
+ * Write a text file under the app's data directory (e.g. automatic
+ * pre-import safety copies). Shell-only by design: resolves `false` in the
+ * browser so callers can fall back to a download. `relativePath` may contain
+ * forward-slash folders; parents are created.
+ */
+export async function writeAppData(relativePath: string, contents: string): Promise<boolean> {
+  if (!isTauri()) return false
+  const { writeTextFile, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  const dir = relativePath.split('/').slice(0, -1).join('/')
+  if (dir) {
+    await mkdir(dir, { baseDir: BaseDirectory.AppData, recursive: true }).catch(() => {
+      // Already exists — fine. A real permission failure surfaces on the write.
+    })
+  }
+  await writeTextFile(relativePath, contents, { baseDir: BaseDirectory.AppData })
+  return true
+}

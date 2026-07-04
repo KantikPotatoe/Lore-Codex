@@ -21,9 +21,10 @@ Sources: `roadmap.md`, `graph-improvement-ideas.md`, `map-roadmap.md`,
    biggest untouched product area; closes the gap with Campfire/World Anvil).
 3. **Reader-facing gating** → Spoilers → Secrets/reader-advancement (do in order).
 4. **Desktop transition** → phased per `desktop-transition-investigation.md`:
-   pre-work (meta in backups, v12) + Phase 0 (Tauri shell, platform seam,
-   self-hosted fonts) have shipped; Phase 1 (native open/import dialogs,
-   first-run migration wizard, CSP, print fix) is next.
+   pre-work (meta in backups, v12), Phase 0 (Tauri shell, platform seam,
+   self-hosted fonts) and Phase 1 (open/import dialogs, migration wizard,
+   CSP, print fix, release workflow) have shipped; Phase 2 (auto-mirrored
+   per-world `.lore` files on disk) is next.
 
 ---
 

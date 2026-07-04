@@ -1,10 +1,23 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { db } from '../db'
 import SettingsRoute from './SettingsRoute'
+import { openTextFile } from '../platform'
 
-afterEach(cleanup)
+// The import flow goes through the platform seam (native Open dialog in the
+// shell, transient file input in the browser) — mock the seam, not the DOM.
+vi.mock('../platform', () => ({
+  openTextFile: vi.fn(),
+  writeAppData: vi.fn(async () => false),
+  saveFile: vi.fn(async () => true),
+  isTauri: () => false,
+}))
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
 describe('SettingsRoute', () => {
   beforeEach(async () => {
@@ -38,5 +51,32 @@ describe('SettingsRoute', () => {
     fireEvent.change(input, { target: { value: '' } })
     // The NaN write is dropped, so the field keeps its last valid value.
     expect(input.value).toBe('7')
+  })
+
+  it('restore goes through the platform seam and shows the counts confirmation', async () => {
+    vi.mocked(openTextFile).mockResolvedValue({
+      name: 'lore-backup.json',
+      text: JSON.stringify({ pages: [] }),
+    })
+    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    fireEvent.click(await screen.findByText(/Restore from backup/))
+    // The destructive-replace confirmation appears, driven by parseBackup counts.
+    expect(await screen.findByText('Replace your codex?')).toBeTruthy()
+  })
+
+  it('does nothing when the file picker is dismissed', async () => {
+    vi.mocked(openTextFile).mockResolvedValue(null)
+    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    fireEvent.click(await screen.findByText(/Restore from backup/))
+    await waitFor(() => expect(openTextFile).toHaveBeenCalled())
+    expect(screen.queryByText('Replace your codex?')).toBeNull()
+  })
+
+  it('shows an in-app notice (not a host alert) for an unreadable file', async () => {
+    vi.mocked(openTextFile).mockResolvedValue({ name: 'junk.json', text: 'not json' })
+    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    fireEvent.click(await screen.findByText(/Restore from backup/))
+    expect(await screen.findByText('Could not read backup')).toBeTruthy()
+    expect(screen.queryByText('Replace your codex?')).toBeNull()
   })
 })

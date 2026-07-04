@@ -13,6 +13,7 @@ import {
   type LorePage,
 } from '../db'
 import EmptyState from '../components/EmptyState'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { getLore, renameLore, setLoreBanner, currentLoreId } from '../lores'
 import { compressImage } from '../imageUtils'
 
@@ -44,6 +45,8 @@ export default function HomeRoute() {
   const bannerFileRef = useRef<HTMLInputElement>(null)
   const [customizing, setCustomizing] = useState(false)
   const [loreNameDraft, setLoreNameDraft] = useState<string | null>(null)
+  // In-app acknowledgement — host alert() is unreliable in the shell's webview.
+  const [notice, setNotice] = useState<string | null>(null)
 
   const activeLoreId = currentLoreId()
   const activeLore = useLiveQuery(() => getLore(activeLoreId), [])
@@ -165,7 +168,7 @@ export default function HomeRoute() {
                   try {
                     await setLoreBanner(activeLoreId, null)
                   } catch {
-                    alert('Failed to remove banner.')
+                    setNotice('Failed to remove banner.')
                   }
                 }}>
                   ✕ Remove banner
@@ -296,6 +299,17 @@ export default function HomeRoute() {
           )}
         </section>
       )}
+
+      <ConfirmDialog
+        open={notice !== null}
+        hideCancel
+        title="Something went wrong"
+        confirmLabel="OK"
+        onConfirm={() => setNotice(null)}
+        onCancel={() => setNotice(null)}
+      >
+        <p>{notice}</p>
+      </ConfirmDialog>
     </div>
   )
 }

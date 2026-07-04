@@ -5,7 +5,7 @@
 // src/sanitize.test.ts. fake-indexeddb is installed globally by setup-tests.ts, so
 // db.* works here as it does under happy-dom.
 import { describe, it, expect, beforeEach } from 'vitest'
-import { db, importAll, type LorePage, type TimelineEvent } from '../db'
+import { db, LoreDB, importAll, importBackupInto, type LorePage, type TimelineEvent } from '../db'
 
 async function clearAll(): Promise<void> {
   await Promise.all([
@@ -40,6 +40,23 @@ const eventWith = (description: string): TimelineEvent => ({
   startAbsolute: 0,
   createdAt: 1,
   updatedAt: 1,
+})
+
+describe('importBackupInto — sanitizes non-active targets too (migration wizard)', () => {
+  it("strips scripting from page content imported into another world's DB", async () => {
+    const target = new LoreDB('lore-app-wizard-sanitize-test')
+    try {
+      await importBackupInto(
+        target,
+        JSON.stringify({ pages: [pageWith('<p>ok</p><script>alert(1)</script>')] }),
+      )
+      const content = (await target.pages.get('p1'))?.content ?? ''
+      expect(content).toContain('<p>ok</p>')
+      expect(content).not.toContain('<script>')
+    } finally {
+      await target.delete()
+    }
+  })
 })
 
 describe('importAll — XSS sanitization (roadmap #8)', () => {
