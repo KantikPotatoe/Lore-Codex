@@ -86,6 +86,8 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
 }
@@ -98,7 +100,9 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 /* Staggered grid entrances. Components set --stagger-i (capped at 12 so big
    grids don't ripple for seconds; everything past 12 arrives with the last
    wave). fill-mode backwards holds the `from` frame during the delay —
-   without it, delayed cards flash visible then vanish. */
+   without it, delayed cards flash visible then vanish.
+   Reduced motion: the global clamp zeroes animation-delay too, so these
+   cards appear instantly and simultaneously. */
 .browse-card, .book-card, .world-card, .world-card-add {
   animation: rise-in var(--dur-3) var(--ease-settle) backwards;
   animation-delay: calc(var(--stagger-i, 0) * 25ms);
