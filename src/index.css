@@ -1821,7 +1821,6 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
 .tl-card-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.tl-card-icon { font-size: 14px; line-height: 1; flex-shrink: 0; }
 .tl-card-cat {
   font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
   text-transform: uppercase; font-family: var(--sans);

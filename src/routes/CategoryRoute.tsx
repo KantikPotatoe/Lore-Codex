@@ -33,7 +33,7 @@ export default function CategoryRoute() {
       empty={{
         icon: '📭',
         title: `No ${category} pages yet`,
-        message: `Use "+ New ${category}" above to create the first one.`,
+        message: `Use “+ New ${category}” above to create the first one.`,
       }}
     />
   )

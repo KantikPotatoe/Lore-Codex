@@ -45,7 +45,7 @@ describe('SearchModal', () => {
     await waitFor(() => expect(screen.queryByText(/Create page/)).toBeNull())
   })
 
-  it('creates the page and clears on Enter over the create row', async () => {
+  it('creates the page on Enter over the create row', async () => {
     renderModal()
     const input = screen.getByPlaceholderText('Search pages…')
     fireEvent.change(input, { target: { value: 'Khazad-dûm' } })
@@ -54,5 +54,18 @@ describe('SearchModal', () => {
     await waitFor(async () => {
       expect(await pageRepo.findIdByTitle('Khazad-dûm')).toBeTruthy()
     })
+  })
+
+  it('double Enter on the create row creates only one page', async () => {
+    renderModal()
+    const input = screen.getByPlaceholderText('Search pages…')
+    fireEvent.change(input, { target: { value: 'Erebor' } })
+    await screen.findByText(/Create page/)
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(async () => {
+      expect(await pageRepo.findIdByTitle('Erebor')).toBeTruthy()
+    })
+    expect(await db.pages.count()).toBe(1)
   })
 })

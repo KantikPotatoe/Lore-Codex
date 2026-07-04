@@ -7,6 +7,7 @@ export interface KeyLike {
   ctrlKey: boolean
   metaKey: boolean
   altKey: boolean
+  shiftKey: boolean
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -20,7 +21,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 export function shouldOpenSearch(e: KeyLike, target: EventTarget | null): boolean {
   if (e.altKey) return false
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') return true
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') return true
   if (e.key === '/' && !e.ctrlKey && !e.metaKey) return !isEditableTarget(target)
   return false
 }
