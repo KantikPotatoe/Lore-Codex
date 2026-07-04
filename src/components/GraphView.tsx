@@ -9,6 +9,7 @@ import { type GraphData, type GraphNode, type GraphLink } from '../db'
 import { nodeFill, type ColorBy } from '../graphColor'
 import { radiusFor } from '../graphGeometry'
 import type { GraphCam } from '../useGraphPrefs'
+import GraphMinimap from './GraphMinimap'
 
 // The force simulation augments our plain nodes/links in place (adds x/y and
 // swaps link source/target from an id string to the resolved node object), so
@@ -213,7 +214,7 @@ export default function GraphView({
   const linkWidth = useCallback((link: GLink) => (link.mutual ? 2.5 : 1), [])
 
   return (
-    <div ref={wrapRef} style={{ width: '100%', height: '100%' }}>
+    <div ref={wrapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
       <ForceGraph2D<GraphNode, GraphLink>
         ref={fgRef}
         width={size.width}
@@ -267,6 +268,14 @@ export default function GraphView({
       }}
       backgroundColor="#15130f"
       />
+      {size.width > 0 && (
+        <GraphMinimap
+          nodes={data.nodes as GNode[]}
+          fgRef={fgRef}
+          viewW={size.width}
+          viewH={size.height}
+        />
+      )}
     </div>
   )
 }
