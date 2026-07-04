@@ -17,6 +17,14 @@
   --accent-glow: rgba(201, 162, 75, 0.18); /* faint gold ring (= --accent @ 18%) */
   --danger: #c8645a;
   --radius: 10px;
+  /* Motion — quiet library: fast, decelerating, never bouncy.
+     dur-1 hover/press feedback · dur-2 entrances (modals, popovers) ·
+     dur-3 larger settles (route change, grid stagger). */
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 240ms;
+  --ease-out: ease-out;
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
   /* Greyscale fractal-noise grain layered under panel fills (moderate intensity). */
   --parchment-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)' opacity='0.045'/%3E%3C/svg%3E");
   --serif: 'EB Garamond', Georgia, 'Times New Roman', serif;
@@ -81,6 +89,11 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
     scroll-behavior: auto !important;
   }
 }
+
+/* Shared entrance keyframes. No `to` frame — elements settle at their natural
+   resting state, so a skipped/cancelled animation can never hide content. */
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(6px); } }
 
 /* --- Parchment grain ------------------------------------------------------ *
    A faint greyscale noise layered over the (solid) panel fills so chrome reads
