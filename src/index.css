@@ -149,7 +149,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .nav-item {
   flex: 1 1 auto; text-align: center; padding: 6px 8px; border-radius: 8px;
   color: var(--ink-dim); border: 1px solid transparent; font-size: 13px;
-  white-space: nowrap; transition: background 0.12s, color 0.12s, transform 0.12s;
+  white-space: nowrap; transition: background var(--dur-1), color var(--dur-1), transform var(--dur-1);
 }
 .nav-item:hover { background: var(--panel); color: var(--ink); }
 .nav-item.active { background: var(--panel-2); color: var(--ink); border-color: var(--border); }
@@ -197,7 +197,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .page-link {
   display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: 7px;
   color: var(--ink-dim); font-size: 14px;
-  transition: background 0.12s, color 0.12s, transform 0.12s, box-shadow 0.12s;
+  transition: background var(--dur-1), color var(--dur-1), transform var(--dur-1), box-shadow var(--dur-1);
 }
 .page-link:hover { background: var(--panel); color: var(--ink); transform: translateX(2px); }
 .page-link.active {
@@ -207,7 +207,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .tag-link {
   display: flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 7px;
   color: var(--ink-dim); font-size: 13px;
-  transition: background 0.12s, color 0.12s, transform 0.12s;
+  transition: background var(--dur-1), color var(--dur-1), transform var(--dur-1);
 }
 .tag-link:hover { background: var(--panel); color: var(--ink); transform: translateX(2px); }
 .tag-link.active {
@@ -338,7 +338,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .lore-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 16px; transition: transform 0.08s, border-color 0.08s;
+  padding: 16px; transition: transform var(--dur-1), border-color var(--dur-1);
 }
 .lore-card:hover { transform: translateY(-2px); border-color: var(--accent); }
 .lore-card h3 { font-family: var(--serif); margin: 10px 0 4px; font-size: 19px; }
@@ -414,7 +414,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .tag-x { background: none; border: none; color: var(--ink-faint); font-size: 15px; line-height: 1; padding: 0; }
 .tag-x:hover { color: var(--danger); }
 .tag-input { background: var(--panel); border: 1px dashed var(--border); border-radius: 20px; padding: 3px 11px; color: var(--ink); width: 110px; }
-a.tag { text-decoration: none; cursor: pointer; transition: border-color 0.12s, color 0.12s; }
+a.tag { text-decoration: none; cursor: pointer; transition: border-color var(--dur-1), color var(--dur-1); }
 a.tag:hover { border-color: var(--accent); color: var(--ink); }
 
 /* --- Editor --------------------------------------------------------------- */
@@ -1031,7 +1031,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden; text-decoration: none; color: inherit;
   display: flex; flex-direction: column;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform var(--dur-1), box-shadow var(--dur-1);
 }
 .browse-card:hover {
   transform: translateY(-3px);
@@ -1085,7 +1085,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   display: block; color: var(--ink-dim); font-size: 13px; line-height: 1.4;
   padding: 3px 6px 3px 8px; border-left: 2px solid transparent;
   text-decoration: none; border-radius: 0 4px 4px 0;
-  transition: color 0.1s, border-color 0.1s;
+  transition: color var(--dur-1), border-color var(--dur-1);
 }
 .toc-entry:hover { color: var(--ink); }
 .toc-entry.toc-depth-1 { padding-left: 20px; }
@@ -1487,7 +1487,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   overflow: hidden;
   background: var(--panel);
   border: 1px solid var(--border);
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  transition: border-color var(--dur-1), box-shadow var(--dur-1), transform var(--dur-1);
 }
 
 .world-card:hover {
@@ -1545,7 +1545,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   color: rgba(255,255,255,0.9);
   letter-spacing: 0.06em;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--dur-1);
   text-shadow: 0 1px 4px rgba(0,0,0,0.7);
   pointer-events: none;
 }
@@ -1629,7 +1629,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   margin-top: 0.4rem;
   flex-wrap: wrap;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--dur-1);
 }
 
 .world-card:hover .world-card-actions,
@@ -1661,7 +1661,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   min-height: 222px;
   font-size: 0.9rem;
   font-family: var(--sans);
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color var(--dur-1), color var(--dur-1);
 }
 
 .world-card-add:hover:not(:disabled) {
@@ -1824,7 +1824,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .tl-event-card {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--radius);
-  cursor: pointer; transition: background 0.15s;
+  cursor: pointer; transition: background var(--dur-1);
   overflow: hidden;
 }
 .tl-event-card:hover { background: var(--panel-2); }
@@ -1902,7 +1902,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .horiz-event {
   border-radius: 6px; cursor: pointer; overflow: hidden;
   display: flex; align-items: center; padding: 0 8px; gap: 4px;
-  transition: filter 0.1s; font-size: 13px; font-weight: 600; color: #1c160a;
+  transition: filter var(--dur-1); font-size: 13px; font-weight: 600; color: #1c160a;
   border-top: 1px solid rgba(255,255,255,0.18);
 }
 .horiz-event:hover { filter: brightness(1.15); }
@@ -2079,7 +2079,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border-radius: var(--radius);
   text-decoration: none;
   color: var(--ink);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
 }
 .book-card:hover {
   border-color: var(--accent);
