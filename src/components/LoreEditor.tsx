@@ -351,7 +351,7 @@ export default function LoreEditor({ content, editable, onChange, onWikiClick, k
   }
 
   return (
-    <div className="lore-editor">
+    <div className={editable ? 'lore-editor' : 'lore-editor is-reading'}>
       {editable && (
         <div className="editor-toolbar">
           <Btn title="Bold" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><b>B</b></Btn>
