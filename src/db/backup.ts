@@ -258,23 +258,47 @@ export async function exportAll(): Promise<string> {
  * two HTML-bearing fields are touched; `summary`, infobox values, etc. are plain text
  * rendered as React text, which React already escapes. See src/sanitize.ts.
  */
+/** A raster image data-URL with nothing that could break out of a `src="…"`
+ *  attribute: real `data:image/…` (not SVG — it can embed <script>), and free of
+ *  whitespace or a double-quote (a legitimate base64/percent data URL has neither).
+ *  Guards the HTML-export sink, which interpolates these into raw markup. */
+function isCleanImageDataUrl(v: unknown): v is string {
+  return (
+    typeof v === 'string' &&
+    v.startsWith('data:image/') &&
+    !v.startsWith('data:image/svg+xml') &&
+    !/[\s"]/.test(v)
+  )
+}
+
 function sanitizeBackup(data: BackupData): BackupData {
   return {
     ...data,
-    pages: asArray(data.pages).map((p) => ({ ...p, content: sanitizeHtml(p.content) })),
+    // Drop rows a hand-edited/truncated backup can't safely provide the load-bearing
+    // fields for (a non-string id or title): downstream consumers call p.title.trim()
+    // and p.tags.join() unconditionally, so one bad row would throw app-wide on the
+    // next edit (the search-sync liveQuery). Salvageable-but-missing fields are coerced.
+    pages: asArray(data.pages)
+      .filter((p): p is LorePage => !!p && typeof p === 'object' && typeof p.id === 'string' && typeof p.title === 'string')
+      .map((p) => ({
+        ...p,
+        content: sanitizeHtml(typeof p.content === 'string' ? p.content : ''),
+        tags: Array.isArray(p.tags) ? p.tags.filter((t): t is string => typeof t === 'string') : [],
+        // infobox.image feeds the raw-markup HTML export too; drop anything that
+        // isn't a clean image data-URL so a crafted value can't inject there.
+        ...(p.infobox
+          ? { infobox: { ...p.infobox, image: isCleanImageDataUrl(p.infobox.image) ? p.infobox.image : null } }
+          : {}),
+      })),
     events: asArray(data.events).map((e) => ({ ...e, description: sanitizeHtml(e.description) })),
     // Scene prose is HTML from the editor; scrub it at the import boundary like page
     // content. synopsis/notes/title are plain text (React-escaped), left untouched.
     scenes: asArray(data.scenes).map((s) => ({ ...s, content: sanitizeHtml(s.content) })),
     // Images carry no HTML; defend against a non-image payload smuggled into dataUrl.
     // SVG data-URLs are excluded specifically: they can embed <script>, so a future
-    // render path (<object>/<iframe>/new-tab navigation) would execute it.
-    images: asArray(data.images).filter(
-      (img) =>
-        typeof img.dataUrl === 'string' &&
-        img.dataUrl.startsWith('data:image/') &&
-        !img.dataUrl.startsWith('data:image/svg+xml'),
-    ),
+    // render path (<object>/<iframe>/new-tab navigation) would execute it. A quote or
+    // whitespace is likewise rejected — it would break out of the HTML export's src="…".
+    images: asArray(data.images).filter((img) => isCleanImageDataUrl(img.dataUrl)),
     // Drop attachment edges whose endpoints aren't in this backup's page set —
     // an untrusted or hand-edited backup could carry dangling ids.
     docLinks: (() => {

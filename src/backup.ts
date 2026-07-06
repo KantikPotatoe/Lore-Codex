@@ -61,21 +61,30 @@ export async function downloadPreImportBackup(): Promise<void> {
 }
 
 /** The most recent time any tracked data changed — i.e. the data we'd lose.
- *  Covers pages, maps, and timeline events/calendars (events carry the bulk of
- *  timeline edits). Events have no updatedAt index, so they're scanned in memory;
- *  the table is small enough that this stays cheap. */
+ *  Covers pages, maps, timeline events/calendars, and manuscript scenes (a novel
+ *  written only in the manuscript view must still trip the backup reminder).
+ *  Events have no updatedAt index, so they're scanned in memory; scenes do (v11),
+ *  so their newest is a cheap indexed read. */
 export async function latestChangeTime(): Promise<number> {
-  const [newestPage, newestMap, events, calendars, images] = await Promise.all([
+  const [newestPage, newestMap, events, calendars, images, newestScene] = await Promise.all([
     db.pages.orderBy('updatedAt').last(),
     db.maps.orderBy('createdAt').last(),
     db.events.toArray(),
     db.calendars.toArray(),
     db.images.toArray(),
+    db.scenes.orderBy('updatedAt').last(),
   ])
   const newestEvent = events.reduce((max, e) => Math.max(max, e.updatedAt), 0)
   const newestCalendar = calendars.reduce((max, c) => Math.max(max, c.createdAt), 0)
   const newestImage = images.reduce((max, i) => Math.max(max, i.createdAt), 0)
-  return Math.max(newestPage?.updatedAt ?? 0, newestMap?.createdAt ?? 0, newestEvent, newestCalendar, newestImage)
+  return Math.max(
+    newestPage?.updatedAt ?? 0,
+    newestMap?.createdAt ?? 0,
+    newestEvent,
+    newestCalendar,
+    newestImage,
+    newestScene?.updatedAt ?? 0,
+  )
 }
 
 /** True if there is data that has changed since the last backup. */
@@ -93,15 +102,16 @@ export function hasUnbackedUpChanges(lastBackup: number | null, latestChange: nu
  */
 export async function unbackedChangeCount(lastBackup: number | null): Promise<number> {
   const since = lastBackup ?? 0
-  const [pages, maps, events, images] = await Promise.all([
+  const [pages, maps, events, images, scenes] = await Promise.all([
     db.pages.where('updatedAt').above(since).count(),
     db.maps.where('createdAt').above(since).count(),
     db.events.toArray(),
     db.images.toArray(),
+    db.scenes.where('updatedAt').above(since).count(),
   ])
   const eventChanges = events.filter((e) => e.updatedAt > since).length
   const imageChanges = images.filter((i) => i.createdAt > since).length
-  return pages + maps + eventChanges + imageChanges
+  return pages + maps + eventChanges + imageChanges + scenes
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000

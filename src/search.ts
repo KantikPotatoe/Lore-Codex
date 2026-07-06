@@ -1,6 +1,6 @@
 import { Index } from 'flexsearch'
 import type { LorePage } from './db'
-import { stripHtml } from './html'
+import { escapeHtml, stripHtml } from './html'
 
 export interface SearchResult {
   id: string
@@ -37,17 +37,10 @@ function extractSnippet(text: string, query: string, maxLen = 160): string {
   return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '')
 }
 
-/** Escape HTML special characters. The snippet is plain text (stripHtml decodes
- *  entities), but SearchModal injects the result via dangerouslySetInnerHTML, so
- *  every text run must be escaped or stored text like "<img onerror=…>" (typed as
- *  visible text, or carried by an imported backup) would render as live markup. */
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+// The snippet is plain text (stripHtml decodes entities), but SearchModal injects
+// the result via dangerouslySetInnerHTML, so every text run must be escaped (via
+// the shared escapeHtml, src/html.ts) or stored text like "<img onerror=…>" (typed
+// as visible text, or carried by an imported backup) would render as live markup.
 
 export function highlightSnippet(snippet: string, query: string): string {
   const q = query.trim().split(/\s+/)[0] ?? ''

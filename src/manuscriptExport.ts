@@ -1,12 +1,9 @@
 import JSZip from 'jszip'
 import { sanitizeHtml } from './sanitize'
 import { db } from './db'
+import { escapeHtml } from './html'
 import { saveFile, printHtml } from './platform'
 import type { Book, Chapter, Scene } from './db'
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
 
 /** Sanitize body HTML and self-close the void elements Tiptap emits, so the
  *  result is XHTML-friendly for EPUB readers. Not a full XML validator — good

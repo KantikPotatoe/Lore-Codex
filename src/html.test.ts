@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripHtml, wikiLinkTitles } from './html'
+import { escapeHtml, stripHtml, wikiLinkTitles } from './html'
 
 // src/html.ts is the one place DOMParser usage lives, so several modules depend
 // on these two helpers behaving identically everywhere. These tests pin the
@@ -20,6 +20,23 @@ describe('stripHtml', () => {
 
   it('flattens deeply nested tags into their text', () => {
     expect(stripHtml('<div><ul><li>a</li><li>b</li></ul></div>')).toBe('ab')
+  })
+})
+
+describe('escapeHtml', () => {
+  it('escapes the five markup-significant characters', () => {
+    expect(escapeHtml(`a & b < c > d " e`)).toBe('a &amp; b &lt; c &gt; d &quot; e')
+  })
+
+  it('neutralises an attribute-injection payload', () => {
+    // A crafted data-URL that would break out of a src="…" attribute.
+    expect(escapeHtml('data:image/png" onerror="alert(1)')).toBe(
+      'data:image/png&quot; onerror=&quot;alert(1)',
+    )
+  })
+
+  it('leaves plain text untouched', () => {
+    expect(escapeHtml('The Shire')).toBe('The Shire')
   })
 })
 
