@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   isQuotaError,
+  isDroppedWriteError,
   reportStorageError,
   subscribeStorageError,
   clearStorageError,
@@ -78,6 +79,55 @@ describe('storage-error event bus', () => {
     cb.mockClear()
     clearStorageError()
     expect(cb).toHaveBeenCalledWith(null)
+    off()
+  })
+})
+
+describe('isDroppedWriteError', () => {
+  it('detects the allowlisted Dexie/IDB error names', () => {
+    for (const name of [
+      'DatabaseClosedError', 'AbortError', 'InvalidStateError',
+      'TransactionInactiveError', 'UnknownError',
+    ]) {
+      expect(isDroppedWriteError({ name })).toBe(true)
+    }
+  })
+
+  it('recurses into a Dexie-nested inner cause', () => {
+    expect(isDroppedWriteError({ name: 'AbortError', inner: { name: 'DatabaseClosedError' } })).toBe(true)
+  })
+
+  it('excludes ConstraintError and unrelated errors', () => {
+    expect(isDroppedWriteError({ name: 'ConstraintError' })).toBe(false)
+    expect(isDroppedWriteError(new Error('boom'))).toBe(false)
+    expect(isDroppedWriteError({ name: 'QuotaExceededError' })).toBe(false)
+    expect(isDroppedWriteError(null)).toBe(false)
+  })
+})
+
+describe('reportStorageError — dropped writes', () => {
+  it('raises the generic notice for an allowlisted dropped-write error', () => {
+    const cb = vi.fn()
+    const off = subscribeStorageError(cb)
+    reportStorageError({ name: 'DatabaseClosedError' })
+    expect(cb).toHaveBeenCalledTimes(1)
+    expect(cb.mock.calls[0][0]).toMatch(/may not have been saved/i)
+    off()
+  })
+
+  it('prefers the quota message when the error is a quota error', () => {
+    const cb = vi.fn()
+    const off = subscribeStorageError(cb)
+    reportStorageError({ name: 'QuotaExceededError' })
+    expect(cb.mock.calls[0][0]).toMatch(/out of storage space/i)
+    off()
+  })
+
+  it('still ignores a ConstraintError (logic bug, not lost data)', () => {
+    const cb = vi.fn()
+    const off = subscribeStorageError(cb)
+    reportStorageError({ name: 'ConstraintError' })
+    expect(cb).not.toHaveBeenCalled()
     off()
   })
 })

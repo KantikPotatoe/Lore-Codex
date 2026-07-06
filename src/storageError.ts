@@ -23,6 +23,19 @@ const QUOTA_MESSAGE =
   'Your browser is out of storage space, so recent changes may not have been saved. ' +
   'Download a backup now, then free up space (or remove old data) to keep editing safely.'
 
+const GENERIC_MESSAGE =
+  'Some recent changes may not have been saved (another tab may have changed this world). ' +
+  'Download a backup to be safe, then reload.'
+
+// Dexie/IndexedDB error names that mean a write was dropped or the connection
+// vanished — the realistic multi-tab case is DatabaseClosedError after Dexie
+// auto-closes on another tab's delete. ConstraintError is deliberately absent:
+// it signals a logic bug (e.g. the bootstrap duplicate-key path), not lost data.
+const DROPPED_WRITE_NAMES = new Set([
+  'DatabaseClosedError', 'AbortError', 'InvalidStateError',
+  'TransactionInactiveError', 'UnknownError',
+])
+
 /**
  * Detect a storage-quota / eviction error across browsers. Chrome & Safari throw a
  * `QuotaExceededError` DOMException (legacy numeric code 22); Firefox uses
@@ -39,6 +52,16 @@ export function isQuotaError(err: unknown): boolean {
   return false
 }
 
+/** True when an error (recursing into Dexie's nested `.inner`) names a dropped
+ *  write / closed-DB failure. Quota is handled separately by isQuotaError. */
+export function isDroppedWriteError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { name?: string; inner?: unknown }
+  if (typeof e.name === 'string' && DROPPED_WRITE_NAMES.has(e.name)) return true
+  if (e.inner && e.inner !== err) return isDroppedWriteError(e.inner)
+  return false
+}
+
 /** Subscribe to the active storage-error notice. Replays the current state to late
  *  subscribers so a banner mounted after the error still shows it. Returns an
  *  unsubscribe function. */
@@ -48,11 +71,15 @@ export function subscribeStorageError(cb: Listener): () => void {
   return () => { listeners.delete(cb) }
 }
 
-/** Report an error. If it's a quota/eviction error, raise the user-facing notice;
- *  anything else is ignored (other layers handle non-storage failures). */
+/** Report an error. Quota/eviction errors raise the specialized notice; other
+ *  dropped-write errors raise a generic one; anything else is ignored (other
+ *  layers handle non-storage failures). */
 export function reportStorageError(err: unknown): void {
-  if (!isQuotaError(err)) return
-  active = QUOTA_MESSAGE
+  let message: string | null = null
+  if (isQuotaError(err)) message = QUOTA_MESSAGE
+  else if (isDroppedWriteError(err)) message = GENERIC_MESSAGE
+  if (!message) return
+  active = message
   listeners.forEach((cb) => cb(active))
 }
 
