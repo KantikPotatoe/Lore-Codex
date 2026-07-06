@@ -82,6 +82,8 @@ interface Props {
   content: string
   editable: boolean
   onChange: (html: string) => void
+  /** Editor lost focus — a good moment to flush a debounced content write. */
+  onBlur?: () => void
   /** Called when a [[wiki link]] is clicked, with the linked page title. */
   onWikiClick: (title: string) => void
   /** Lowercased titles of existing pages; missing ones render as broken (view mode). */
@@ -116,7 +118,7 @@ function Btn({ active, onClick, title, children }: {
   )
 }
 
-export default function LoreEditor({ content, editable, onChange, onWikiClick, knownTitles, autolinkTitles, autolinkEnabled, onCitationClick, starterSections }: Props) {
+export default function LoreEditor({ content, editable, onChange, onBlur, onWikiClick, knownTitles, autolinkTitles, autolinkEnabled, onCitationClick, starterSections }: Props) {
   // --- [[wiki link]] autocomplete state ------------------------------------
   // `index` is the highlighted row; it lives in the same object so a new query
   // (a fresh suggest) naturally resets it to 0 without a separate effect.
@@ -124,11 +126,9 @@ export default function LoreEditor({ content, editable, onChange, onWikiClick, k
   // The wiki-link node currently being edited via the popover (edit mode only).
   const [editLink, setEditLink] = useState<{ pos: number; title: string; display: string } | null>(null)
   const [cite, setCite] = useState<CiteDraft | null>(null)
-  // Titles of all pages, for the suggestion menu. Indexed by title in Dexie.
-  const pageTitles = useLiveQuery(
-    () => pageRepo.listByTitle().then((ps) => ps.map((p) => p.title)),
-    [],
-  )
+  // Titles of all pages, for the suggestion menu. Read straight off the `title`
+  // index — no record hydration just to list titles.
+  const pageTitles = useLiveQuery(() => pageRepo.titles(), [])
   const items = useMemo(
     () => (suggest ? rankWikiTitles(pageTitles ?? [], suggest.query) : []),
     [suggest, pageTitles],
@@ -158,7 +158,7 @@ export default function LoreEditor({ content, editable, onChange, onWikiClick, k
       const sc = selectedCitation(editor)
       setCite(sc ? sc.attrs : null)
     },
-    onBlur: () => setSuggest(null),
+    onBlur: () => { setSuggest(null); onBlur?.() },
   })
 
   // Replace the `[[query` text with a real wiki-link node to `title`.

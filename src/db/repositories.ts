@@ -45,6 +45,10 @@ export interface PageRepository {
   list(): Promise<LorePage[]>
   /** Every page, ordered by title. */
   listByTitle(): Promise<LorePage[]>
+  /** Every page's title, ordered by title. Reads the `title` index only — no
+   *  record hydration (so it doesn't pull each page's content + embedded image
+   *  bytes just to enumerate titles). */
+  titles(): Promise<string[]>
   /** Pages of one category (page type), ordered by title. */
   listByCategory(category: string): Promise<LorePage[]>
   /** Pages carrying a given tag, ordered by title. */
@@ -67,6 +71,7 @@ export const pageRepo: PageRepository = {
   get: (id) => db.pages.get(id),
   list: () => db.pages.toArray(),
   listByTitle: () => db.pages.orderBy('title').toArray(),
+  titles: () => db.pages.orderBy('title').keys() as Promise<string[]>,
   listByCategory: (category) => db.pages.where('category').equals(category).sortBy('title'),
   listByTag: (tag) => db.pages.filter((p) => p.tags.includes(tag)).sortBy('title'),
   listRecent: (limit) => db.pages.orderBy('updatedAt').reverse().limit(limit).toArray(),
