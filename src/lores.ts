@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import { CURRENT_LORE_KEY, currentLoreId, dbNameFor } from './loreId'
+import { broadcastWorldChange } from './tabSync'
 
 export interface Lore {
   id: string
@@ -100,6 +101,7 @@ export async function setLoreBanner(id: string, banner: string | null): Promise<
 }
 
 export async function deleteLore(id: string): Promise<void> {
+  broadcastWorldChange(id, 'delete') // freeze other tabs viewing this world
   const isActive = id === currentLoreId()
   await Dexie.delete(dbNameFor(id))
   await registry.lores.delete(id)
