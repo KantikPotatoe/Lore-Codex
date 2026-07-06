@@ -4,6 +4,7 @@ import { liveQuery } from 'dexie'
 import Sidebar from './components/Sidebar'
 import BackupBanner from './components/BackupBanner'
 import StorageErrorBanner from './components/StorageErrorBanner'
+import TabSyncOverlay from './components/TabSyncOverlay'
 import SearchModal from './components/SearchModal'
 import WikiLinkPopover from './components/WikiLinkPopover'
 import HomeRoute from './routes/HomeRoute'
@@ -19,11 +20,12 @@ import SettingsRoute from './routes/SettingsRoute'
 import ManuscriptRoute from './routes/ManuscriptRoute'
 import BookRoute from './routes/BookRoute'
 import { requestPersistentStorage } from './backup'
-import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, pageRepo } from './db'
+import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, pageRepo, activeLoreId } from './db'
 import { maybeTakeSnapshot } from './snapshots'
 import { syncIndex } from './search'
 import { bootstrapDefaultLore } from './lores'
 import { installStorageErrorListener } from './storageError'
+import { installTabSyncListener } from './tabSync'
 import { shouldOpenSearch } from './searchShortcut'
 
 export default function App() {
@@ -51,6 +53,7 @@ export default function App() {
 
   useEffect(() => {
     installStorageErrorListener() // surface IndexedDB quota/eviction write failures
+    installTabSyncListener(activeLoreId) // freeze on another tab's import/delete of this world
     bootstrapDefaultLore()
     requestPersistentStorage()
     seedTemplates()
@@ -75,6 +78,7 @@ export default function App() {
     return (
       <>
         <StorageErrorBanner />
+        <TabSyncOverlay />
         <LoreSelectorRoute />
       </>
     )
@@ -84,6 +88,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <StorageErrorBanner />
+      <TabSyncOverlay />
       <Sidebar onOpenSearch={() => setSearchOpen(true)} />
       <main className="content" ref={contentRef} onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 600)}>
         <BackupBanner />
