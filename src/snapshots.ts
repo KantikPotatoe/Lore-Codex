@@ -1,6 +1,6 @@
 // SNAPSHOT_TIME_KEY is defined in db/backup.ts so exports can blacklist it
 // (it's device-local bookkeeping that must not travel in a backup).
-import { db, exportAll, getMeta, setMeta, saveSnapshot, SNAPSHOT_TIME_KEY } from './db'
+import { db, exportSnapshot, getMeta, setMeta, saveSnapshot, SNAPSHOT_TIME_KEY } from './db'
 import { getSettings } from './settings'
 
 // Coalesces overlapping calls: the App start effect double-invokes under React
@@ -27,12 +27,11 @@ async function takeSnapshot(): Promise<void> {
   const { snapshotChangeThreshold, snapshotTimeHours, snapshotRetention } = await getSettings()
   const lastTime = (await getMeta<number>(SNAPSHOT_TIME_KEY)) ?? 0
   const now = Date.now()
-  const [pagesChanged, events, scenesChanged] = await Promise.all([
+  const [pagesChanged, eventsChanged, scenesChanged] = await Promise.all([
     db.pages.where('updatedAt').above(lastTime).count(),
-    db.events.toArray(),
+    db.events.where('updatedAt').above(lastTime).count(), // events.updatedAt indexed since v13
     db.scenes.where('updatedAt').above(lastTime).count(),
   ])
-  const eventsChanged = events.filter((e) => e.updatedAt > lastTime).length
   const changed = pagesChanged + eventsChanged + scenesChanged
 
   if (changed === 0) return
@@ -40,7 +39,8 @@ async function takeSnapshot(): Promise<void> {
   const timePassed = now - lastTime >= snapshotTimeHours * 60 * 60 * 1000
   if (changed < snapshotChangeThreshold && !timePassed) return
 
-  const data = await exportAll()
+  // Text tables only — image/map bytes stay out of the snapshot (#183).
+  const data = await exportSnapshot()
   await saveSnapshot(data, changed, snapshotRetention)
   await setMeta(SNAPSHOT_TIME_KEY, now)
 }

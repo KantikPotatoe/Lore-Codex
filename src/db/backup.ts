@@ -256,6 +256,50 @@ export async function exportAll(): Promise<string> {
   })
 }
 
+/** A snapshot payload: text tables only. Image and map *bytes* are deliberately
+ *  left out — they rarely change, are covered by real backups, and storing them
+ *  in every retained snapshot multiplies origin quota ~11x (#183). The image /
+ *  map / pin / region arrays are present but empty so the payload is still a valid
+ *  backup `parseBackup` accepts; `restoreSnapshot` then leaves the live image/map
+ *  tables untouched rather than clearing them. */
+export async function exportSnapshot(): Promise<string> {
+  const [pages, templates, calendars, events, docLinks, books, chapters, scenes,
+    plotlines, beats, allMeta] = await Promise.all([
+    db.pages.toArray(),
+    db.templates.toArray(),
+    db.calendars.toArray(),
+    db.events.toArray(),
+    db.docLinks.toArray(),
+    db.books.toArray(),
+    db.chapters.toArray(),
+    db.scenes.toArray(),
+    db.plotlines.toArray(),
+    db.beats.toArray(),
+    db.meta.toArray(),
+  ])
+  const meta = allMeta.filter((m) => !LOCAL_ONLY_META_KEYS.includes(m.key))
+  return JSON.stringify({
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    appVersion: pkg.version,
+    exportedAt: now(),
+    pages,
+    maps: [],
+    pins: [],
+    regions: [],
+    templates,
+    calendars,
+    events,
+    images: [],
+    docLinks,
+    books,
+    chapters,
+    scenes,
+    plotlines,
+    beats,
+    meta,
+  })
+}
+
 /**
  * Strip any scripting from the rich-text HTML a backup carries, so importing an
  * untrusted (e.g. shared) backup can't inject XSS. This is the import-time half of
@@ -373,6 +417,50 @@ export async function importBackupInto(target: LoreDB, json: string): Promise<vo
 export async function importAll(json: string): Promise<void> {
   await importBackupInto(db, json)
   // Older backups have no templates / calendars — make sure the built-ins exist.
+  await seedTemplates()
+  await seedDefaultCalendar()
+}
+
+/**
+ * Restore a text-only snapshot into `target`: the text tables are cleared and
+ * replaced from the snapshot, while images, maps, pins and regions are left
+ * exactly as they are in the live DB. Snapshots don't version those (#183), so a
+ * restore must not wipe them — it rolls back the writing, not the picture library.
+ * Meta is merged (never cleared), matching importBackupInto. The transaction spans
+ * only the text tables, so the image/map tables are provably untouched.
+ */
+export async function restoreSnapshotInto(target: LoreDB, json: string): Promise<void> {
+  const { data: parsed } = parseBackup(json) // throws before any clear(); migrated to current shape
+  const data = sanitizeBackup(parsed)
+  await target.transaction(
+    'rw',
+    [target.pages, target.templates, target.calendars, target.events, target.docLinks,
+      target.books, target.chapters, target.scenes, target.plotlines, target.beats, target.meta],
+    async () => {
+      await Promise.all([
+        target.pages.clear(), target.templates.clear(), target.calendars.clear(),
+        target.events.clear(), target.docLinks.clear(), target.books.clear(),
+        target.chapters.clear(), target.scenes.clear(), target.plotlines.clear(),
+        target.beats.clear(),
+      ])
+      await target.pages.bulkAdd(asArray(data.pages))
+      await target.templates.bulkAdd(asArray(data.templates))
+      await target.calendars.bulkAdd(asArray(data.calendars))
+      await target.events.bulkAdd(asArray(data.events))
+      await target.docLinks.bulkAdd(asArray(data.docLinks))
+      await target.books.bulkAdd(asArray(data.books))
+      await target.chapters.bulkAdd(asArray(data.chapters))
+      await target.scenes.bulkAdd(asArray(data.scenes))
+      await target.plotlines.bulkAdd(asArray(data.plotlines))
+      await target.beats.bulkAdd(asArray(data.beats))
+      await target.meta.bulkPut(asArray(data.meta))
+    },
+  )
+}
+
+export async function restoreSnapshot(json: string): Promise<void> {
+  await restoreSnapshotInto(db, json)
+  // An older snapshot may predate a built-in type/calendar — make sure they exist.
   await seedTemplates()
   await seedDefaultCalendar()
 }

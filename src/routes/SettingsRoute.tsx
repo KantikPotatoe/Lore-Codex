@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import {
   db,
   importAll,
+  restoreSnapshot,
   parseBackup,
   getSnapshots,
   type BackupCounts,
@@ -33,6 +34,8 @@ export default function SettingsRoute() {
     json: string
     current: BackupCounts
     incoming: BackupCounts
+    // 'backup' replaces everything; 'snapshot' replaces text but keeps images/maps.
+    kind: 'backup' | 'snapshot'
   } | null>(null)
   // In-app acknowledgement dialog — host alert() is unreliable in the shell's
   // webview (and jarring in the browser).
@@ -109,18 +112,23 @@ export default function SettingsRoute() {
       })
       return
     }
-    setPendingImport({ json: opened.text, current: await loadCounts(), incoming })
+    setPendingImport({ json: opened.text, current: await loadCounts(), incoming, kind: 'backup' })
   }
 
   async function confirmImport() {
     if (!pendingImport) return
-    const { json } = pendingImport
+    const { json, kind } = pendingImport
     setPendingImport(null)
     setBusy(true)
     try {
       await downloadPreImportBackup()
-      await importAll(json)
-      setNotice({ title: 'Backup restored', body: 'Your codex was replaced with the backup contents.' })
+      if (kind === 'snapshot') {
+        await restoreSnapshot(json)
+        setNotice({ title: 'Snapshot restored', body: 'Your text was rolled back to this snapshot. Images and maps were kept as they are now.' })
+      } else {
+        await importAll(json)
+        setNotice({ title: 'Backup restored', body: 'Your codex was replaced with the backup contents.' })
+      }
     } catch (err) {
       // importAll rolls the transaction back on failure (e.g. a crafted backup with
       // duplicate ids), so the current data survives — but the user still needs to
@@ -181,7 +189,7 @@ export default function SettingsRoute() {
                   disabled={busy}
                   onClick={async () => {
                     const { counts: incoming } = parseBackup(snap.data)
-                    setPendingImport({ json: snap.data, current: await loadCounts(), incoming })
+                    setPendingImport({ json: snap.data, current: await loadCounts(), incoming, kind: 'snapshot' })
                   }}
                 >
                   Restore
@@ -286,15 +294,19 @@ export default function SettingsRoute() {
       <ConfirmDialog
         open={pendingImport !== null}
         danger
-        title="Replace your codex?"
-        confirmLabel="Replace everything"
+        title={pendingImport?.kind === 'snapshot' ? 'Restore this snapshot?' : 'Replace your codex?'}
+        confirmLabel={pendingImport?.kind === 'snapshot' ? 'Restore text' : 'Replace everything'}
         cancelLabel="Cancel"
         onConfirm={confirmImport}
         onCancel={() => setPendingImport(null)}
       >
         {pendingImport && (
           <>
-            <p><strong>This replaces everything currently in your codex.</strong></p>
+            {pendingImport.kind === 'snapshot' ? (
+              <p><strong>This rolls your writing back to this snapshot.</strong> Your images and maps are kept as they are now — snapshots don’t version those (use a full backup for that).</p>
+            ) : (
+              <p><strong>This replaces everything currently in your codex.</strong></p>
+            )}
             <p>
               <strong>Current:</strong> {fmtCounts(pendingImport.current)}<br />
               <strong>Incoming:</strong> {fmtCounts(pendingImport.incoming)}
