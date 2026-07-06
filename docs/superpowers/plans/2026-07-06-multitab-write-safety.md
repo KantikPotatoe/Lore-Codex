@@ -171,6 +171,7 @@ git commit -m "feat: surface dropped (non-quota) writes in storageError (#185)"
   - `type WorldChangeReason = 'import' | 'delete'`
   - `interface WorldChangeMessage { type: 'world-changed'; loreId: string; reason: WorldChangeReason }`
   - `matchesBoundLore(msg: unknown, boundLoreId: string): msg is WorldChangeMessage`
+  - `handleIncoming(data: unknown, boundLoreId: string): void` (applies a received message to the bus; exposed so the message-handling path is deterministically testable without a live channel)
   - `subscribeTabSync(cb: (reason: WorldChangeReason | null) => void): () => void`
   - `broadcastWorldChange(loreId: string, reason: WorldChangeReason): void`
   - `installTabSyncListener(boundLoreId: string): void`
@@ -185,6 +186,7 @@ Create `src/tabSync.test.ts`:
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   matchesBoundLore,
+  handleIncoming,
   subscribeTabSync,
   broadcastWorldChange,
   clearTabSync,
@@ -207,21 +209,36 @@ describe('matchesBoundLore', () => {
   })
 })
 
-describe('tab-sync bus', () => {
-  it('replays the active reason to a late subscriber', () => {
-    // drive the bus directly through the internal raise path by simulating a
-    // received message: install is channel-bound, so we exercise the bus via
-    // subscribe + a manual dispatch through broadcast loopback is not available
-    // (BroadcastChannel does not self-deliver). Instead assert clear semantics.
+describe('handleIncoming → bus', () => {
+  it('freezes and notifies subscribers on a matching message', () => {
     const cb = vi.fn()
     const off = subscribeTabSync(cb)
-    expect(cb).not.toHaveBeenCalled() // nothing active yet
+    handleIncoming({ type: 'world-changed', loreId: 'w1', reason: 'import' }, 'w1')
+    expect(cb).toHaveBeenCalledWith('import')
+    off()
+  })
+
+  it('replays the active reason to a late subscriber', () => {
+    handleIncoming({ type: 'world-changed', loreId: 'w1', reason: 'delete' }, 'w1')
+    const cb = vi.fn()
+    const off = subscribeTabSync(cb)
+    expect(cb).toHaveBeenCalledWith('delete')
+    off()
+  })
+
+  it('ignores a message targeting a different lore', () => {
+    const cb = vi.fn()
+    const off = subscribeTabSync(cb)
+    handleIncoming({ type: 'world-changed', loreId: 'other', reason: 'import' }, 'w1')
+    expect(cb).not.toHaveBeenCalled()
     off()
   })
 
   it('clearTabSync notifies subscribers with null', () => {
     const cb = vi.fn()
     const off = subscribeTabSync(cb)
+    handleIncoming({ type: 'world-changed', loreId: 'w1', reason: 'import' }, 'w1')
+    cb.mockClear()
     clearTabSync()
     expect(cb).toHaveBeenCalledWith(null)
     off()
@@ -229,6 +246,8 @@ describe('tab-sync bus', () => {
 })
 
 describe('broadcastWorldChange', () => {
+  // This test runs before any channel is created (no prior test calls broadcast
+  // or install), so the deleted-global path is genuinely exercised.
   it('is a safe no-op when BroadcastChannel is unavailable', () => {
     const saved = globalThis.BroadcastChannel
     // @ts-expect-error — deliberately remove for the no-support path
@@ -304,6 +323,13 @@ function raise(reason: WorldChangeReason): void {
   listeners.forEach((cb) => cb(active))
 }
 
+/** Apply a received channel message to the bus: freeze this tab when the message
+ *  targets the lore it bound to. Exposed (rather than inlined in the listener) so
+ *  the message-handling path is deterministically testable without a live channel. */
+export function handleIncoming(data: unknown, boundLoreId: string): void {
+  if (matchesBoundLore(data, boundLoreId)) raise(data.reason)
+}
+
 /** Reset the active freeze state (used by tests). */
 export function clearTabSync(): void {
   active = null
@@ -335,9 +361,7 @@ export function installTabSyncListener(boundLoreId: string): void {
   const ch = getChannel()
   if (!ch) return
   installed = true
-  ch.addEventListener('message', (ev: MessageEvent) => {
-    if (matchesBoundLore(ev.data, boundLoreId)) raise(ev.data.reason)
-  })
+  ch.addEventListener('message', (ev: MessageEvent) => handleIncoming(ev.data, boundLoreId))
 }
 
 /** React binding: the current freeze reason (or null). */
@@ -519,14 +543,13 @@ git commit -m "feat: broadcast world change on importAll/deleteLore (#185)"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/components/TabSyncOverlay.test.tsx`. It drives the overlay through the real bus by dispatching a message on a `BroadcastChannel` from a *different* channel instance (BroadcastChannel does not self-deliver within one instance, but two instances in the same context do receive each other's messages in happy-dom). If the environment lacks cross-instance delivery, fall back to asserting the null render.
+Create `src/components/TabSyncOverlay.test.tsx`. It drives the overlay deterministically through `handleIncoming` (the same path the channel listener runs), wrapped in `act` so React flushes the bus-driven state update — no reliance on channel timing.
 
 ```tsx
-// @vitest-environment happy-dom
-import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { describe, it, expect, afterEach } from 'vitest'
+import { render, screen, cleanup, act } from '@testing-library/react'
 import TabSyncOverlay from './TabSyncOverlay'
-import { installTabSyncListener, clearTabSync } from '../tabSync'
+import { handleIncoming, clearTabSync } from '../tabSync'
 
 afterEach(() => { cleanup(); clearTabSync() })
 
@@ -536,20 +559,15 @@ describe('TabSyncOverlay', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull()
   })
 
-  it('freezes with a reload prompt when another tab imports the bound world', async () => {
-    installTabSyncListener('w1')
+  it('freezes with a reload prompt when another tab imports the bound world', () => {
     render(<TabSyncOverlay />)
-    // Simulate the other tab's broadcast via a second channel instance.
-    const other = new BroadcastChannel('lore-tab-sync')
-    other.postMessage({ type: 'world-changed', loreId: 'w1', reason: 'import' })
-    await waitFor(() => expect(screen.getByRole('alertdialog')).toBeTruthy())
+    act(() => handleIncoming({ type: 'world-changed', loreId: 'w1', reason: 'import' }, 'w1'))
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+    expect(screen.getByText(/replaced by an import/i)).toBeTruthy()
     expect(screen.getByRole('button', { name: /reload/i })).toBeTruthy()
-    other.close()
   })
 })
 ```
-
-> Note for the implementer: if `installTabSyncListener` proves flaky under happy-dom's BroadcastChannel, keep the first (null-render) test and replace the second with a direct bus drive: export a test-only `__raiseForTests(reason)` from `tabSync.ts` OR assert via `subscribeTabSync`. Do not weaken the component's behavior to fit the test.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
