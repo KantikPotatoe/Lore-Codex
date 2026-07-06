@@ -90,6 +90,21 @@ describe('buildHtmlSite', () => {
     expect(noImgs).not.toContain('class="gallery"')
   })
 
+  it('inlines body-image refs to bytes and keeps them out of the gallery (#182)', () => {
+    const bodyImg: PageImage = { id: 'bimg', pageId: 'a', dataUrl: 'data:image/png;base64,BODYBYTES', caption: '', order: -1, createdAt: 0, kind: 'body' }
+    const html = buildHtmlSite(
+      [page('a', 'A', { content: '<p>see <img data-image-id="bimg"></p>' })],
+      [bodyImg, image('g', 'a', 0, 'galleryone')],
+    )['pages/a.html']
+    // Body ref resolved to real bytes, ref attribute gone.
+    expect(html).toContain('src="data:image/png;base64,BODYBYTES"')
+    expect(html).not.toContain('data-image-id')
+    // Gallery shows only the gallery image, not the body image: the body bytes
+    // appear once (inlined in the body), never duplicated into the gallery grid.
+    expect(html).toContain('galleryone')
+    expect(html.split('BODYBYTES').length - 1).toBe(1)
+  })
+
   it('computes "What links here" backlinks from body references', () => {
     const files = buildHtmlSite(
       [page('a', 'A', { content: `<p>${link('B')}</p>` }), page('b', 'B')],

@@ -1,6 +1,6 @@
 import { db, uid, now } from './schema'
 import { defaultInfobox } from './templates'
-import type { LorePage } from './types'
+import type { LorePage, PageImage } from './types'
 
 // ---------------------------------------------------------------------------
 // Per-page image gallery (#19)
@@ -20,6 +20,29 @@ export async function addImage(pageId: string, dataUrl: string): Promise<string>
   const order = existing.reduce((max, img) => Math.max(max, img.order + 1), 0)
   await db.images.add({ id, pageId, dataUrl, caption: '', order, createdAt: now() })
   return id
+}
+
+/** Store the bytes for an inline body image (a `bodyImage` node in page.content,
+ *  #182). Same table as the gallery, tagged `kind:'body'` and given no meaningful
+ *  grid order so it never shows in the gallery — deletePage's per-pageId cascade
+ *  and the backup export cover it for free. Returns the id to embed in the node. */
+export async function addBodyImage(pageId: string, dataUrl: string): Promise<string> {
+  const id = uid()
+  await db.images.add({ id, pageId, dataUrl, caption: '', order: -1, createdAt: now(), kind: 'body' })
+  return id
+}
+
+/** A page's gallery images (kind 'gallery', or legacy rows with no kind), ordered
+ *  by grid position. Excludes body images, which live in the same table. */
+export async function galleryImages(pageId: string): Promise<PageImage[]> {
+  const rows = await db.images.where('pageId').equals(pageId).sortBy('order')
+  return rows.filter((img) => img.kind !== 'body')
+}
+
+/** The data URL for a single image row, or null if it's gone. Backs the bodyImage
+ *  node view, which resolves its `data-image-id` ref to bytes at render (#182). */
+export async function getImageUrl(id: string): Promise<string | null> {
+  return (await db.images.get(id))?.dataUrl ?? null
 }
 
 export async function updateImageCaption(id: string, caption: string): Promise<void> {

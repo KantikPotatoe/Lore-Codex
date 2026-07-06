@@ -15,6 +15,12 @@ describe('sanitizeHtml', () => {
     expect(out).not.toContain('alert(1)')
   })
 
+  it('keeps a body-image ref (img with only data-image-id, no src) through import (#182)', () => {
+    const out = sanitizeHtml('<p><img data-image-id="abc123"></p>')
+    expect(out).toContain('data-image-id="abc123"')
+    expect(out).toContain('<img')
+  })
+
   it('strips event-handler attributes like onerror', () => {
     const out = sanitizeHtml('<img src="data:image/png;base64,AAAA" onerror="alert(1)">')
     expect(out.toLowerCase()).not.toContain('onerror')

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { db, addImage, updateImageCaption, deleteImage, reorderImages, setAsPortrait, createPage, deletePage } from '../db'
+import { db, addImage, addBodyImage, galleryImages, updateImageCaption, deleteImage, reorderImages, setAsPortrait, createPage, deletePage } from '../db'
 
 // Gallery images live in their own table (not on LorePage) so editing page text
 // never rewrites image bytes. This first test just proves the v8 table + its
@@ -71,6 +71,31 @@ describe('images CRUD', () => {
     expect(p1.map((r) => r.order)).toEqual([0, 1])
     // The foreign image keeps its own order, untouched.
     expect((await db.images.get(foreign))?.order).toBe(0)
+  })
+})
+
+describe('body images (#182)', () => {
+  beforeEach(async () => {
+    await db.images.clear()
+  })
+
+  it('addBodyImage stores a kind:"body" row that the gallery does not list', async () => {
+    await addImage('p1', 'data:image/png;base64,GALLERY')
+    const bodyId = await addBodyImage('p1', 'data:image/png;base64,BODY')
+
+    // Stored with kind 'body'.
+    expect((await db.images.get(bodyId))?.kind).toBe('body')
+    // The gallery lists only the gallery image, not the body image.
+    const gallery = await galleryImages('p1')
+    expect(gallery.map((i) => i.dataUrl)).toEqual(['data:image/png;base64,GALLERY'])
+  })
+
+  it('galleryImages returns gallery rows (kind gallery or legacy-undefined) sorted by order', async () => {
+    await db.images.add({ id: 'g2', pageId: 'p1', dataUrl: 'data:image/png;base64,B', caption: '', order: 1, createdAt: 2 })
+    await db.images.add({ id: 'g1', pageId: 'p1', dataUrl: 'data:image/png;base64,A', caption: '', order: 0, createdAt: 1, kind: 'gallery' })
+    await addBodyImage('p1', 'data:image/png;base64,BODY')
+    const gallery = await galleryImages('p1')
+    expect(gallery.map((i) => i.id)).toEqual(['g1', 'g2'])
   })
 })
 

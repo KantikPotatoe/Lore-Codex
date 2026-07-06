@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { pageRepo, mapRepo, defaultInfobox, STATUSES, categoryColor, statusColor, pageStatus, type Infobox as InfoboxType } from '../db'
+import { pageRepo, mapRepo, addBodyImage, defaultInfobox, STATUSES, categoryColor, statusColor, pageStatus, type Infobox as InfoboxType } from '../db'
 import { usePage } from '../usePage'
 import { useWikiLinkNavigation } from '../useWikiLinkNavigation'
 import LoreEditor from '../components/LoreEditor'
@@ -271,6 +271,7 @@ export default function PageRoute() {
             editable={editing}
             onChange={(html) => contentWriter.call(id, html)}
             onBlur={() => contentWriter.flush()}
+            onInsertImage={(dataUrl) => addBodyImage(id, dataUrl)}
             onWikiClick={wiki.follow}
             onCitationClick={scrollToReference}
             knownTitles={knownTitles}
