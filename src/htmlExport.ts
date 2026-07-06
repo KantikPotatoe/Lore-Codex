@@ -3,6 +3,7 @@ import { db } from './db'
 import type { LorePage, PageImage } from './db'
 import { parseCitations } from './citations'
 import { escapeHtml } from './html'
+import { resolveBodyImages } from './bodyImage'
 import { saveFile } from './platform'
 
 // Plain-text fields interpolated into the exported markup are escaped via the
@@ -178,9 +179,14 @@ export function buildHtmlSite(pages: LorePage[], images: PageImage[]): Record<st
     }
   }
 
-  // Group gallery images by page, sorted by their grid order.
+  // Body-image bytes are resolved by id; every image row can back a body ref.
+  const urlById = new Map(images.map((img) => [img.id, img.dataUrl]))
+
+  // Group GALLERY images by page, sorted by grid order — body images (kind:'body')
+  // are inlined into the body below, not shown in the gallery grid (#182).
   const imagesByPage = new Map<string, PageImage[]>()
   for (const img of images) {
+    if (img.kind === 'body') continue
     const list = imagesByPage.get(img.pageId) ?? []
     list.push(img)
     imagesByPage.set(img.pageId, list)
@@ -191,7 +197,9 @@ export function buildHtmlSite(pages: LorePage[], images: PageImage[]): Record<st
   files['style.css'] = CSS.trim()
   files['index.html'] = indexHtml(pages)
   for (const page of pages) {
-    const body = rewriteWikiLinks(page.content, titleToId)
+    // Inline body-image refs to their bytes, then rewrite wiki links to file paths.
+    const resolved = resolveBodyImages(page.content, (id) => urlById.get(id) ?? null)
+    const body = rewriteWikiLinks(resolved, titleToId)
     const backlinks = backlinkMap.get(titleKey(page.title)) ?? []
     files[`pages/${page.id}.html`] = pageHtml(page, body, backlinks, imagesByPage.get(page.id) ?? [], titleToId)
   }

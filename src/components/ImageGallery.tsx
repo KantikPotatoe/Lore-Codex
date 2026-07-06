@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db, addImage, updateImageCaption, deleteImage, reorderImages, setAsPortrait,
+  addImage, galleryImages, updateImageCaption, deleteImage, reorderImages, setAsPortrait,
   type LorePage,
 } from '../db'
 import { compressImage } from '../imageUtils'
@@ -17,10 +17,9 @@ interface Props {
  *  delete, "set as portrait", and native drag-to-reorder. Hidden entirely in
  *  view mode when the page has no images. */
 export default function ImageGallery({ page, editable }: Props) {
-  const images = useLiveQuery(
-    () => db.images.where('pageId').equals(page.id).sortBy('order'),
-    [page.id],
-  ) ?? []
+  // Gallery grid only — body images live in the same table (kind:'body') but are
+  // positioned inside the page body, not here (#182).
+  const images = useLiveQuery(() => galleryImages(page.id), [page.id]) ?? []
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)

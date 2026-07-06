@@ -63,6 +63,10 @@ export interface PageImage {
   caption: string // optional; '' when none
   order: number // 0-based position in the grid
   createdAt: number
+  /** 'gallery' (the page's image grid; the default when absent, for legacy rows)
+   *  or 'body' — bytes for an inline body image referenced by a bodyImage node in
+   *  page.content (#182), kept out of the gallery grid. */
+  kind?: 'gallery' | 'body'
 }
 
 /** A curated attachment linking a page to a Document-type page. Reciprocal:

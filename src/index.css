@@ -509,6 +509,13 @@ a.tag:hover { border-color: var(--accent); color: var(--ink); }
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* A body image whose bytes are gone (deleted row): a quiet dashed placeholder
+   rather than a browser broken-image glyph. */
+.ProseMirror img.body-image.is-missing {
+  min-height: 56px;
+  border-style: dashed;
+  background: color-mix(in srgb, var(--border) 25%, transparent);
+}
 .ProseMirror p.is-editor-empty:first-child::before {
   content: 'Begin your tale…'; color: var(--ink-faint); float: left; height: 0; pointer-events: none;
 }

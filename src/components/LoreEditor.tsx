@@ -8,6 +8,7 @@ import { TableKit } from '@tiptap/extension-table'
 import { WikiLink } from '../extensions/WikiLink'
 import { Citation } from '../extensions/Citation'
 import { Autolink, autolinkKey } from '../extensions/Autolink'
+import { BodyImage } from '../extensions/BodyImage'
 import { pageRepo } from '../db'
 import { compressImage } from '../imageUtils'
 import { showWikiHover, scheduleWikiHoverClose } from '../wikiLinkHover'
@@ -84,6 +85,10 @@ interface Props {
   onChange: (html: string) => void
   /** Editor lost focus — a good moment to flush a debounced content write. */
   onBlur?: () => void
+  /** Store an inserted body image's bytes out-of-band and return its id; the
+   *  editor then inserts a lightweight `bodyImage` reference node instead of an
+   *  inline data URL (#182). When absent (scenes/events), images stay inline. */
+  onInsertImage?: (dataUrl: string) => Promise<string>
   /** Called when a [[wiki link]] is clicked, with the linked page title. */
   onWikiClick: (title: string) => void
   /** Lowercased titles of existing pages; missing ones render as broken (view mode). */
@@ -118,7 +123,7 @@ function Btn({ active, onClick, title, children }: {
   )
 }
 
-export default function LoreEditor({ content, editable, onChange, onBlur, onWikiClick, knownTitles, autolinkTitles, autolinkEnabled, onCitationClick, starterSections }: Props) {
+export default function LoreEditor({ content, editable, onChange, onBlur, onInsertImage, onWikiClick, knownTitles, autolinkTitles, autolinkEnabled, onCitationClick, starterSections }: Props) {
   // --- [[wiki link]] autocomplete state ------------------------------------
   // `index` is the highlighted row; it lives in the same object so a new query
   // (a fresh suggest) naturally resets it to 0 without a separate effect.
@@ -147,6 +152,7 @@ export default function LoreEditor({ content, editable, onChange, onBlur, onWiki
       WikiLink,
       Citation,
       Autolink,
+      BodyImage,
       Image.configure({ inline: false, allowBase64: true }),
       TableKit.configure({ table: { resizable: true } }),
     ],
@@ -235,14 +241,21 @@ export default function LoreEditor({ content, editable, onChange, onBlur, onWiki
   const [showLinkBox, setShowLinkBox] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
 
-  // Insert an image into the body: downscale to a body-friendly 1600px and embed
-  // as a data URL (local-first — no upload). Mirrors Infobox.pickImage.
+  // Insert an image into the body: downscale to a body-friendly 1600px (local-first
+  // — no upload). When onInsertImage is provided (page editing), store the bytes in
+  // the images table and insert a lightweight bodyImage reference so typing never
+  // rewrites the bytes (#182); otherwise embed inline as a data URL.
   async function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-picking the same file
     if (!file || !editor) return
     const dataUrl = await compressImage(file, 1600)
-    editor.chain().focus().setImage({ src: dataUrl }).run()
+    if (onInsertImage) {
+      const imageId = await onInsertImage(dataUrl)
+      editor.chain().focus().insertBodyImage({ imageId }).run()
+    } else {
+      editor.chain().focus().setImage({ src: dataUrl }).run()
+    }
   }
 
   function openLinkBox() {
