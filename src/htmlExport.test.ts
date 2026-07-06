@@ -125,6 +125,31 @@ describe('buildHtmlSite', () => {
     expect(files['index.html']).not.toContain('<script>alert(1)</script>')
   })
 
+  it('escapes image src attributes so a crafted data-URL cannot inject markup', () => {
+    // A backup can carry an infobox.image / gallery dataUrl that closes the
+    // src="…" attribute and adds an event handler. The export is the one sink
+    // that interpolates these into raw markup, so it must attribute-escape them.
+    const infobox: Infobox = {
+      template: 'Character',
+      image: 'data:image/png;base64,AAA" onerror="alert(1)',
+      caption: '',
+      fields: [{ id: '1', label: 'Name', value: 'Ok' }],
+    }
+    const gallery: PageImage = {
+      id: 'g',
+      pageId: 'a',
+      dataUrl: 'data:image/png;base64,BBB" onerror="alert(2)',
+      caption: '',
+      order: 0,
+      createdAt: 0,
+    }
+    const html = buildHtmlSite([page('a', 'A', { infobox })], [gallery])['pages/a.html']
+    expect(html).not.toContain('onerror="alert(1)"')
+    expect(html).not.toContain('onerror="alert(2)"')
+    expect(html).toContain('data:image/png;base64,AAA&quot; onerror=&quot;alert(1)')
+    expect(html).toContain('data:image/png;base64,BBB&quot; onerror=&quot;alert(2)')
+  })
+
   it('resolves wiki links, backlinks, and citations case-insensitively', () => {
     const files = buildHtmlSite(
       [

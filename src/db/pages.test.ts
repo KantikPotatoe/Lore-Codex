@@ -19,7 +19,51 @@ beforeEach(async () => {
   await db.pages.clear()
   await db.images.clear()
   await db.pins.clear()
+  await db.regions.clear()
+  await db.events.clear()
+  await db.scenes.clear()
 })
+
+/** A minimal scene row carrying the given prose. */
+async function addScene(id: string, content: string): Promise<string> {
+  await db.scenes.add({
+    id,
+    bookId: 'bk',
+    chapterId: 'ch',
+    title: 'S',
+    content,
+    synopsis: '',
+    notes: '',
+    status: 'draft',
+    order: 0,
+    wordCount: 0,
+    povPageId: null,
+    castPageIds: [],
+    locationPageIds: [],
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  return id
+}
+
+/** A minimal timeline event carrying the given rich-text description. */
+async function addEvent(id: string, description: string): Promise<string> {
+  await db.events.add({
+    id,
+    calendarId: 'c1',
+    title: 'E',
+    description,
+    category: 'Battle',
+    pageId: null,
+    startYear: 1,
+    startMonth: 0,
+    startDay: 1,
+    startAbsolute: 0,
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  return id
+}
 
 /** A body anchor linking to `title` (matches what the editor emits). */
 function link(title: string): string {
@@ -61,6 +105,45 @@ describe('deletePage', () => {
 
     expect((await db.pins.get('pin1'))!.pageId).toBeNull()
     expect((await db.pins.get('pin2'))!.pageId).toBeNull() // untouched
+  })
+
+  it('unlinks map regions that pointed at the deleted page', async () => {
+    const pageId = await createPage({ title: 'Doomed' })
+    await db.regions.add({ id: 'r1', mapId: 'm1', pageId, points: [], label: 'X' })
+    await db.regions.add({ id: 'r2', mapId: 'm1', pageId: 'other', points: [], label: 'Y' })
+
+    await deletePage(pageId)
+
+    expect((await db.regions.get('r1'))!.pageId).toBeNull()
+    expect((await db.regions.get('r2'))!.pageId).toBe('other') // untouched
+  })
+
+  it('unlinks timeline events that pointed at the deleted page', async () => {
+    const pageId = await createPage({ title: 'Doomed' })
+    await addEvent('ev1', '<p>x</p>')
+    await db.events.update('ev1', { pageId })
+
+    await deletePage(pageId)
+
+    expect((await db.events.get('ev1'))!.pageId).toBeNull()
+  })
+
+  it('drops the deleted page from scene POV/cast/location refs', async () => {
+    const pageId = await createPage({ title: 'Doomed' })
+    const keep = await createPage({ title: 'Kept' })
+    await addScene('sc1', '<p>x</p>')
+    await db.scenes.update('sc1', {
+      povPageId: pageId,
+      castPageIds: [pageId, keep],
+      locationPageIds: [pageId],
+    })
+
+    await deletePage(pageId)
+
+    const s = (await db.scenes.get('sc1'))!
+    expect(s.povPageId).toBeNull()
+    expect(s.castPageIds).toEqual([keep])
+    expect(s.locationPageIds).toEqual([])
   })
 })
 
@@ -130,6 +213,43 @@ describe('renamePage', () => {
     await renamePage(target, 'Frodo Baggins')
 
     expect((await db.pages.get(bystander))!.updatedAt).toBe(beforeStamp)
+  })
+
+  it('rewrites a wiki-link in a manuscript scene body', async () => {
+    const target = await createPage({ title: 'Frodo' })
+    const scene = await addScene('sc1', `<p>then ${link('Frodo')} spoke</p>`)
+
+    await renamePage(target, 'Frodo Baggins')
+
+    const body = (await db.scenes.get(scene))!.content
+    expect(body).toContain('data-title="Frodo Baggins"')
+    expect(body).toContain('>Frodo Baggins<')
+    expect(body).not.toContain('data-title="Frodo"')
+  })
+
+  it('rewrites wiki-links and citations in a timeline-event description', async () => {
+    const target = await createPage({ title: 'Frodo' })
+    const cite = `<sup data-citation data-target="Frodo" data-locator="p.2"></sup>`
+    const event = await addEvent('ev1', `<p>${link('Frodo')} arrives${cite}</p>`)
+
+    await renamePage(target, 'Frodo Baggins')
+
+    const desc = (await db.events.get(event))!.description
+    expect(desc).toContain('data-title="Frodo Baggins"')
+    expect(desc).toContain('data-target="Frodo Baggins"')
+    expect(desc).not.toContain('"Frodo"')
+    expect(desc).toContain('data-locator="p.2"')
+  })
+
+  it('leaves scenes/events that never referenced the renamed page untouched', async () => {
+    const target = await createPage({ title: 'Frodo' })
+    const scene = await addScene('sc2', '<p>no links here</p>')
+    const event = await addEvent('ev2', '<p>nothing</p>')
+
+    await renamePage(target, 'Frodo Baggins')
+
+    expect((await db.scenes.get(scene))!.updatedAt).toBe(1)
+    expect((await db.events.get(event))!.updatedAt).toBe(1)
   })
 
   it('rewrites a citation marker that targeted the old title', async () => {

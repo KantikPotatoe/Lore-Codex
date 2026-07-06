@@ -46,16 +46,37 @@ export async function updatePage(id: string, changes: Partial<LorePage>): Promis
 }
 
 export async function deletePage(id: string): Promise<void> {
-  // One transaction so the delete + gallery cleanup + pin unlink either all land
-  // or all roll back — a mid-sequence failure can't leave orphaned images or pins
-  // pointing at a deleted page.
-  await db.transaction('rw', db.pages, db.images, db.pins, db.docLinks, async () => {
+  // One transaction so the delete + gallery cleanup + ref unlinks either all land
+  // or all roll back — a mid-sequence failure can't leave orphaned images or refs
+  // pointing at a deleted page. Every store that holds a pageId ref is cleaned so
+  // no dangling id survives to resolve as "This page doesn't exist".
+  await db.transaction('rw', [db.pages, db.images, db.pins, db.docLinks, db.regions, db.events, db.scenes], async () => {
     await db.pages.delete(id)
     // Remove this page's gallery images so no orphans are left behind.
     await db.images.where('pageId').equals(id).delete()
     // Unlink any pins that pointed at this page.
-    const linked = await db.pins.where('pageId').equals(id).toArray()
-    await Promise.all(linked.map((p) => db.pins.update(p.id, { pageId: null })))
+    const linkedPins = await db.pins.where('pageId').equals(id).toArray()
+    await Promise.all(linkedPins.map((p) => db.pins.update(p.id, { pageId: null })))
+    // Unlink any map regions that pointed at this page.
+    const linkedRegions = await db.regions.where('pageId').equals(id).toArray()
+    await Promise.all(linkedRegions.map((r) => db.regions.update(r.id, { pageId: null })))
+    // Unlink any timeline events that pointed at this page.
+    const linkedEvents = await db.events.where('pageId').equals(id).toArray()
+    await Promise.all(linkedEvents.map((e) => db.events.update(e.id, { pageId: null })))
+    // Drop the id from manuscript scene POV/cast/location refs. Scenes have no
+    // per-ref index, so this scans the table — fine at manuscript scale.
+    const scenes = await db.scenes.toArray()
+    await Promise.all(
+      scenes
+        .filter((s) => s.povPageId === id || s.castPageIds.includes(id) || s.locationPageIds.includes(id))
+        .map((s) =>
+          db.scenes.update(s.id, {
+            povPageId: s.povPageId === id ? null : s.povPageId,
+            castPageIds: s.castPageIds.filter((p) => p !== id),
+            locationPageIds: s.locationPageIds.filter((p) => p !== id),
+          }),
+        ),
+    )
     // Drop document-attachment edges on either endpoint (owning page or document).
     await db.docLinks.where('pageId').equals(id).delete()
     await db.docLinks.where('documentId').equals(id).delete()
@@ -70,6 +91,32 @@ export async function findPageIdByTitle(title: string): Promise<string | null> {
   return all.find((p) => p.title.trim().toLowerCase() === trimmed)?.id ?? null
 }
 
+/** Rewrite every reference to `oldTitle` into `newTitle` within a rich-text HTML
+ *  body: `<a data-wikilink data-title="Old">` anchors (attribute + text) AND
+ *  `<sup data-citation data-target="Old">` citation markers. Titles match
+ *  case-insensitively. Returns the rewritten HTML, or null if it referenced
+ *  nothing (so untouched bodies aren't re-written). Shared by page content,
+ *  manuscript scenes, and timeline-event descriptions — all editor HTML. */
+function rewriteBodyLinks(html: string, oldLc: string, newTitle: string): string | null {
+  if (!html || (!html.includes('data-wikilink') && !html.includes('data-citation'))) return null
+  const doc = parseHtml(html)
+  let changed = false
+  doc.querySelectorAll('a[data-wikilink]').forEach((a) => {
+    if (a.getAttribute('data-title')?.trim().toLowerCase() === oldLc) {
+      a.setAttribute('data-title', newTitle)
+      a.textContent = newTitle
+      changed = true
+    }
+  })
+  doc.querySelectorAll('sup[data-citation]').forEach((s) => {
+    if (s.getAttribute('data-target')?.trim().toLowerCase() === oldLc) {
+      s.setAttribute('data-target', newTitle)
+      changed = true
+    }
+  })
+  return changed ? doc.body.innerHTML : null
+}
+
 /** Rewrite every reference to `oldTitle` into `newTitle` within one page's body
  *  and infobox. Matches titles case-insensitively. Returns only the changed fields,
  *  or null if this page referenced nothing (so untouched pages aren't re-written). */
@@ -82,28 +129,11 @@ function rewriteLinksInPage(
   const out: Partial<LorePage> = {}
   let changed = false
 
-  // Body: rewrite <a data-wikilink data-title="Old"> (attribute + text) AND
-  // <sup data-citation data-target="Old"> citation markers.
-  if (page.content && (page.content.includes('data-wikilink') || page.content.includes('data-citation'))) {
-    const doc = parseHtml(page.content)
-    let bodyChanged = false
-    doc.querySelectorAll('a[data-wikilink]').forEach((a) => {
-      if (a.getAttribute('data-title')?.trim().toLowerCase() === oldLc) {
-        a.setAttribute('data-title', newTitle)
-        a.textContent = newTitle
-        bodyChanged = true
-      }
-    })
-    doc.querySelectorAll('sup[data-citation]').forEach((s) => {
-      if (s.getAttribute('data-target')?.trim().toLowerCase() === oldLc) {
-        s.setAttribute('data-target', newTitle)
-        bodyChanged = true
-      }
-    })
-    if (bodyChanged) {
-      out.content = doc.body.innerHTML
-      changed = true
-    }
+  // Body: rewrite wiki-link anchors + citation markers.
+  const body = rewriteBodyLinks(page.content, oldLc, newTitle)
+  if (body !== null) {
+    out.content = body
+    changed = true
   }
 
   // Infobox: field values keep raw [[Name]] tokens (covers plain AND ref fields).
@@ -136,11 +166,15 @@ export async function renamePage(id: string, newTitle: string): Promise<void> {
   // single transaction. Doing the read + clash check outside would let a write
   // that lands in between (autosave, a second tab) go unseen — silently reverted
   // by the rewrite from a stale snapshot, or slip a clashing title past the check.
-  await db.transaction('rw', db.pages, async () => {
+  // Scenes and events also carry editor HTML with the same wiki-link/citation
+  // anchors, so they're rewritten too (their POV/cast/location + pageId refs are
+  // id-based and unaffected by a title change).
+  await db.transaction('rw', db.pages, db.scenes, db.events, async () => {
     const all = await db.pages.toArray()
     const page = all.find((p) => p.id === id)
     if (!page || trimmed === page.title) return
     const oldTitle = page.title
+    const oldLc = oldTitle.trim().toLowerCase()
 
     const clash = all.find(
       (p) => p.id !== id && p.title.trim().toLowerCase() === trimmed.toLowerCase(),
@@ -152,6 +186,14 @@ export async function renamePage(id: string, newTitle: string): Promise<void> {
       if (p.id === id) continue
       const rewritten = rewriteLinksInPage(p, oldTitle, trimmed)
       if (rewritten) await db.pages.update(p.id, { ...rewritten, updatedAt: now() })
+    }
+    for (const s of await db.scenes.toArray()) {
+      const body = rewriteBodyLinks(s.content, oldLc, trimmed)
+      if (body !== null) await db.scenes.update(s.id, { content: body, updatedAt: now() })
+    }
+    for (const e of await db.events.toArray()) {
+      const desc = rewriteBodyLinks(e.description, oldLc, trimmed)
+      if (desc !== null) await db.events.update(e.id, { description: desc, updatedAt: now() })
     }
   })
 }

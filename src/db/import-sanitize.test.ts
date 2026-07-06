@@ -5,7 +5,8 @@
 // src/sanitize.test.ts. fake-indexeddb is installed globally by setup-tests.ts, so
 // db.* works here as it does under happy-dom.
 import { describe, it, expect, beforeEach } from 'vitest'
-import { db, LoreDB, importAll, importBackupInto, type LorePage, type TimelineEvent } from '../db'
+import { db, LoreDB, importAll, importBackupInto, buildGraphData, type LorePage, type TimelineEvent } from '../db'
+import { buildIndex } from '../search'
 
 async function clearAll(): Promise<void> {
   await Promise.all([
@@ -86,6 +87,48 @@ describe('importAll — XSS sanitization (roadmap #8)', () => {
     expect(stored?.description).toContain('<p>battle</p>')
     expect(stored?.description?.toLowerCase()).not.toContain('onerror')
     expect(stored?.description).not.toContain('fetch(')
+  })
+
+  it('drops a gallery image whose dataUrl carries a quote/whitespace injection', async () => {
+    await importAll(
+      JSON.stringify({
+        pages: [],
+        images: [
+          { id: 'ok', pageId: 'p1', dataUrl: 'data:image/png;base64,AAA', caption: '', order: 0, createdAt: 1 },
+          { id: 'bad', pageId: 'p1', dataUrl: 'data:image/png;base64,AAA" onerror="alert(1)', caption: '', order: 1, createdAt: 1 },
+        ],
+      }),
+    )
+    expect(await db.images.get('ok')).toBeTruthy()
+    expect(await db.images.get('bad')).toBeUndefined()
+  })
+
+  it('nulls an infobox.image that is not a clean image data-URL, keeps a legit one', async () => {
+    const dirty = { ...pageWith('<p>x</p>'), id: 'dirty', infobox: { template: 'T', image: 'data:image/png;base64,AAA" onerror="alert(1)', caption: '', fields: [] } }
+    const clean = { ...pageWith('<p>y</p>'), id: 'clean', infobox: { template: 'T', image: 'data:image/png;base64,iVBORw0KGgo=', caption: '', fields: [] } }
+    await importAll(JSON.stringify({ pages: [dirty, clean] }))
+    expect((await db.pages.get('dirty'))?.infobox?.image).toBeNull()
+    expect((await db.pages.get('clean'))?.infobox?.image).toBe('data:image/png;base64,iVBORw0KGgo=')
+  })
+
+  it('drops a malformed page row (non-string title) instead of importing something that bricks indexing', async () => {
+    // A hand-edited/truncated backup can carry a bad row; importing it must not
+    // let downstream consumers (search index, graph) throw on p.title/p.tags.
+    await importAll(
+      JSON.stringify({ pages: [{ id: 'bad', title: 42 }, pageWith('<p>ok</p>')] }),
+    )
+    expect(await db.pages.get('bad')).toBeUndefined()
+    expect(await db.pages.get('p1')).toBeTruthy()
+
+    const pages = await db.pages.toArray()
+    expect(() => buildIndex(pages)).not.toThrow()
+    expect(() => buildGraphData(pages)).not.toThrow()
+  })
+
+  it('coerces a missing/invalid tags field to an array on import', async () => {
+    const noTags = { id: 'nt', title: 'NoTags', category: 'Character', content: '<p>x</p>', summary: '', createdAt: 1, updatedAt: 1 }
+    await importAll(JSON.stringify({ pages: [noTags] }))
+    expect((await db.pages.get('nt'))?.tags).toEqual([])
   })
 
   it('preserves legitimate Tiptap markup (wiki links, images, tables) on import', async () => {

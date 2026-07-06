@@ -32,7 +32,22 @@ function clamp(n: unknown): number | null {
 
 export async function getSettings(): Promise<LoreSettings> {
   const stored = (await getMeta<Partial<LoreSettings>>(SETTINGS_KEY)) ?? {}
-  return { ...DEFAULT_SETTINGS, ...stored }
+  // Clamp on read, not just in updateSettings: a backup imports the settings row
+  // straight into `meta` (bulkPut), bypassing updateSettings entirely. An untrusted
+  // value like snapshotRetention:"x" would otherwise make `count > keep` never true,
+  // silently disabling snapshot pruning. Out-of-range/non-numeric ⇒ keep the default.
+  const out: LoreSettings = { ...DEFAULT_SETTINGS }
+  for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof LoreSettings)[]) {
+    const value = stored[key]
+    if (value === undefined) continue
+    if (typeof DEFAULT_SETTINGS[key] === 'boolean') {
+      if (typeof value === 'boolean') out[key] = value as never
+    } else {
+      const clamped = clamp(value)
+      if (clamped !== null) out[key] = clamped as never
+    }
+  }
+  return out
 }
 
 export async function updateSettings(patch: Partial<LoreSettings>): Promise<void> {

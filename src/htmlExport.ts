@@ -2,21 +2,14 @@ import JSZip from 'jszip'
 import { db } from './db'
 import type { LorePage, PageImage } from './db'
 import { parseCitations } from './citations'
+import { escapeHtml } from './html'
 import { saveFile } from './platform'
 
-/** Escape HTML special characters in a plain-text field before it is
- *  interpolated into the exported markup. In-app these fields render as React
- *  text (escaped for free), but the static export is a second sink: an unescaped
- *  title/label/caption like `<script>` would ship live, and even a stray `&`/`<`
- *  produces malformed HTML. Body HTML stays raw — it's Tiptap-emitted and
- *  sanitized on import. */
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+// Plain-text fields interpolated into the exported markup are escaped via the
+// shared escapeHtml (src/html.ts). In-app they render as React text (escaped for
+// free), but the static export is a second sink where an unescaped title/label/
+// caption like `<script>` would ship live. Body HTML stays raw — Tiptap-emitted
+// and sanitized on import.
 
 /** Resolve a page title to its id the way every in-app resolver does:
  *  case-insensitively (findPageIdByTitle, linkedTitles, buildGraphData all
@@ -50,7 +43,7 @@ function renderInfobox(page: LorePage): string {
     .join('\n')
   if (!rows) return ''
   const img = page.infobox.image
-    ? `<tr><td colspan="2" class="infobox-img"><img src="${page.infobox.image}" alt=""></td></tr>`
+    ? `<tr><td colspan="2" class="infobox-img"><img src="${escapeHtml(page.infobox.image)}" alt=""></td></tr>`
     : ''
   return `<table class="infobox">\n${img}${rows}\n</table>`
 }
@@ -60,7 +53,7 @@ function renderGallery(images: PageImage[]): string {
   const items = images
     .map((img) => {
       const cap = img.caption ? `<figcaption>${escapeHtml(img.caption)}</figcaption>` : ''
-      return `<figure class="gallery-item"><img src="${img.dataUrl}" alt="">${cap}</figure>`
+      return `<figure class="gallery-item"><img src="${escapeHtml(img.dataUrl)}" alt="">${cap}</figure>`
     })
     .join('\n')
   return `<section class="gallery"><h2>Images</h2><div class="gallery-grid">${items}</div></section>`

@@ -37,6 +37,19 @@ describe('settings', () => {
     expect((await getSettings()).snapshotTimeHours).toBe(12)
   })
 
+  it('clamps stored values on read, since import writes meta directly (bypasses updateSettings)', async () => {
+    // A backup could carry a hand-edited or corrupt settings row; getSettings must
+    // not trust it, or e.g. a non-numeric retention makes snapshot pruning a no-op.
+    await db.meta.put({
+      key: SETTINGS_KEY,
+      value: { snapshotRetention: 'x', snapshotChangeThreshold: 0, backupOverdueDays: 999 },
+    })
+    const s = await getSettings()
+    expect(s.snapshotRetention).toBe(DEFAULT_SETTINGS.snapshotRetention) // non-numeric → default
+    expect(s.snapshotChangeThreshold).toBe(1) // floored into range
+    expect(s.backupOverdueDays).toBe(100) // capped into range
+  })
+
   it('defaults autolinkEnabled to true', async () => {
     expect((await getSettings()).autolinkEnabled).toBe(true)
   })

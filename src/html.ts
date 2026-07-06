@@ -9,6 +9,20 @@ export function parseHtml(html: string): Document {
   return new DOMParser().parseFromString(html, 'text/html')
 }
 
+/** Escape the five markup-significant characters so a plain-text string is safe
+ *  to interpolate into HTML — as element text OR inside a double-quoted attribute
+ *  (`"` is escaped, so it can't break out of `src="…"`). These are XSS-load-bearing
+ *  in every static/print sink (HTML export, EPUB/print, search snippets), so they
+ *  share this one definition instead of hand-rolling a copy each (which is exactly
+ *  how a copy missing `"` — an attribute-injection hole — gets born). */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 /** Plain-text content of an HTML fragment — tags stripped, entities decoded. */
 export function stripHtml(html: string): string {
   if (!html) return ''
