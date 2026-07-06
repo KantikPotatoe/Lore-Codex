@@ -39,6 +39,11 @@ export interface Infobox {
 export interface LorePage {
   id: string
   title: string
+  /** Lowercased, trimmed `title`, kept in sync on every write and indexed (v14).
+   *  Powers case-insensitive title lookups (link resolution, clash checks) as an
+   *  indexed read instead of a full-table scan. Optional so older data/backups
+   *  without it still type-check; the v14 upgrade + import backfill populate it. */
+  titleLc?: string
   category: string // e.g. "Character", "Country" — see CATEGORIES below
   content: string // rich-text HTML produced by the editor
   summary: string // short one-line description, shown in lists

@@ -31,7 +31,7 @@ import type {
  * changes, and add a MIGRATIONS step (below) for the new version so older
  * backups keep importing.
  */
-export const CURRENT_SCHEMA_VERSION = 13
+export const CURRENT_SCHEMA_VERSION = 14
 
 /**
  * Meta keys that describe this device/install rather than the world, so they
@@ -141,6 +141,10 @@ const MIGRATIONS: Record<number, (d: BackupData) => BackupData> = {
   // shape is unchanged, so this step is identity. The version still bumps to
   // stay in lockstep with the Dexie store version (mirrors the v7 note).
   12: (d) => d,
+  // v14 added the derived, indexed titleLc field. sanitizeBackup re-derives it
+  // from title on every import, so no per-row work is needed here — this step
+  // exists only to advance the ladder to 14.
+  13: (d) => d,
 }
 
 /**
@@ -287,6 +291,9 @@ function sanitizeBackup(data: BackupData): BackupData {
       .map((p) => ({
         ...p,
         content: sanitizeHtml(typeof p.content === 'string' ? p.content : ''),
+        // Always (re)derive titleLc from title so it's present + correct regardless
+        // of the backup's age — the v14 indexed lookups depend on it (#184).
+        titleLc: p.title.trim().toLowerCase(),
         tags: Array.isArray(p.tags) ? p.tags.filter((t): t is string => typeof t === 'string') : [],
         // infobox.image feeds the raw-markup HTML export too; drop anything that
         // isn't a clean image data-URL so a crafted value can't inject there.
