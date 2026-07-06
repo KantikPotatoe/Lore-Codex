@@ -7,7 +7,10 @@ import {
   findPageIdByTitle,
   renamePage,
   getBacklinks,
+  linkedTitlesCached,
+  clearLinkedTitlesCache,
   type Infobox,
+  type LorePage,
 } from '../db'
 
 // pages.ts owns the link-resolution and atomic rename/rewrite logic the whole
@@ -85,6 +88,14 @@ describe('createPage', () => {
     await expect(createPage({ title: '  gondor ' })).rejects.toThrow(/already exists/)
     // The clashing page was not added.
     expect(await db.pages.count()).toBe(1)
+  })
+
+  it('stamps the indexed titleLc (trimmed + lowercased) so lookups are indexed', async () => {
+    const id = await createPage({ title: '  The Grey  Havens ' })
+    const page = await db.pages.get(id)
+    expect(page?.titleLc).toBe('the grey  havens')
+    // Resolvable through the titleLc index the lookups now use.
+    expect(await db.pages.where('titleLc').equals('the grey  havens').first()).toMatchObject({ id })
   })
 
   it('still allows repeated blank pages (the default Untitled is exempt)', async () => {
@@ -167,6 +178,9 @@ describe('renamePage', () => {
     await renamePage(target, 'Frodo Baggins')
 
     expect((await db.pages.get(target))!.title).toBe('Frodo Baggins')
+    // titleLc tracks the rename so indexed lookups keep resolving.
+    expect((await db.pages.get(target))!.titleLc).toBe('frodo baggins')
+    expect(await findPageIdByTitle('FRODO BAGGINS')).toBe(target)
     const body = (await db.pages.get(linker))!.content
     expect(body).toContain('data-title="Frodo Baggins"')
     expect(body).toContain('>Frodo Baggins<')
@@ -281,5 +295,35 @@ describe('getBacklinks', () => {
 
   it('returns [] for an unknown page id', async () => {
     expect(await getBacklinks('does-not-exist')).toEqual([])
+  })
+})
+
+describe('linkedTitlesCached', () => {
+  beforeEach(() => clearLinkedTitlesCache())
+
+  const pageWith = (over: Partial<LorePage>): LorePage => ({
+    id: 'p', title: 'P', category: 'Character', content: '', summary: '',
+    tags: [], createdAt: 1, updatedAt: 1, ...over,
+  })
+
+  it('returns the same linked titles as linkedTitles', () => {
+    const page = pageWith({ content: `<p>${link('Rohan')} and ${link('Gondor')}</p>` })
+    expect(linkedTitlesCached(page)).toEqual(new Set(['rohan', 'gondor']))
+  })
+
+  it('memoizes by (id, updatedAt): a body change with the SAME updatedAt is not re-parsed', () => {
+    const first = pageWith({ updatedAt: 5, content: `<p>${link('Rohan')}</p>` })
+    expect(linkedTitlesCached(first)).toEqual(new Set(['rohan']))
+    // Same id + updatedAt but different body → served from cache (stale on purpose;
+    // in practice every content edit bumps updatedAt).
+    const restamped = pageWith({ updatedAt: 5, content: `<p>${link('Mordor')}</p>` })
+    expect(linkedTitlesCached(restamped)).toEqual(new Set(['rohan']))
+  })
+
+  it('recomputes when updatedAt advances', () => {
+    expect(linkedTitlesCached(pageWith({ updatedAt: 5, content: `<p>${link('Rohan')}</p>` })))
+      .toEqual(new Set(['rohan']))
+    expect(linkedTitlesCached(pageWith({ updatedAt: 6, content: `<p>${link('Mordor')}</p>` })))
+      .toEqual(new Set(['mordor']))
   })
 })

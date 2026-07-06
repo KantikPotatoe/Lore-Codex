@@ -3,6 +3,12 @@ import { defaultInfobox } from './templates'
 import { parseHtml, wikiLinkTitles } from '../html'
 import type { LorePage } from './types'
 
+/** The indexed lookup key for a title: trimmed + lowercased. The single source
+ *  of truth for how `titleLc` is derived, so every write agrees with the reads. */
+export function titleKey(title: string): string {
+  return title.trim().toLowerCase()
+}
+
 // ---------------------------------------------------------------------------
 // Page CRUD
 // ---------------------------------------------------------------------------
@@ -14,9 +20,11 @@ export async function createPage(partial: Partial<LorePage> = {}): Promise<strin
   // Resolve the default infobox (reads db.templates) before opening the write
   // transaction, which then only spans db.pages for the clash-check + add.
   const infobox = partial.infobox ?? (await defaultInfobox(category))
+  const title = explicitTitle || 'Untitled'
   const page: LorePage = {
     id,
-    title: explicitTitle || 'Untitled',
+    title,
+    titleLc: titleKey(title),
     category,
     content: partial.content || '',
     summary: partial.summary || '',
@@ -30,10 +38,10 @@ export async function createPage(partial: Partial<LorePage> = {}): Promise<strin
     // Reject an explicit title that clashes with an existing page (case-insensitive),
     // mirroring renamePage — duplicate titles make [[links]] ambiguous. The default
     // 'Untitled' is exempt so creating several blank pages still works. The check is
-    // inside the transaction so a concurrent add can't slip a clash past it.
+    // inside the transaction so a concurrent add can't slip a clash past it, and uses
+    // the titleLc index (v14) rather than scanning the whole table.
     if (explicitTitle) {
-      const lc = explicitTitle.toLowerCase()
-      const clash = (await db.pages.toArray()).find((p) => p.title.trim().toLowerCase() === lc)
+      const clash = await db.pages.where('titleLc').equals(titleKey(explicitTitle)).first()
       if (clash) throw new Error(`A page titled "${clash.title}" already exists.`)
     }
     await db.pages.add(page)
@@ -42,7 +50,11 @@ export async function createPage(partial: Partial<LorePage> = {}): Promise<strin
 }
 
 export async function updatePage(id: string, changes: Partial<LorePage>): Promise<void> {
-  await db.pages.update(id, { ...changes, updatedAt: now() })
+  // Keep the denormalised titleLc in lockstep if a title lands through the generic
+  // update path (the dedicated rename flow sets it too).
+  const derived =
+    typeof changes.title === 'string' ? { titleLc: titleKey(changes.title) } : null
+  await db.pages.update(id, { ...changes, ...derived, updatedAt: now() })
 }
 
 export async function deletePage(id: string): Promise<void> {
@@ -86,9 +98,9 @@ export async function deletePage(id: string): Promise<void> {
 /** Find an existing page's id by title (case-insensitive), or null. No creation —
  *  clicking a link to a missing page is handled (with confirmation) by the caller. */
 export async function findPageIdByTitle(title: string): Promise<string | null> {
-  const trimmed = title.trim().toLowerCase()
-  const all = await db.pages.toArray()
-  return all.find((p) => p.title.trim().toLowerCase() === trimmed)?.id ?? null
+  // Indexed case-insensitive lookup via titleLc (v14) — no full-table scan.
+  const match = await db.pages.where('titleLc').equals(titleKey(title)).first()
+  return match?.id ?? null
 }
 
 /** Rewrite every reference to `oldTitle` into `newTitle` within a rich-text HTML
@@ -181,7 +193,7 @@ export async function renamePage(id: string, newTitle: string): Promise<void> {
     )
     if (clash) throw new Error(`A page titled "${clash.title}" already exists.`)
 
-    await db.pages.update(id, { title: trimmed, updatedAt: now() })
+    await db.pages.update(id, { title: trimmed, titleLc: titleKey(trimmed), updatedAt: now() })
     for (const p of all) {
       if (p.id === id) continue
       const rewritten = rewriteLinksInPage(p, oldTitle, trimmed)
@@ -222,13 +234,42 @@ export function linkedTitles(page: LorePage): Set<string> {
   return titles
 }
 
+// linkedTitles(page) is a DOMParser body-parse — the expensive part of a backlink
+// scan, which runs it for every page on every page view. Memoize it by
+// (id, updatedAt), mirroring the search index's `store`: an unchanged page skips
+// the parse entirely. Any content edit bumps updatedAt, so the cache can never
+// serve stale links in practice.
+interface LinkCacheEntry {
+  updatedAt: number
+  titles: Set<string>
+}
+const linkedTitlesCache = new Map<string, LinkCacheEntry>()
+
+/** linkedTitles(page), memoized by (id, updatedAt). */
+export function linkedTitlesCached(page: LorePage): Set<string> {
+  const prev = linkedTitlesCache.get(page.id)
+  if (prev && prev.updatedAt === page.updatedAt) return prev.titles
+  const titles = linkedTitles(page)
+  linkedTitlesCache.set(page.id, { updatedAt: page.updatedAt, titles })
+  return titles
+}
+
+/** Drop the memoized linked-titles cache (tests; harmless to call otherwise). */
+export function clearLinkedTitlesCache(): void {
+  linkedTitlesCache.clear()
+}
+
 /** All pages that link to the page with the given id. */
 export async function getBacklinks(pageId: string): Promise<LorePage[]> {
   const target = await db.pages.get(pageId)
   const targetTitle = target?.title.trim().toLowerCase()
   if (!targetTitle) return []
   const all = await db.pages.toArray()
+  // Prune cache entries for pages that no longer exist, so the map stays bounded
+  // by the live corpus across a long session of edits/deletes.
+  const live = new Set(all.map((p) => p.id))
+  for (const id of linkedTitlesCache.keys()) if (!live.has(id)) linkedTitlesCache.delete(id)
   return all
-    .filter((p) => p.id !== pageId && linkedTitles(p).has(targetTitle))
+    .filter((p) => p.id !== pageId && linkedTitlesCached(p).has(targetTitle))
     .sort((a, b) => a.title.localeCompare(b.title))
 }

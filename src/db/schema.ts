@@ -289,6 +289,37 @@ export class LoreDB extends Dexie {
       plotlines: 'id, bookId, order',
       beats: 'id, bookId, plotlineId, sceneId',
     })
+    // v14 adds the indexed `titleLc` field (lowercased title) so case-insensitive
+    // title lookups — link resolution + clash checks — become indexed reads
+    // instead of full-table scans (#184). The upgrade backfills it for every
+    // existing page; createPage/updatePage/renamePage keep it in sync thereafter.
+    this.version(14)
+      .stores({
+        pages: 'id, title, titleLc, category, updatedAt',
+        maps: 'id, name, createdAt',
+        pins: 'id, mapId, pageId, childMapId',
+        regions: 'id, mapId, pageId, childMapId',
+        meta: '&key',
+        templates: 'id, name',
+        snapshots: '++id, timestamp',
+        calendars: 'id, name, createdAt',
+        events: 'id, calendarId, startAbsolute, pageId, updatedAt',
+        images: 'id, pageId, order, createdAt',
+        docLinks: 'id, pageId, documentId',
+        books: 'id, order',
+        chapters: 'id, bookId, order',
+        scenes: 'id, bookId, chapterId, order, updatedAt',
+        plotlines: 'id, bookId, order',
+        beats: 'id, bookId, plotlineId, sceneId',
+      })
+      .upgrade((tx) =>
+        tx
+          .table('pages')
+          .toCollection()
+          .modify((p) => {
+            p.titleLc = typeof p.title === 'string' ? p.title.trim().toLowerCase() : ''
+          }),
+      )
   }
 }
 
