@@ -1,6 +1,7 @@
 import { db, now, type LoreDB } from './schema'
 import { seedTemplates } from './templates'
 import { seedDefaultCalendar } from './calendar'
+import { BODY_IMAGES_MIGRATED_KEY } from './bodyImageMigration'
 import { sanitizeHtml } from '../sanitize'
 import pkg from '../../package.json'
 import type {
@@ -419,6 +420,9 @@ export async function importAll(json: string): Promise<void> {
   // Older backups have no templates / calendars — make sure the built-ins exist.
   await seedTemplates()
   await seedDefaultCalendar()
+  // Incoming pages may carry legacy inline body images; let the next startup
+  // convert them to the by-ref model (#182).
+  await db.meta.delete(BODY_IMAGES_MIGRATED_KEY)
 }
 
 /**
@@ -463,4 +467,6 @@ export async function restoreSnapshot(json: string): Promise<void> {
   // An older snapshot may predate a built-in type/calendar — make sure they exist.
   await seedTemplates()
   await seedDefaultCalendar()
+  // A pre-#182 snapshot's page bodies may hold inline images; re-convert on next start.
+  await db.meta.delete(BODY_IMAGES_MIGRATED_KEY)
 }

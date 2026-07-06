@@ -19,7 +19,7 @@ import SettingsRoute from './routes/SettingsRoute'
 import ManuscriptRoute from './routes/ManuscriptRoute'
 import BookRoute from './routes/BookRoute'
 import { requestPersistentStorage } from './backup'
-import { seedTemplates, seedDefaultCalendar, pageRepo } from './db'
+import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, pageRepo } from './db'
 import { maybeTakeSnapshot } from './snapshots'
 import { syncIndex } from './search'
 import { bootstrapDefaultLore } from './lores'
@@ -55,7 +55,9 @@ export default function App() {
     requestPersistentStorage()
     seedTemplates()
     seedDefaultCalendar()
-    maybeTakeSnapshot()
+    // Convert any legacy inline body images to the by-ref model (#182 phase 2),
+    // then snapshot — runs once per world (guarded by a meta flag), idempotent.
+    migrateInlineBodyImages().finally(() => maybeTakeSnapshot())
   }, [])
 
   // Keep the FlexSearch index in sync as pages change. The liveQuery emits the whole
