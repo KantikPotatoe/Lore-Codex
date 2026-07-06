@@ -106,6 +106,9 @@ export function syncIndex(pages: LorePage[]): void {
 
 export function searchPages(query: string): SearchResult[] {
   if (!query.trim() || !activeIdx) return []
+  // flexsearch types results as Id[] = (string|number)[]; our ids are the page
+  // uuids (strings), so narrow. (Cast stays even on flexsearch's own 0.8 types —
+  // @types/flexsearch was dropped as redundant, #190.)
   const ids = activeIdx.search(query, 20) as string[]
   return ids
     .map((id) => {
