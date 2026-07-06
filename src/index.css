@@ -2597,3 +2597,28 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   gap: 0.4rem;
   margin-left: auto;
 }
+
+/* --- Cross-tab world-change guard (#185) ---------------------------------- *
+   Non-dismissable overlay shown when another tab imported/deleted the world
+   this tab is bound to. Reuses .modal-overlay/.modal-dialog tokens, but a
+   higher z-index (must sit above every other banner/modal) and no
+   click-to-dismiss affordance. */
+.tab-sync-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
+.tab-sync-dialog {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  max-width: 420px; width: 100%; padding: 24px; text-align: center;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.tab-sync-icon { font-size: 28px; display: block; margin-bottom: 10px; }
+.tab-sync-msg { line-height: 1.5; margin-bottom: 18px; }
+.tab-sync-btn {
+  background: linear-gradient(180deg, var(--accent-soft), var(--accent)); color: #2a210b;
+  border: none; border-radius: 7px; padding: 8px 20px; font-weight: 600; font-size: 14px;
+  cursor: pointer;
+}
+.tab-sync-btn:hover { filter: brightness(1.07); }
