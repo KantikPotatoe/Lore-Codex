@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { liveQuery } from 'dexie'
 import Sidebar from './components/Sidebar'
@@ -8,16 +8,19 @@ import SearchModal from './components/SearchModal'
 import WikiLinkPopover from './components/WikiLinkPopover'
 import HomeRoute from './routes/HomeRoute'
 import PageRoute from './routes/PageRoute'
-import MapRoute from './routes/MapRoute'
 import TemplatesRoute from './routes/TemplatesRoute'
 import CategoryRoute from './routes/CategoryRoute'
 import TagRoute from './routes/TagRoute'
-import GraphRoute from './routes/GraphRoute'
 import TimelineRoute from './routes/TimelineRoute'
 import LoreSelectorRoute from './routes/LoreSelectorRoute'
 import SettingsRoute from './routes/SettingsRoute'
 import ManuscriptRoute from './routes/ManuscriptRoute'
-import BookRoute from './routes/BookRoute'
+// Code-split the heaviest routes out of the entry chunk (#188): Map pulls in
+// Leaflet + leaflet-draw, Graph pulls in react-force-graph-2d, Book pulls in
+// JSZip (EPUB). They load on first navigation instead of at every startup.
+const MapRoute = lazy(() => import('./routes/MapRoute'))
+const GraphRoute = lazy(() => import('./routes/GraphRoute'))
+const BookRoute = lazy(() => import('./routes/BookRoute'))
 import { requestPersistentStorage } from './backup'
 import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, pageRepo } from './db'
 import { maybeTakeSnapshot } from './snapshots'
@@ -88,19 +91,21 @@ export default function App() {
       <main className="content" ref={contentRef} onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 600)}>
         <BackupBanner />
         <div className="route-fade" key={location.pathname}>
-          <Routes>
-            <Route path="/home" element={<HomeRoute />} />
-            <Route path="/page/:id" element={<PageRoute />} />
-            <Route path="/map" element={<MapRoute />} />
-            <Route path="/graph" element={<GraphRoute />} />
-            <Route path="/timeline" element={<TimelineRoute />} />
-            <Route path="/templates" element={<TemplatesRoute />} />
-            <Route path="/settings" element={<SettingsRoute />} />
-            <Route path="/manuscript" element={<ManuscriptRoute />} />
-            <Route path="/book/:bookId" element={<BookRoute />} />
-            <Route path="/browse/:category" element={<CategoryRoute />} />
-            <Route path="/tag/:tag" element={<TagRoute />} />
-          </Routes>
+          <Suspense fallback={<div className="content-pad">Loading…</div>}>
+            <Routes>
+              <Route path="/home" element={<HomeRoute />} />
+              <Route path="/page/:id" element={<PageRoute />} />
+              <Route path="/map" element={<MapRoute />} />
+              <Route path="/graph" element={<GraphRoute />} />
+              <Route path="/timeline" element={<TimelineRoute />} />
+              <Route path="/templates" element={<TemplatesRoute />} />
+              <Route path="/settings" element={<SettingsRoute />} />
+              <Route path="/manuscript" element={<ManuscriptRoute />} />
+              <Route path="/book/:bookId" element={<BookRoute />} />
+              <Route path="/browse/:category" element={<CategoryRoute />} />
+              <Route path="/tag/:tag" element={<TagRoute />} />
+            </Routes>
+          </Suspense>
         </div>
         {showTop && (
           <button
