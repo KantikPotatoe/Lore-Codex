@@ -323,7 +323,11 @@ export class LoreDB extends Dexie {
   }
 }
 
-export const db = new LoreDB(dbNameFor(currentLoreId()))
+// The lore id this tab's db bound to, captured at load. A switch in another tab
+// mutates shared localStorage, so currentLoreId() can drift from what db points
+// at — cross-tab comparisons must use this snapshot, not a live read.
+export const activeLoreId = currentLoreId()
+export const db = new LoreDB(dbNameFor(activeLoreId))
 
 // Keep the synchronous colour cache in sync with the templates table, so every
 // page type (built-in or one you add) shows its colour everywhere instantly.

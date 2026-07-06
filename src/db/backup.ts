@@ -1,4 +1,5 @@
-import { db, now, type LoreDB } from './schema'
+import { db, now, activeLoreId, type LoreDB } from './schema'
+import { broadcastWorldChange } from '../tabSync'
 import { seedTemplates } from './templates'
 import { seedDefaultCalendar } from './calendar'
 import { BODY_IMAGES_MIGRATED_KEY } from './bodyImageMigration'
@@ -416,6 +417,8 @@ export async function importBackupInto(target: LoreDB, json: string): Promise<vo
 }
 
 export async function importAll(json: string): Promise<void> {
+  // Warn other tabs before we clear+repopulate the active world under them.
+  broadcastWorldChange(activeLoreId, 'import')
   await importBackupInto(db, json)
   // Older backups have no templates / calendars — make sure the built-ins exist.
   await seedTemplates()
