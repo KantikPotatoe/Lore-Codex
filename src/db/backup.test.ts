@@ -264,13 +264,13 @@ describe('importAll — round-trips', () => {
 })
 
 describe('schema version', () => {
-  it('is at 12 for the portable meta rows', () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(12)
+  it('is at 13 for the events.updatedAt / images.createdAt index bump', () => {
+    expect(CURRENT_SCHEMA_VERSION).toBe(13)
   })
 
   it('stamps an older backup up to current with no data loss', () => {
     const out = migrateBackup({ schemaVersion: 6, pages: [], regions: [] })
-    expect(out.schemaVersion).toBe(12)
+    expect(out.schemaVersion).toBe(13)
     expect(out.regions).toEqual([])
   })
 })

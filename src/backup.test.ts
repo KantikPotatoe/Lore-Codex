@@ -60,3 +60,45 @@ describe('manuscript-aware change tracking', () => {
     expect(await unbackedChangeCount(200)).toBe(1)
   })
 })
+
+// latestChangeTime / unbackedChangeCount scan several tables to drive the backup
+// reminder. These pin their behaviour across the switch from full-table reads to
+// indexed reads (events.updatedAt / images.createdAt) — same answers, cheaper.
+describe('backup change-tracking helpers', () => {
+  beforeEach(async () => {
+    await Promise.all([
+      db.pages.clear(),
+      db.maps.clear(),
+      db.events.clear(),
+      db.calendars.clear(),
+      db.images.clear(),
+      db.scenes.clear(),
+    ])
+  })
+
+  it('latestChangeTime returns the newest timestamp across every tracked table', async () => {
+    await db.pages.put({ id: 'p1', title: 'P', content: '', summary: '', tags: [], category: 'x', createdAt: 10, updatedAt: 100 } as never)
+    await db.events.put({ id: 'e1', updatedAt: 300 } as never)
+    await db.images.put({ id: 'i1', createdAt: 200 } as never)
+    expect(await latestChangeTime()).toBe(300)
+  })
+
+  it('latestChangeTime is 0 when nothing has been written', async () => {
+    expect(await latestChangeTime()).toBe(0)
+  })
+
+  it('unbackedChangeCount counts rows changed strictly after the last backup', async () => {
+    await db.pages.put({ id: 'p1', title: 'P', content: '', summary: '', tags: [], category: 'x', createdAt: 10, updatedAt: 50 } as never)
+    await db.events.put({ id: 'e-old', updatedAt: 50 } as never)
+    await db.events.put({ id: 'e-new', updatedAt: 150 } as never)
+    await db.images.put({ id: 'i-new', createdAt: 200 } as never)
+    // since = 100: e-new (150) + i-new (200) count; p1 (50) and e-old (50) don't.
+    expect(await unbackedChangeCount(100)).toBe(2)
+  })
+
+  it('unbackedChangeCount with no prior backup (null) counts everything', async () => {
+    await db.pages.put({ id: 'p1', title: 'P', content: '', summary: '', tags: [], category: 'x', createdAt: 10, updatedAt: 50 } as never)
+    await db.images.put({ id: 'i1', createdAt: 5 } as never)
+    expect(await unbackedChangeCount(null)).toBe(2)
+  })
+})

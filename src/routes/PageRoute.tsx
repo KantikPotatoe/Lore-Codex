@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { pageRepo, mapRepo, defaultInfobox, STATUSES, categoryColor, statusColor, pageStatus, type Infobox as InfoboxType } from '../db'
@@ -18,6 +18,12 @@ import { maybeTakeSnapshot } from '../snapshots'
 import Breadcrumb from '../components/Breadcrumb'
 import { recordRecent } from '../recents'
 import { getSettings } from '../settings'
+import { flushableDebounce } from '../debounce'
+
+// Editor content is written on every keystroke; collapse a burst of typing into
+// one IndexedDB write per idle pause. Flushed on blur / Done / page switch /
+// unmount so at most this much typing is ever unsaved.
+const CONTENT_WRITE_DELAY_MS = 500
 
 export default function PageRoute() {
   const { id = '' } = useParams()
@@ -26,6 +32,14 @@ export default function PageRoute() {
   const wiki = useWikiLinkNavigation()
 
   const [editing, setEditing] = useState(false)
+  // Debounced content writer. The page id travels in the call args so a flush
+  // that lands after navigation still targets the page that was being edited
+  // (PageRoute itself stays mounted across page switches — only the id changes).
+  const [contentWriter] = useState(() =>
+    flushableDebounce<[string, string]>((pageId, html) => {
+      void pageRepo.update(pageId, { content: html })
+    }, CONTENT_WRITE_DELAY_MS),
+  )
   const [tagInput, setTagInput] = useState('')
   const [titleDraft, setTitleDraft] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -42,17 +56,23 @@ export default function PageRoute() {
     marks?.[index]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
+  // Every page title, read from the `title` index only — no record hydration, so
+  // typing on a page doesn't re-pull every other page's content + image bytes on
+  // each keystroke's liveQuery invalidation. Both derived views come from this.
+  const allTitles = useLiveQuery(() => pageRepo.titles(), [])
+
   // Lowercased titles of all existing pages — drives broken-link styling.
-  const knownTitles = useLiveQuery(
-    async () => new Set((await pageRepo.list()).map((p) => p.title.trim().toLowerCase())),
-    [],
+  const knownTitles = useMemo(
+    () => (allTitles ? new Set(allTitles.map((t) => t.trim().toLowerCase())) : undefined),
+    [allTitles],
   )
 
-  // Canonical titles of every OTHER page — the autolinker's vocabulary. Excluding
-  // this page's own title is the self-link skip.
-  const autolinkTitles = useLiveQuery(
-    async () => (await pageRepo.list()).filter((p) => p.id !== id).map((p) => p.title),
-    [id],
+  // Canonical titles of every OTHER page — the autolinker's vocabulary. Titles are
+  // unique (renames reject clashes), so excluding this page's title == the
+  // self-link skip the old id-based filter did.
+  const autolinkTitles = useMemo(
+    () => allTitles?.filter((t) => t !== page?.title),
+    [allTitles, page?.title],
   )
   // Global per-world toggle (default on when settings haven't loaded yet).
   const settings = useLiveQuery(() => getSettings(), [])
@@ -75,6 +95,11 @@ export default function PageRoute() {
   useEffect(() => {
     if (page?.id === id && id) recordRecent(id)
   }, [page?.id, id])
+
+  // Flush any pending content write when leaving the page or the route. The
+  // cleanup runs before this effect re-runs for a new id (and on unmount), while
+  // the writer's pending args still hold the outgoing page's id.
+  useEffect(() => () => contentWriter.flush(), [id, contentWriter])
 
   // Start in view mode whenever you open a different page. Resetting during
   // render (rather than in an effect) avoids a flash of the previous page's
@@ -150,6 +175,7 @@ export default function PageRoute() {
               className="ghost-btn"
               onClick={() => {
                 if (editing) {
+                  contentWriter.flush()
                   commitTitle()
                   maybeTakeSnapshot()
                 }
@@ -243,7 +269,8 @@ export default function PageRoute() {
             key={id}
             content={page.content}
             editable={editing}
-            onChange={(html) => update({ content: html })}
+            onChange={(html) => contentWriter.call(id, html)}
+            onBlur={() => contentWriter.flush()}
             onWikiClick={wiki.follow}
             onCitationClick={scrollToReference}
             knownTitles={knownTitles}

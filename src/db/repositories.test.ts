@@ -34,6 +34,13 @@ describe('pageRepo', () => {
     expect((await pageRepo.listByTag('hero')).map((p) => p.title)).toEqual(['Alpha', 'Zeta'])
   })
 
+  it('titles returns every page title, ordered by title, without hydrating records', async () => {
+    await pageRepo.create({ title: 'Zeta' })
+    await pageRepo.create({ title: 'Alpha' })
+    await pageRepo.create({ title: 'Mid' })
+    expect(await pageRepo.titles()).toEqual(['Alpha', 'Mid', 'Zeta'])
+  })
+
   it('listRecent returns the most-recently-updated pages newest first', async () => {
     const a = await pageRepo.create({ title: 'A' })
     const b = await pageRepo.create({ title: 'B' })

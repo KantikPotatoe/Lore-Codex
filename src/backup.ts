@@ -63,26 +63,25 @@ export async function downloadPreImportBackup(): Promise<void> {
 /** The most recent time any tracked data changed — i.e. the data we'd lose.
  *  Covers pages, maps, timeline events/calendars, and manuscript scenes (a novel
  *  written only in the manuscript view must still trip the backup reminder).
- *  Events have no updatedAt index, so they're scanned in memory; scenes do (v11),
- *  so their newest is a cheap indexed read. */
+ *  Every table is read through its sort index (`.last()`), so this is six cheap
+ *  boundary reads rather than hydrating whole tables — notably it no longer pulls
+ *  every gallery image's data-URL bytes just to find the newest timestamp (#181).
+ *  The events.updatedAt and images.createdAt indexes are added in schema v13. */
 export async function latestChangeTime(): Promise<number> {
-  const [newestPage, newestMap, events, calendars, images, newestScene] = await Promise.all([
+  const [newestPage, newestMap, newestEvent, newestCalendar, newestImage, newestScene] = await Promise.all([
     db.pages.orderBy('updatedAt').last(),
     db.maps.orderBy('createdAt').last(),
-    db.events.toArray(),
-    db.calendars.toArray(),
-    db.images.toArray(),
+    db.events.orderBy('updatedAt').last(),
+    db.calendars.orderBy('createdAt').last(),
+    db.images.orderBy('createdAt').last(),
     db.scenes.orderBy('updatedAt').last(),
   ])
-  const newestEvent = events.reduce((max, e) => Math.max(max, e.updatedAt), 0)
-  const newestCalendar = calendars.reduce((max, c) => Math.max(max, c.createdAt), 0)
-  const newestImage = images.reduce((max, i) => Math.max(max, i.createdAt), 0)
   return Math.max(
     newestPage?.updatedAt ?? 0,
     newestMap?.createdAt ?? 0,
-    newestEvent,
-    newestCalendar,
-    newestImage,
+    newestEvent?.updatedAt ?? 0,
+    newestCalendar?.createdAt ?? 0,
+    newestImage?.createdAt ?? 0,
     newestScene?.updatedAt ?? 0,
   )
 }
@@ -95,23 +94,22 @@ export function hasUnbackedUpChanges(lastBackup: number | null, latestChange: nu
 }
 
 /**
- * How many pages/maps/timeline events have changed since the last backup. Used
- * to turn the vague "you have changes" reminder into a concrete count. When
- * there is no prior backup, `since` is 0 so every existing record counts.
- * Events lack an updatedAt index, so they're filtered in memory.
+ * How many pages/maps/timeline events/images/scenes have changed since the last
+ * backup. Turns the vague "you have changes" reminder into a concrete count.
+ * When there is no prior backup, `since` is 0 so every existing record counts.
+ * Every table is counted through an index (events.updatedAt / images.createdAt
+ * are added in schema v13), so this never hydrates a whole table.
  */
 export async function unbackedChangeCount(lastBackup: number | null): Promise<number> {
   const since = lastBackup ?? 0
   const [pages, maps, events, images, scenes] = await Promise.all([
     db.pages.where('updatedAt').above(since).count(),
     db.maps.where('createdAt').above(since).count(),
-    db.events.toArray(),
-    db.images.toArray(),
+    db.events.where('updatedAt').above(since).count(),
+    db.images.where('createdAt').above(since).count(),
     db.scenes.where('updatedAt').above(since).count(),
   ])
-  const eventChanges = events.filter((e) => e.updatedAt > since).length
-  const imageChanges = images.filter((i) => i.createdAt > since).length
-  return pages + maps + eventChanges + imageChanges + scenes
+  return pages + maps + events + images + scenes
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000

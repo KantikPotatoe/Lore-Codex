@@ -31,7 +31,7 @@ import type {
  * changes, and add a MIGRATIONS step (below) for the new version so older
  * backups keep importing.
  */
-export const CURRENT_SCHEMA_VERSION = 12
+export const CURRENT_SCHEMA_VERSION = 13
 
 /**
  * Meta keys that describe this device/install rather than the world, so they
@@ -137,6 +137,10 @@ const MIGRATIONS: Record<number, (d: BackupData) => BackupData> = {
   // fill them in for older backups. Import merges meta rather than replacing
   // it, so an empty array here leaves existing rows untouched.
   11: (d) => ({ ...d, meta: asArray(d.meta) }),
+  // v13 added indexes only (events.updatedAt, images.createdAt); the exported
+  // shape is unchanged, so this step is identity. The version still bumps to
+  // stay in lockstep with the Dexie store version (mirrors the v7 note).
+  12: (d) => d,
 }
 
 /**

@@ -266,6 +266,29 @@ export class LoreDB extends Dexie {
       plotlines: 'id, bookId, order',
       beats: 'id, bookId, plotlineId, sceneId',
     })
+    // v13 adds indexes only (events.updatedAt, images.createdAt) so the backup
+    // reminder can read the newest/changed rows without hydrating whole tables
+    // (#181). No data migration — Dexie builds the indexes on upgrade. The
+    // exported shape is unchanged, but CURRENT_SCHEMA_VERSION still bumps to
+    // mirror the store version (see the v7 index-only note in db/backup.ts).
+    this.version(13).stores({
+      pages: 'id, title, category, updatedAt',
+      maps: 'id, name, createdAt',
+      pins: 'id, mapId, pageId, childMapId',
+      regions: 'id, mapId, pageId, childMapId',
+      meta: '&key',
+      templates: 'id, name',
+      snapshots: '++id, timestamp',
+      calendars: 'id, name, createdAt',
+      events: 'id, calendarId, startAbsolute, pageId, updatedAt',
+      images: 'id, pageId, order, createdAt',
+      docLinks: 'id, pageId, documentId',
+      books: 'id, order',
+      chapters: 'id, bookId, order',
+      scenes: 'id, bookId, chapterId, order, updatedAt',
+      plotlines: 'id, bookId, order',
+      beats: 'id, bookId, plotlineId, sceneId',
+    })
   }
 }
 
