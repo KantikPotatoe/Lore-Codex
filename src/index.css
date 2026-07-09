@@ -168,6 +168,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .nav-item.active { background: var(--panel-2); color: var(--ink); border-color: var(--border); }
 
 .sidebar-actions { padding: 6px 14px 10px; }
+.sidebar-random { margin-top: 0.4rem; width: 100%; }
 .primary-btn {
   background: linear-gradient(180deg, var(--accent-soft), var(--accent));
   color: #2a210b; border: none; border-radius: 8px; padding: 9px 14px;

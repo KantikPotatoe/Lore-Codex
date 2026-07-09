@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { db, createPage } from '../db'
 import Sidebar from './Sidebar'
 
@@ -37,5 +37,39 @@ describe('Sidebar tags group', () => {
 
     await screen.findByText('Untagged') // wait for the page list to load
     expect(screen.queryByText('Tags')).toBeNull()
+  })
+})
+
+function LocationProbe() {
+  const loc = useLocation()
+  return <div data-testid="loc">{loc.pathname}</div>
+}
+
+describe('Sidebar random page', () => {
+  beforeEach(async () => { await db.pages.clear() })
+
+  it('navigates to a page when clicked', async () => {
+    await createPage({ title: 'Solo Page' })
+    render(
+      <MemoryRouter initialEntries={['/home']}>
+        <Sidebar onOpenSearch={() => {}} />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+    const btn = await screen.findByRole('button', { name: /random page/i })
+    fireEvent.click(btn)
+    await waitFor(() =>
+      expect(screen.getByTestId('loc').textContent).toMatch(/^\/page\//),
+    )
+  })
+
+  it('disables the button when there are no pages', async () => {
+    render(
+      <MemoryRouter initialEntries={['/home']}>
+        <Sidebar onOpenSearch={() => {}} />
+      </MemoryRouter>,
+    )
+    const btn = await screen.findByRole('button', { name: /random page/i })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
   })
 })
