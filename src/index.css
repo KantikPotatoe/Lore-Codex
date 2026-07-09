@@ -2697,4 +2697,11 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .health-broken .health-sources {
   flex: 1; color: var(--ink-faint); font-size: 0.85rem;
 }
+
+.health-summary {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 0.9rem; border: 1px solid var(--border); border-radius: var(--radius);
+}
+.health-summary .sep { color: var(--ink-faint); }
+.health-summary .health-clean { color: var(--ink-dim); }
 .health-broken .ghost-btn { flex: none; }
