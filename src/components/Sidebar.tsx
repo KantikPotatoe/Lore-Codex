@@ -78,9 +78,10 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
     ? location.pathname.split('/page/')[1]
     : null
 
+  const randomCandidates = pages.filter((p) => p.id !== currentId).map((p) => p.id)
+
   function handleRandom() {
-    const ids = pages.map((p) => p.id).filter((id) => id !== currentId)
-    const id = pickRandomId(ids)
+    const id = pickRandomId(randomCandidates)
     if (id) navigate(`/page/${id}`)
   }
 
@@ -115,7 +116,7 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
         <button
           className="ghost-btn sidebar-random"
           onClick={handleRandom}
-          disabled={pages.length === 0}
+          disabled={randomCandidates.length === 0}
         >🎲 Random page</button>
       </div>
 
