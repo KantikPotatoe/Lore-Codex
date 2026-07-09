@@ -2,11 +2,11 @@ import { categoryColor, type GraphNode } from '../db'
 
 export default function HubsOrphansPanel({
   hubs,
-  orphans,
+  isolated,
   onSelect,
 }: {
   hubs: GraphNode[]
-  orphans: GraphNode[]
+  isolated: GraphNode[]
   onSelect: (id: string) => void
 }) {
   return (
@@ -30,12 +30,12 @@ export default function HubsOrphansPanel({
         )}
       </section>
       <section>
-        <h3>Orphans <span className="count">{orphans.length}</span></h3>
-        {orphans.length === 0 ? (
-          <p className="muted">Every page is linked. 🎉</p>
+        <h3>Isolated <span className="count">{isolated.length}</span></h3>
+        {isolated.length === 0 ? (
+          <p className="muted">Every page is connected. 🎉</p>
         ) : (
           <ul>
-            {orphans.map((n) => (
+            {isolated.map((n) => (
               <li key={n.id}>
                 <button onClick={() => onSelect(n.id)}>
                   <span className="dot" style={{ background: categoryColor(n.category) }} />

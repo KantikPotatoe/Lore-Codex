@@ -121,7 +121,7 @@ export default function GraphRoute() {
     () => [...filtered.nodes].sort((a, b) => b.degree - a.degree).slice(0, 10).filter((n) => n.degree > 0),
     [filtered],
   )
-  const orphans = useMemo(
+  const isolated = useMemo(
     () => filtered.nodes.filter((n) => n.degree === 0).sort((a, b) => a.title.localeCompare(b.title)),
     [filtered],
   )
@@ -351,7 +351,7 @@ export default function GraphRoute() {
           className={`ghost-btn${panelOpen ? ' active' : ''}`}
           onClick={() => setPanelOpen(!panelOpen)}
         >
-          {panelOpen ? '☰ Hide lists' : '☰ Hubs & orphans'}
+          {panelOpen ? '☰ Hide lists' : '☰ Hubs & isolated'}
         </button>
 
         <span className="graph-hint">
@@ -393,7 +393,7 @@ export default function GraphRoute() {
           )}
         </div>
         {panelOpen && (
-          <HubsOrphansPanel hubs={hubs} orphans={orphans} onSelect={selectNode} />
+          <HubsOrphansPanel hubs={hubs} isolated={isolated} onSelect={selectNode} />
         )}
       </div>
 
