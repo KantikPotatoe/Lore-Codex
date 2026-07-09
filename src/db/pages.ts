@@ -216,22 +216,35 @@ export async function renamePage(id: string, newTitle: string): Promise<void> {
 
 const WIKILINK_RE = /\[\[([^\]]+)\]\]/g
 
-/** Every page title (lowercased) that a page links to, gathered from its
- *  rich-text body and its infobox field values. */
-export function linkedTitles(page: LorePage): Set<string> {
-  const titles = new Set<string>()
+/** Every page title a page links to, in the casing the author typed, gathered
+ *  from its rich-text body and its infobox field values. Deduped by lowercased
+ *  title — the first occurrence wins the casing. The health dashboard creates
+ *  missing pages from these strings, so the original text matters. */
+export function linkedTitlesRaw(page: LorePage): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  const add = (raw: string) => {
+    const t = raw.trim()
+    if (!t) return
+    const key = t.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(t)
+  }
   // Body: editor wiki links render as <a data-wikilink data-title="...">.
-  for (const t of wikiLinkTitles(page.content)) titles.add(t.toLowerCase())
+  for (const t of wikiLinkTitles(page.content)) add(t)
   // Infobox field values keep the raw [[Name]] syntax.
   if (page.infobox) {
     for (const field of page.infobox.fields) {
-      for (const m of field.value.matchAll(WIKILINK_RE)) {
-        const t = m[1].trim().toLowerCase()
-        if (t) titles.add(t)
-      }
+      for (const m of field.value.matchAll(WIKILINK_RE)) add(m[1])
     }
   }
-  return titles
+  return out
+}
+
+/** Every page title (lowercased) that a page links to. */
+export function linkedTitles(page: LorePage): Set<string> {
+  return new Set(linkedTitlesRaw(page).map((t) => t.toLowerCase()))
 }
 
 // linkedTitles(page) is a DOMParser body-parse — the expensive part of a backlink
@@ -241,17 +254,32 @@ export function linkedTitles(page: LorePage): Set<string> {
 // serve stale links in practice.
 interface LinkCacheEntry {
   updatedAt: number
+  raw: string[]
   titles: Set<string>
 }
 const linkedTitlesCache = new Map<string, LinkCacheEntry>()
 
+function linkCacheEntry(page: LorePage): LinkCacheEntry {
+  const prev = linkedTitlesCache.get(page.id)
+  if (prev && prev.updatedAt === page.updatedAt) return prev
+  const raw = linkedTitlesRaw(page)
+  const entry: LinkCacheEntry = {
+    updatedAt: page.updatedAt,
+    raw,
+    titles: new Set(raw.map((t) => t.toLowerCase())),
+  }
+  linkedTitlesCache.set(page.id, entry)
+  return entry
+}
+
 /** linkedTitles(page), memoized by (id, updatedAt). */
 export function linkedTitlesCached(page: LorePage): Set<string> {
-  const prev = linkedTitlesCache.get(page.id)
-  if (prev && prev.updatedAt === page.updatedAt) return prev.titles
-  const titles = linkedTitles(page)
-  linkedTitlesCache.set(page.id, { updatedAt: page.updatedAt, titles })
-  return titles
+  return linkCacheEntry(page).titles
+}
+
+/** linkedTitlesRaw(page), memoized by (id, updatedAt). */
+export function linkedTitlesRawCached(page: LorePage): string[] {
+  return linkCacheEntry(page).raw
 }
 
 /** Drop the memoized linked-titles cache (tests; harmless to call otherwise). */
