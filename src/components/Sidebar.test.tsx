@@ -56,7 +56,9 @@ describe('Sidebar random page', () => {
         <LocationProbe />
       </MemoryRouter>,
     )
+    await screen.findByText('Solo Page') // the live query must resolve before the button has a candidate
     const btn = await screen.findByRole('button', { name: /random page/i })
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(btn)
     await waitFor(() =>
       expect(screen.getByTestId('loc').textContent).toMatch(/^\/page\//),
@@ -71,5 +73,23 @@ describe('Sidebar random page', () => {
     )
     const btn = await screen.findByRole('button', { name: /random page/i })
     expect((btn as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('never navigates to the current page when another page exists', async () => {
+    const id1 = await createPage({ title: 'Page One' })
+    const id2 = await createPage({ title: 'Page Two' })
+    render(
+      <MemoryRouter initialEntries={[`/page/${id1}`]}>
+        <Sidebar onOpenSearch={() => {}} />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+    await screen.findByText('Page Two') // wait for pages to load so the button isn't stuck disabled
+    const btn = await screen.findByRole('button', { name: /random page/i })
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(btn)
+    await waitFor(() =>
+      expect(screen.getByTestId('loc').textContent).toBe(`/page/${id2}`),
+    )
   })
 })
