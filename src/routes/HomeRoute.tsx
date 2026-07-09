@@ -12,12 +12,15 @@ import {
   pageStatus,
   STATUSES,
   type LorePage,
+  type TimelineEvent,
 } from '../db'
-import { selectStalePages, staleLabel } from '../rediscovery'
+import { selectStalePages, staleLabel, pickFeaturedEvent, todayIndex } from '../rediscovery'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { getLore, renameLore, setLoreBanner, currentLoreId } from '../lores'
 import { compressImage } from '../imageUtils'
+import { formatDate } from '../calendar'
+import { stripHtml } from '../html'
 
 /** Personalisable bits of the home page, stored as one row in the meta table. */
 interface HomeConfig {
@@ -34,6 +37,7 @@ interface HomeConfig {
 /** Stable empty array so the live query doesn't feed `useMemo` a fresh `[]`
  *  (forcing a recompute) on every render while pages are still loading. */
 const NO_PAGES: LorePage[] = []
+const NO_EVENTS: TimelineEvent[] = []
 
 const HOME_CONFIG_KEY = 'home-config'
 const DEFAULT_HOME: HomeConfig = {
@@ -47,7 +51,6 @@ const DEFAULT_HOME: HomeConfig = {
 }
 
 export default function HomeRoute() {
-  void db // wired up by Task 4's "On this day" panel; imported now to avoid a second edit
   const navigate = useNavigate()
   const bannerFileRef = useRef<HTMLInputElement>(null)
   const [customizing, setCustomizing] = useState(false)
@@ -76,6 +79,12 @@ export default function HomeRoute() {
   const recent = useLiveQuery(() => pageRepo.listRecent(8), []) ?? []
   const mapCount = useLiveQuery(() => mapRepo.countMaps(), []) ?? 0
   const dusty = useMemo(() => selectStalePages(pages), [pages])
+  const events = useLiveQuery(() => db.events.toArray(), []) ?? NO_EVENTS
+  const featured = useMemo(() => pickFeaturedEvent(events, todayIndex()), [events])
+  const featuredCal = useLiveQuery(
+    () => (featured ? db.calendars.get(featured.calendarId) : undefined),
+    [featured?.calendarId],
+  )
 
   // -- overview figures -----------------------------------------------------
   const total = pages.length
@@ -333,6 +342,29 @@ export default function HomeRoute() {
               </Link>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* On this day */}
+      {cfg.showOnThisDay && featured && featuredCal && (
+        <section className="home-section">
+          <h2>On this day</h2>
+          <Link
+            className="on-this-day"
+            to={featured.pageId ? `/page/${featured.pageId}` : '/timeline'}
+          >
+            {featured.icon && <span className="otd-icon">{featured.icon}</span>}
+            <span className="otd-body">
+              <span className="otd-title">{featured.title}</span>
+              <span className="otd-date">
+                {formatDate(featuredCal, featured.startYear, featured.startMonth, featured.startDay)}
+              </span>
+              {featured.description && (
+                <span className="otd-snippet">{stripHtml(featured.description).slice(0, 160)}</span>
+              )}
+              <span className="otd-link">View on timeline →</span>
+            </span>
+          </Link>
         </section>
       )}
 
