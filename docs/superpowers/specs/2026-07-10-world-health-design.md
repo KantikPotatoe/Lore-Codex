@@ -37,9 +37,17 @@ different numbers. No logic change to the graph.
 
 ## Architecture
 
-### The pure core — `src/worldHealth.ts`
+### The pure core — `src/db/worldHealth.ts`
 
-A new module at `src/`, alongside `src/rediscovery.ts`, with no React and no Dexie:
+A pure function over `LorePage[]` — no React, no database reads — living beside
+`graph.ts`, the other pure analysis over pages. It does not go at `src/` next to
+`rediscovery.ts`: that module gets away with `import type { LorePage } from './db'`,
+which erases at compile time, whereas `computeWorldHealth` needs `linkedTitlesRawCached`
+and `pageStatus` as runtime imports. Those would pull the Dexie singleton into a
+top-level module. `buildGraphData` lives in `db/` for exactly this reason.
+
+Re-exported from the `db/` barrel, and `computeWorldHealth` joins
+`barrel.test.ts`'s expected surface.
 
 ```ts
 export interface BrokenLink {
@@ -139,7 +147,10 @@ the row away on its own.
 
 ## Testing
 
-`src/worldHealth.test.ts`, pure unit tests over hand-built `LorePage[]`:
+`src/db/worldHealth.test.ts`, pure unit tests over hand-built `LorePage[]`. Each test
+runs `clearLinkedTitlesCache()` in a `beforeEach` — `computeWorldHealth` reads through
+the `(id, updatedAt)` memo, so pages sharing an id across tests would otherwise serve
+each other's cached links. Cases:
 
 - Self-links count as neither an incoming link nor a broken link; a page linking only
   to itself is an orphan.
@@ -158,8 +169,7 @@ Plus a `linkedTitlesRaw` test pinning the casing-preservation contract that
 `computeWorldHealth` depends on.
 
 No jsdom pragma needed — there is no DOMPurify here, and happy-dom parses the
-wiki-link anchors fine. `worldHealth.ts` lives at `src/` like `rediscovery.ts`, so it
-is outside the `db/` barrel and `barrel.test.ts` does not apply.
+wiki-link anchors fine.
 
 No `HealthRoute` render test: it is presentation over a tested core, and
 `useLiveQuery` component tests need the `afterEach(cleanup)` dance to avoid teardown
