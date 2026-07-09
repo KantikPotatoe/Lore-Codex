@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { db, createPage } from '../db'
+import { db, createPage, createCalendar, addEvent } from '../db'
 import HomeRoute from './HomeRoute'
 
 const DAY = 86_400_000
@@ -33,5 +33,30 @@ describe('HomeRoute — Dusty corners', () => {
     renderHome()
     await screen.findByText('Fresh Page') // in Recently edited
     expect(screen.queryByText('Dusty corners')).toBeNull()
+  })
+})
+
+describe('HomeRoute — On this day', () => {
+  it('features an event with its in-world date', async () => {
+    const calId = await createCalendar('Imperial')
+    await addEvent({
+      calendarId: calId,
+      title: 'The Sundering',
+      description: '<p>The world cracked in two.</p>',
+      category: 'Cataclysm',
+      pageId: null,
+      startYear: 412, startMonth: 0, startDay: 3,
+    })
+    renderHome()
+    expect(await screen.findByText('On this day')).toBeTruthy()
+    expect(await screen.findByText('The Sundering')).toBeTruthy()
+    expect(screen.getByText(/The world cracked in two/)).toBeTruthy()
+  })
+
+  it('hides the panel when there are no events', async () => {
+    await createPage({ title: 'Anything' })
+    renderHome()
+    await screen.findByText('Anything')
+    expect(screen.queryByText('On this day')).toBeNull()
   })
 })

@@ -377,6 +377,25 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 }
 .card-badges { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
+.on-this-day {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease;
+}
+.on-this-day:hover { border-color: var(--accent); }
+.otd-icon { font-size: 1.8rem; line-height: 1; }
+.otd-body { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.otd-title { font-family: var(--display); font-size: 1.15rem; color: var(--ink); }
+.otd-date { color: var(--accent-soft); font-size: 0.9rem; }
+.otd-snippet { color: var(--ink-faint); font-size: 0.9rem; }
+.otd-link { color: var(--accent); font-size: 0.85rem; margin-top: 0.2rem; }
+
 /* Status badge: outlined pill tinted by the status color. */
 .status-badge {
   display: inline-block; font-size: 11px; font-weight: 600;
