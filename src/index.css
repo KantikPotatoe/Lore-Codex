@@ -325,6 +325,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
   border-bottom: 1px solid transparent; padding-bottom: 8px;
   border-image: linear-gradient(to right, var(--accent) 0%, var(--border) 28%, var(--border) 100%) 1;
 }
+.home-section-sub { color: var(--ink-faint); margin: -0.25rem 0 0.75rem; font-size: 0.9rem; }
 .muted { color: var(--ink-faint); }
 .ghost-btn.active { border-color: var(--accent); color: var(--accent); }
 
