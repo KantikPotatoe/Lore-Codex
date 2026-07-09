@@ -11,6 +11,7 @@ import {
   statusColor,
   pageStatus,
   STATUSES,
+  computeWorldHealth,
   type LorePage,
   type TimelineEvent,
 } from '../db'
@@ -32,6 +33,7 @@ interface HomeConfig {
   showRecent: boolean
   showDusty: boolean
   showOnThisDay: boolean
+  showHealth: boolean
 }
 
 /** Stable empty array so the live query doesn't feed `useMemo` a fresh `[]`
@@ -48,7 +50,10 @@ const DEFAULT_HOME: HomeConfig = {
   showRecent: true,
   showDusty: true,
   showOnThisDay: true,
+  showHealth: true,
 }
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 export default function HomeRoute() {
   const navigate = useNavigate()
@@ -79,6 +84,8 @@ export default function HomeRoute() {
   const recent = useLiveQuery(() => pageRepo.listRecent(8), []) ?? []
   const mapCount = useLiveQuery(() => mapRepo.countMaps(), []) ?? 0
   const dusty = useMemo(() => selectStalePages(pages), [pages])
+  const health = useMemo(() => computeWorldHealth(pages), [pages])
+  const healthTotal = health.brokenLinks.length + health.orphans.length + health.stubs.length
   const events = useLiveQuery(() => db.events.toArray(), []) ?? NO_EVENTS
   const featured = useMemo(() => pickFeaturedEvent(events, todayIndex()), [events])
   const featuredCal = useLiveQuery(
@@ -219,6 +226,10 @@ export default function HomeRoute() {
             <label className="home-toggle">
               <input type="checkbox" checked={cfg.showOnThisDay} onChange={(e) => saveConfig({ showOnThisDay: e.target.checked })} />
               On this day
+            </label>
+            <label className="home-toggle">
+              <input type="checkbox" checked={cfg.showHealth} onChange={(e) => saveConfig({ showHealth: e.target.checked })} />
+              World health
             </label>
           </div>
         )}
@@ -364,6 +375,29 @@ export default function HomeRoute() {
               )}
               <span className="otd-link">View on timeline →</span>
             </span>
+          </Link>
+        </section>
+      )}
+
+      {/* World health — suppressed on an empty world; a fresh page shouldn't be
+          greeted with a health report on nothing. Shows an all-clear line rather
+          than vanishing when everything is fine: a panel that silently disappears
+          is indistinguishable from one you turned off by accident. */}
+      {cfg.showHealth && total > 0 && (
+        <section className="home-section">
+          <h2>World health</h2>
+          <Link className="health-summary" to="/health">
+            {healthTotal === 0 ? (
+              <span className="health-clean">Nothing dangling. Your world is in good shape. 🎉</span>
+            ) : (
+              <>
+                <span>{plural(health.brokenLinks.length, 'broken link')}</span>
+                <span className="sep">·</span>
+                <span>{plural(health.orphans.length, 'orphan')}</span>
+                <span className="sep">·</span>
+                <span>{plural(health.stubs.length, 'stub')}</span>
+              </>
+            )}
           </Link>
         </section>
       )}
