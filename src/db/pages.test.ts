@@ -7,6 +7,8 @@ import {
   findPageIdByTitle,
   renamePage,
   getBacklinks,
+  linkedTitles,
+  linkedTitlesRaw,
   linkedTitlesCached,
   clearLinkedTitlesCache,
   type Infobox,
@@ -325,5 +327,50 @@ describe('linkedTitlesCached', () => {
       .toEqual(new Set(['rohan']))
     expect(linkedTitlesCached(pageWith({ updatedAt: 6, content: `<p>${link('Mordor')}</p>` })))
       .toEqual(new Set(['mordor']))
+  })
+})
+
+describe('linkedTitlesRaw', () => {
+  function page(over: Partial<LorePage>): LorePage {
+    return {
+      id: 'p', title: 'P', titleLc: 'p', category: 'Concept', content: '',
+      summary: '', status: 'Draft', tags: [], createdAt: 0, updatedAt: 0, ...over,
+    }
+  }
+  const link = (t: string) => `<p><a data-wikilink data-title="${t}">${t}</a></p>`
+
+  it('preserves the casing the author typed', () => {
+    expect(linkedTitlesRaw(page({ content: link('the Shire') }))).toEqual(['the Shire'])
+  })
+
+  it('reads infobox [[refs]] as well as body links', () => {
+    const p = page({
+      content: link('Frodo'),
+      infobox: {
+        template: 'Character', image: null, caption: '',
+        fields: [{ id: 'f1', label: 'Home', value: '[[the Shire]]', fieldType: 'ref' }],
+      },
+    })
+    expect(linkedTitlesRaw(p)).toEqual(['Frodo', 'the Shire'])
+  })
+
+  it('dedupes by lowercased title, first occurrence winning the casing', () => {
+    const p = page({ content: link('Mordor') + link('mordor') })
+    expect(linkedTitlesRaw(p)).toEqual(['Mordor'])
+  })
+
+  it('trims surrounding whitespace in infobox refs', () => {
+    const p = page({
+      infobox: {
+        template: 'Character', image: null, caption: '',
+        fields: [{ id: 'f1', label: 'Home', value: '[[  Mordor  ]]', fieldType: 'ref' }],
+      },
+    })
+    expect(linkedTitlesRaw(p)).toEqual(['Mordor'])
+  })
+
+  it('still lowercases through linkedTitles', () => {
+    const p = page({ content: link('the Shire') })
+    expect([...linkedTitles(p)]).toEqual(['the shire'])
   })
 })

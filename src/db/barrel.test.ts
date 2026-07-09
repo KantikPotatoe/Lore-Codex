@@ -20,7 +20,7 @@ const EXPECTED_FUNCTIONS = [
   'deleteTemplate', 'resetTemplate', 'pagesUsingTemplate', 'applyTemplateToPages',
   // pages.ts
   'createPage', 'updatePage', 'deletePage', 'findPageIdByTitle', 'renamePage',
-  'linkedTitles', 'getBacklinks',
+  'linkedTitles', 'linkedTitlesRaw', 'getBacklinks',
   // maps.ts
   'addMap', 'deleteMap', 'addPin', 'pinType', 'addRegion', 'regionStyle',
   'findParentMapId', 'mapBreadcrumb', 'ancestorMapIds',
