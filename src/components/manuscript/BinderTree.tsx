@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db, createChapter, createScene, sceneStatusColor,
+  db, createChapter, createScene, updateChapter, sceneStatusColor,
   type Chapter, type Scene,
 } from '../../db'
 
@@ -24,6 +24,21 @@ export default function BinderTree({ bookId, selectedSceneId, onSelectScene }: B
     [bookId],
   ) ?? NO_SCENES
 
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+
+  function startEdit(ch: Chapter) {
+    setEditingId(ch.id)
+    setDraft(ch.title)
+  }
+
+  function commitEdit() {
+    if (!editingId) return
+    const title = draft.trim()
+    if (title) updateChapter(editingId, { title })
+    setEditingId(null)
+  }
+
   const scenesByChapter = useMemo(() => {
     const map = new Map<string, Scene[]>()
     for (const s of scenes) {
@@ -40,7 +55,26 @@ export default function BinderTree({ bookId, selectedSceneId, onSelectScene }: B
       {chapters.map((ch) => (
         <div key={ch.id} className="binder-chapter">
           <div className="binder-chapter-head">
-            <span className="binder-chapter-title">{ch.title}</span>
+            {editingId === ch.id ? (
+              <input
+                className="binder-chapter-title-input"
+                aria-label="Chapter title"
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commitEdit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitEdit()
+                  else if (e.key === 'Escape') setEditingId(null)
+                }}
+              />
+            ) : (
+              <span
+                className="binder-chapter-title"
+                title="Double-click to rename"
+                onDoubleClick={() => startEdit(ch)}
+              >{ch.title}</span>
+            )}
             <button
               className="binder-add"
               title="Add scene"

@@ -413,6 +413,18 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
   text-overflow: ellipsis; white-space: nowrap;
 }
 .page-title { font-family: var(--display); font-size: 36px; margin: 0; line-height: 1.1; }
+.book-title-input {
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 0;
+  min-width: 0;
+  flex: 1;
+}
+.book-title-input:hover:not(:disabled) { border-bottom-color: var(--border); }
+.book-title-input:focus { outline: none; border-bottom-color: var(--accent); }
+.book-title-input:disabled { color: var(--ink-faint); }
 /* Title + type glyph group, kept together as one flex child of .page-header-row. */
 .page-title-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
 .page-title-wrap .title-input { flex: 1; }
@@ -2208,6 +2220,21 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   font-family: var(--display);
   font-size: 0.95rem;
   color: var(--ink);
+  cursor: text;
+}
+.binder-chapter-title-input {
+  font-family: var(--display);
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  padding: 0;
+  min-width: 0;
+  flex: 1;
+}
+.binder-chapter-title-input:focus {
+  outline: none;
 }
 .binder-add,
 .binder-add-chapter {
