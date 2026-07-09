@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, pageRepo, categoryColor, statusColor, pageStatus, type LorePage } from '../db'
 import { getLore, currentLoreId } from '../lores'
+import { pickRandomId } from '../rediscovery'
 import { showPageHover, scheduleWikiHoverClose } from '../wikiLinkHover'
 import { getRecent, pruneRecent, subscribeRecents } from '../recents'
 import { getCollapsedGroups, toggleCollapsedGroup, RECENT_GROUP, TAGS_GROUP } from '../sidebarPrefs'
@@ -77,6 +78,12 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
     ? location.pathname.split('/page/')[1]
     : null
 
+  function handleRandom() {
+    const ids = pages.map((p) => p.id).filter((id) => id !== currentId)
+    const id = pickRandomId(ids)
+    if (id) navigate(`/page/${id}`)
+  }
+
   const browseCategory = location.pathname.startsWith('/browse/')
     ? decodeURIComponent(location.pathname.split('/browse/')[1])
     : null
@@ -105,6 +112,11 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
 
       <div className="sidebar-actions">
         <button className="primary-btn" onClick={handleNew}>+ New page</button>
+        <button
+          className="ghost-btn sidebar-random"
+          onClick={handleRandom}
+          disabled={pages.length === 0}
+        >🎲 Random page</button>
       </div>
 
       <div className="search-box-wrap">
