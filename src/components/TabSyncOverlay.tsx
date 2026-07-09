@@ -23,7 +23,10 @@ export default function TabSyncOverlay() {
       <div className="tab-sync-dialog">
         <span className="tab-sync-icon" aria-hidden="true">⚠</span>
         <p className="tab-sync-msg">{COPY[reason]} Reload to continue.</p>
-        <button className="tab-sync-btn" onClick={reload}>Reload</button>
+        {/* autoFocus pulls keyboard focus out of the editor on mount, so a tab
+            that was mid-edit can't keep typing (and autosaving) into the
+            swapped/vanishing DB behind the overlay. */}
+        <button className="tab-sync-btn" autoFocus onClick={reload}>Reload</button>
       </div>
     </div>
   )
