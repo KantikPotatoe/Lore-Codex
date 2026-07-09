@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
+  db,
   pageRepo,
   mapRepo,
   getMeta,
@@ -12,6 +13,7 @@ import {
   STATUSES,
   type LorePage,
 } from '../db'
+import { selectStalePages, staleLabel } from '../rediscovery'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { getLore, renameLore, setLoreBanner, currentLoreId } from '../lores'
@@ -25,6 +27,8 @@ interface HomeConfig {
   showAbout: boolean
   showOverview: boolean
   showRecent: boolean
+  showDusty: boolean
+  showOnThisDay: boolean
 }
 
 /** Stable empty array so the live query doesn't feed `useMemo` a fresh `[]`
@@ -38,9 +42,12 @@ const DEFAULT_HOME: HomeConfig = {
   showAbout: true,
   showOverview: true,
   showRecent: true,
+  showDusty: true,
+  showOnThisDay: true,
 }
 
 export default function HomeRoute() {
+  void db // wired up by Task 4's "On this day" panel; imported now to avoid a second edit
   const navigate = useNavigate()
   const bannerFileRef = useRef<HTMLInputElement>(null)
   const [customizing, setCustomizing] = useState(false)
@@ -68,6 +75,7 @@ export default function HomeRoute() {
   const pages = useLiveQuery(() => pageRepo.list(), []) ?? NO_PAGES
   const recent = useLiveQuery(() => pageRepo.listRecent(8), []) ?? []
   const mapCount = useLiveQuery(() => mapRepo.countMaps(), []) ?? 0
+  const dusty = useMemo(() => selectStalePages(pages), [pages])
 
   // -- overview figures -----------------------------------------------------
   const total = pages.length
@@ -195,6 +203,14 @@ export default function HomeRoute() {
               <input type="checkbox" checked={cfg.showRecent} onChange={(e) => saveConfig({ showRecent: e.target.checked })} />
               Recently edited
             </label>
+            <label className="home-toggle">
+              <input type="checkbox" checked={cfg.showDusty} onChange={(e) => saveConfig({ showDusty: e.target.checked })} />
+              Dusty corners
+            </label>
+            <label className="home-toggle">
+              <input type="checkbox" checked={cfg.showOnThisDay} onChange={(e) => saveConfig({ showOnThisDay: e.target.checked })} />
+              On this day
+            </label>
           </div>
         )}
       </div>
@@ -297,6 +313,26 @@ export default function HomeRoute() {
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {/* Dusty corners */}
+      {cfg.showDusty && dusty.length > 0 && (
+        <section className="home-section">
+          <h2>Dusty corners</h2>
+          <p className="home-section-sub">Pages you haven't touched in a while — revisit?</p>
+          <div className="card-grid">
+            {dusty.map((p) => (
+              <Link key={p.id} to={`/page/${p.id}`} className="lore-card">
+                <div className="card-badges">
+                  <span className="card-badge" style={{ background: categoryColor(p.category) }}>{p.category}</span>
+                  <span className="muted">{staleLabel(p.updatedAt)}</span>
+                </div>
+                <h3>{p.title}</h3>
+                {p.summary && <p>{p.summary}</p>}
+              </Link>
+            ))}
+          </div>
         </section>
       )}
 
