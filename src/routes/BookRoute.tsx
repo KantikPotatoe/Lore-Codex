@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db'
+import { db, updateBook } from '../db'
 import BookWriteView from '../components/manuscript/BookWriteView'
 import BookGridView from '../components/manuscript/BookGridView'
 import { exportBookEpub, printBook } from '../manuscriptExport'
@@ -22,7 +22,14 @@ export default function BookRoute() {
   return (
     <div className="book-workspace">
       <div className="book-head">
-        <h1 className="page-title">{book?.title ?? 'Book'}</h1>
+        <input
+          className="page-title book-title-input"
+          aria-label="Book title"
+          value={book?.title ?? ''}
+          placeholder="Untitled Book"
+          disabled={!book}
+          onChange={(e) => updateBook(bookId, { title: e.target.value })}
+        />
         <div className="seg-control">
           <button className={view === 'write' ? 'seg active' : 'seg'} onClick={() => setView('write')}>Write</button>
           <button className={view === 'grid' ? 'seg active' : 'seg'} onClick={() => setView('grid')}>Grid</button>
