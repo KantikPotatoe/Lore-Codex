@@ -2670,3 +2670,31 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   cursor: pointer;
 }
 .tab-sync-btn:hover { filter: brightness(1.07); }
+
+/* --- World health -------------------------------------------------------- */
+.health { max-width: 60rem; margin: 0 auto; }
+.health-header { margin-bottom: 2rem; }
+.health-sub { color: var(--ink-dim); margin-top: 0.25rem; }
+
+.health-section { margin-bottom: 2.5rem; }
+.health-section h2 { display: flex; align-items: baseline; gap: 0.5rem; }
+.health-section h2 .count {
+  font-size: 0.8rem; font-weight: 500; color: var(--ink-dim);
+  background: var(--panel-2); border-radius: 999px; padding: 0.1rem 0.5rem;
+}
+.health-section-sub { color: var(--ink-faint); font-size: 0.9rem; margin: 0.25rem 0 0.75rem; }
+
+.health-list { list-style: none; padding: 0; margin: 0; }
+.health-list > li {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.5rem 0; border-bottom: 1px solid var(--border);
+}
+.health-list > li:last-child { border-bottom: none; }
+.health-list .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; flex: none; }
+.health-list .t { font-weight: 500; }
+.health-list a { display: inline-flex; align-items: center; gap: 0.6rem; }
+
+.health-broken .health-sources {
+  flex: 1; color: var(--ink-faint); font-size: 0.85rem;
+}
+.health-broken .ghost-btn { flex: none; }

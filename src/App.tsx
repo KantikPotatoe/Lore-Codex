@@ -16,6 +16,7 @@ import TimelineRoute from './routes/TimelineRoute'
 import LoreSelectorRoute from './routes/LoreSelectorRoute'
 import SettingsRoute from './routes/SettingsRoute'
 import ManuscriptRoute from './routes/ManuscriptRoute'
+import HealthRoute from './routes/HealthRoute'
 // Code-split the heaviest routes out of the entry chunk (#188): Map pulls in
 // Leaflet + leaflet-draw, Graph pulls in react-force-graph-2d, Book pulls in
 // JSZip (EPUB). They load on first navigation instead of at every startup.
@@ -102,6 +103,7 @@ export default function App() {
               <Route path="/page/:id" element={<PageRoute />} />
               <Route path="/map" element={<MapRoute />} />
               <Route path="/graph" element={<GraphRoute />} />
+              <Route path="/health" element={<HealthRoute />} />
               <Route path="/timeline" element={<TimelineRoute />} />
               <Route path="/templates" element={<TemplatesRoute />} />
               <Route path="/settings" element={<SettingsRoute />} />
