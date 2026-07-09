@@ -28,6 +28,8 @@ const EXPECTED_FUNCTIONS = [
   'addImage', 'updateImageCaption', 'deleteImage', 'reorderImages', 'setAsPortrait',
   // graph.ts
   'buildGraphData',
+  // worldHealth.ts
+  'computeWorldHealth',
   // calendar.ts
   'seedDefaultCalendar', 'createCalendar', 'updateCalendar', 'deleteCalendar',
   'addEvent', 'updateEvent', 'deleteEvent',
