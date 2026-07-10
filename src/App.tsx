@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
-import { liveQuery } from 'dexie'
 import Sidebar from './components/Sidebar'
 import BackupBanner from './components/BackupBanner'
 import StorageErrorBanner from './components/StorageErrorBanner'
@@ -24,9 +23,9 @@ const MapRoute = lazy(() => import('./routes/MapRoute'))
 const GraphRoute = lazy(() => import('./routes/GraphRoute'))
 const BookRoute = lazy(() => import('./routes/BookRoute'))
 import { requestPersistentStorage } from './backup'
-import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, pageRepo, activeLoreId } from './db'
+import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, activeLoreId } from './db'
 import { maybeTakeSnapshot } from './snapshots'
-import { syncIndex } from './search'
+import { installSearchIndex } from './searchSync'
 import { bootstrapDefaultLore } from './lores'
 import { installStorageErrorListener } from './storageError'
 import { installTabSyncListener } from './tabSync'
@@ -67,14 +66,11 @@ export default function App() {
     migrateInlineBodyImages().finally(() => maybeTakeSnapshot())
   }, [])
 
-  // Keep the FlexSearch index in sync as pages change. The liveQuery emits the whole
-  // table on every edit, but syncIndex only re-indexes the deltas (see search.ts) —
-  // the first emission builds, later ones apply just the changed/added/removed pages.
+  // Keep the search index in sync as any searchable table changes. installSearchIndex
+  // owns one liveQuery per table and re-indexes only deltas (see searchSync.ts).
   useEffect(() => {
-    const sub = liveQuery(() => pageRepo.list()).subscribe((pages) => {
-      syncIndex(pages)
-    })
-    return () => sub.unsubscribe()
+    const teardown = installSearchIndex()
+    return teardown
   }, [])
 
   // Lore selector: full-screen, no sidebar/overlays (but still surface storage errors)

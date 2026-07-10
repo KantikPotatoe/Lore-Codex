@@ -33,6 +33,7 @@ export default function MapRoute() {
 
   const [searchParams] = useSearchParams()
   const focusPinId = searchParams.get('pin')
+  const focusRegionId = searchParams.get('region')
 
   // A deep link (#/map?pin=<id>) switches to that pin's map and selects it.
   // MapView then pans to it. A stale/deleted id is a harmless no-op.
@@ -47,6 +48,20 @@ export default function MapRoute() {
     })
     return () => { cancelled = true }
   }, [focusPinId])
+
+  // A deep link (#/map?region=<id>) switches to that region's map and selects it.
+  // MapView fits its bounds. A stale/deleted id is a harmless no-op.
+  useEffect(() => {
+    if (!focusRegionId) return
+    let cancelled = false
+    mapRepo.getRegion(focusRegionId).then((region) => {
+      if (cancelled || !region) return
+      setActiveId(region.mapId)
+      focusRegion(region.id)
+      setPanelMode('preview')
+    })
+    return () => { cancelled = true }
+  }, [focusRegionId])
 
   // Default to the first map if none chosen yet.
   const currentMap = maps.find((m) => m.id === activeId) ?? maps[0] ?? null
