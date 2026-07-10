@@ -2705,3 +2705,29 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .health-summary .sep { color: var(--ink-faint); }
 .health-summary .health-clean { color: var(--ink-dim); }
 .health-broken .ghost-btn { flex: none; }
+
+/* Page aside — History (per-page chronology, #177) */
+.page-history {
+  margin-top: 16px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px;
+}
+.page-history-head {
+  font-family: var(--display); font-size: 12px; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--ink-dim); margin-bottom: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+.page-history-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 0.5rem;
+}
+.page-history-row {
+  display: flex; flex-direction: column; text-decoration: none; color: var(--ink);
+}
+.page-history-row:hover .page-history-title { color: var(--accent); }
+.page-history-date { font-size: 0.75rem; color: var(--ink-faint); }
+.page-history-title { font-size: 0.9rem; }
+.page-history-icon { margin-right: 0.3rem; }
+.page-history-cal { font-size: 0.7rem; color: var(--ink-faint); font-style: italic; }
+.page-history-more {
+  margin-top: 0.5rem; width: 100%; font-size: 0.75rem;
+}
