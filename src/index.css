@@ -2731,3 +2731,16 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .page-history-more {
   margin-top: 0.5rem; width: 100%; font-size: 0.75rem;
 }
+
+/* Deep-linked timeline row (#/timeline?event=<id>) — flash, then settle. */
+@keyframes tl-focus-flash {
+  from { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  to   { background: transparent; }
+}
+.tl-row.is-focused {
+  animation: tl-focus-flash 2s ease-out 1;
+  border-radius: var(--radius);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-row.is-focused { animation: none; }
+}

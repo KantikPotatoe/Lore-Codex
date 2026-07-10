@@ -9,6 +9,8 @@ interface Props {
   displayCalendar: Calendar | null
   allPages: LorePage[]
   onEdit: (event: TimelineEvent) => void
+  /** Row to scroll to and flash, from `/timeline?event=<id>`. */
+  focusEventId?: string | null
 }
 
 interface EraGroup {
@@ -46,6 +48,7 @@ export default function TimelineVertical({
   displayCalendar,
   allPages,
   onEdit,
+  focusEventId,
 }: Props) {
   const navigate = useNavigate()
   const displayCal = displayCalendar ?? calendars[0]
@@ -86,7 +89,11 @@ export default function TimelineVertical({
               const thumbImage = linkedPage?.infobox?.image
 
               return (
-                <div key={event.id} className="tl-row">
+                <div
+                  key={event.id}
+                  id={`tl-event-${event.id}`}
+                  className={event.id === focusEventId ? 'tl-row is-focused' : 'tl-row'}
+                >
                   <div className="tl-gutter">
                     <span className="tl-gutter-date">{startLabel}</span>
                     {endLabel && <span className="tl-gutter-end">— {endLabel}</span>}
