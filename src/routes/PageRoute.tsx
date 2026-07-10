@@ -33,9 +33,10 @@ export default function PageRoute() {
   const wiki = useWikiLinkNavigation()
 
   const [editing, setEditing] = useState(false)
-  // Debounced content writer. The page id travels in the call args so a flush
-  // that lands after navigation still targets the page that was being edited
-  // (PageRoute itself stays mounted across page switches — only the id changes).
+  // Debounced content writer. App.tsx keys the route wrapper on the pathname,
+  // so /page/A → /page/B unmounts this component and builds a fresh writer. The
+  // page id travels in the call args, so the outgoing writer's pending flush
+  // (below) still targets the page that was being edited, not the new one.
   const [contentWriter] = useState(() =>
     flushableDebounce<[string, string]>((pageId, html) => {
       void pageRepo.update(pageId, { content: html })
@@ -97,9 +98,9 @@ export default function PageRoute() {
     if (page?.id === id && id) recordRecent(id)
   }, [page?.id, id])
 
-  // Flush any pending content write when leaving the page or the route. The
-  // cleanup runs before this effect re-runs for a new id (and on unmount), while
-  // the writer's pending args still hold the outgoing page's id.
+  // Flush any pending content write when leaving the page or the route. Because
+  // a page switch remounts the route, this cleanup runs on unmount, while the
+  // writer's pending args still hold the outgoing page's id.
   useEffect(() => () => contentWriter.flush(), [id, contentWriter])
 
   // Start in view mode whenever you open a different page. Resetting during
