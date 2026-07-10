@@ -55,7 +55,7 @@ settings going at once without them bleeding together.
 | | |
 |---|---|
 | **Interactive maps** | Upload a map image and drop pins linked to lore pages. Draw regions as polygons and nest maps inside one another. |
-| **Relationship graph** | A force-directed graph of every page and the links between them — node size shows how connected a page is, surfacing hubs and orphans. |
+| **Relationship graph** | A force-directed graph of every page and the links between them — node size shows how connected a page is, surfacing hubs and isolated pages. |
 | **Timeline & calendars** | Define custom calendars (months, eras, year lengths) and place events on a shared timeline — list or zoomable axis. Calendars share one absolute-day axis so events line up. |
 
 ### ✒️ Writing the novel
@@ -73,6 +73,7 @@ settings going at once without them bleeding together.
 | | |
 |---|---|
 | **Full-text search** | A keyboard-driven modal searching titles, summaries, tags, and body content, with highlighted snippets. |
+| **World health dashboard** | A to-do list for your world: broken `[[links]]` with one-click stub creation, orphan pages nothing links to, and pages still marked Stub. Summarized on Home, full detail at `/health`. |
 
 ### 💾 Data & safety
 
@@ -151,6 +152,7 @@ src/
     calendar.ts          Timeline calendar / event CRUD
     snapshots.ts         Snapshot CRUD
     manuscript.ts        Book / chapter / scene / plotline / beat CRUD + word counts
+    worldHealth.ts       Broken links / orphans / stubs analysis
     backup.ts            Export / import + versioned migrations + sanitization
   loreId.ts              Active-world id + per-world database naming
   lores.ts               World registry + create/rename/delete/switch
@@ -186,6 +188,7 @@ src/
     BookRoute.tsx          Book workspace: Write / Grid views + EPUB / PDF compile
     TemplatesRoute.tsx     Manage page-type templates
     SettingsRoute.tsx      Settings, backup / import, HTML export, snapshots
+    HealthRoute.tsx         World health: broken links, orphans, stubs
   components/
     manuscript/            Binder tree, scene editor + meta, grid, structure controls
     Sidebar.tsx            Navigation, page list, search trigger
@@ -203,7 +206,7 @@ src/
     MapView.tsx            Leaflet map rendering + pins + regions
     MapPreviewCard.tsx     Click-to-preview card before editing a pin / region
     GraphView.tsx          Force-directed graph rendering
-    HubsOrphansPanel.tsx   Most-linked / unlinked pages beside the graph
+    HubsOrphansPanel.tsx   Most-linked / isolated pages beside the graph
     TimelineVertical.tsx   Timeline list view
     TimelineHorizontal.tsx Timeline zoomable axis
     CalendarEditor.tsx     Calendar definition modal

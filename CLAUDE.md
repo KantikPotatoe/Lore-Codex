@@ -45,6 +45,7 @@ Single source of truth (types, schema, CRUD, templates, backlinks, graph, export
 | `backup.ts` | `exportAll`/`importAll`/`parseBackup` + versioning + import sanitization (`CURRENT_SCHEMA_VERSION` mirrors Dexie store version) |
 | `snapshots.ts` | snapshot CRUD |
 | `manuscript.ts` | manuscript authoring CRUD: `Book`→`Chapter`→`Scene`, plotline/beat grid, story structures, word counts, `sceneAppearances()` |
+| `worldHealth.ts` | `computeWorldHealth(pages)` — pure: broken links, orphans (no incoming links), stubs |
 
 **Per-lore DB:** `db = new LoreDB(dbNameFor(currentLoreId()))` binds at module load, so the active world is fixed for the page's lifetime. `switchLore()` and deleting the active world call `window.location.reload()` to rebind.
 
@@ -70,6 +71,7 @@ Single source of truth (types, schema, CRUD, templates, backlinks, graph, export
 | `/book/:bookId` | `BookRoute` | book workspace: Write / Grid views, EPUB / Print-PDF compile |
 | `/templates` | `TemplatesRoute` | manage page-type templates |
 | `/settings` | `SettingsRoute` | per-lore settings, backup/import, HTML export, snapshots, delete world |
+| `/health` | `HealthRoute` | world health: broken links, orphans, stubs |
 
 Sidebar groups pages by category (headers link to `/browse/:category`); its search box is read-only and opens `SearchModal` on focus.
 
@@ -94,7 +96,7 @@ The author's real novel, distinct from wiki pages and the in-world Document page
 
 ### Relationship graph — `GraphView.tsx` + `GraphRoute`
 
-`buildGraphData(pages)` → nodes+links: each page a node (lone pages = isolated dots, intentional), resolved wiki link = edge, self-links dropped, A↔B collapses to one undirected edge, `degree` drives size. **Runs on demand in `GraphRoute`'s `useMemo`** (not per-save). Filtering clones nodes/links (the force sim mutates them); derives `hubs`/`orphans` (`HubsOrphansPanel`).
+`buildGraphData(pages)` → nodes+links: each page a node (lone pages = isolated dots, intentional), resolved wiki link = edge, self-links dropped, A↔B collapses to one undirected edge, `degree` drives size. **Runs on demand in `GraphRoute`'s `useMemo`** (not per-save). Filtering clones nodes/links (the force sim mutates them); derives `hubs`/**isolated** pages (`degree === 0`) in `HubsOrphansPanel` — distinct from the world-health dashboard's "orphan" (no *incoming* links; an isolated page is always an orphan, but a page with only outgoing links is an orphan without being isolated).
 
 ### Page right sidebar — `Infobox.tsx`, `TableOfContents.tsx`, `Backlinks.tsx`
 

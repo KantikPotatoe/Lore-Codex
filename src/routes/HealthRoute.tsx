@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { pageRepo, createPage, categoryColor, computeWorldHealth, type LorePage } from '../db'
+import { pageRepo, categoryColor, computeWorldHealth, type LorePage } from '../db'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 /** Stable empty array so the live query doesn't feed `useMemo` a fresh `[]`
@@ -32,15 +32,16 @@ export default function HealthRoute() {
   const pages = useLiveQuery(() => pageRepo.list(), []) ?? NO_PAGES
   const health = useMemo(() => computeWorldHealth(pages), [pages])
 
-  // Another tab may have created the page since the live query last fired, in
-  // which case createPage throws on the title clash. The live query then drops
-  // the row on its own; we only have to explain what happened.
+  // Another tab (or a stale live query) may have created this page since the
+  // broken-link list was computed. Resolve first and reuse it rather than
+  // erroring on the title clash — the broken link is fixed either way. Mirrors
+  // useWikiLinkNavigation's confirmCreate.
   async function handleCreate(title: string) {
     try {
-      const id = await createPage({ title })
+      const id = (await pageRepo.findIdByTitle(title)) ?? (await pageRepo.create({ title, status: 'Stub' }))
       navigate(`/page/${id}`)
     } catch {
-      setNotice(`A page called “${title}” already exists.`)
+      setNotice(`Couldn't create “${title}”. Your browser may be out of storage space.`)
     }
   }
 

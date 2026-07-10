@@ -32,6 +32,10 @@ export interface WorldHealth {
  *  correctly an orphan. Title resolution is case- and whitespace-insensitive;
  *  display and page creation use the author's original casing. */
 export function computeWorldHealth(pages: LorePage[]): WorldHealth {
+  // Last-write-wins on titles that collide case-insensitively. createPage/
+  // renamePage reject clashes going forward, but backup import does not
+  // re-validate title uniqueness — so a duplicate-titled world (from an old or
+  // hand-edited backup) can mis-report the earlier page as an orphan.
   const idByTitle = new Map<string, string>()
   for (const p of pages) idByTitle.set(p.title.trim().toLowerCase(), p.id)
 
