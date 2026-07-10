@@ -1,5 +1,6 @@
 // src/routes/TimelineRoute.tsx
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, pageRepo, type TimelineEvent } from '../db'
 import CalendarEditor from '../components/CalendarEditor'
@@ -20,14 +21,32 @@ export default function TimelineRoute() {
   const [addingEvent, setAddingEvent]       = useState(false)
   const [managingCals, setManagingCals]     = useState(false)
 
+  // Deep link (#/timeline?event=<id>) — mirrors MapRoute's `?pin=`. A stale or
+  // deleted id resolves to nothing and the whole thing is a harmless no-op.
+  const [searchParams] = useSearchParams()
+  const focusEventId = searchParams.get('event')
+  const focusEvent = focusEventId ? events.find((e) => e.id === focusEventId) : undefined
+
   const displayCal =
-    calendars.find((c) => c.id === displayCalId) ?? calendars[0] ?? null
+    calendars.find((c) => c.id === displayCalId) ??
+    calendars.find((c) => c.id === focusEvent?.calendarId) ??
+    calendars[0] ??
+    null
 
   const visibleEvents = categoryFilter
     ? events.filter((e) => e.category.toLowerCase().includes(categoryFilter.toLowerCase()))
     : events
 
   const categories = [...new Set(events.map((e) => e.category).filter(Boolean))].sort()
+
+  // Scroll after the row has rendered. Re-runs as the live query fills in and as
+  // the calendar changes, so it lands whether or not events had loaded on mount.
+  useEffect(() => {
+    if (!focusEventId) return
+    document
+      .getElementById(`tl-event-${focusEventId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusEventId, displayCal?.id, visibleEvents.length])
 
   if (!calendars.length) {
     return (
@@ -106,6 +125,7 @@ export default function TimelineRoute() {
             displayCalendar={displayCal}
             allPages={allPages}
             onEdit={(e) => setEditingEvent(e)}
+            focusEventId={focusEventId}
           />
         ) : (
           <TimelineHorizontal
