@@ -133,3 +133,4 @@ Tauri v2 wraps the unchanged web app (WebView2; data still in IndexedDB inside t
 - **Shared HTML (`src/html.ts`):** `parseHtml()`, `stripHtml()`, `wikiLinkTitles()` — use these instead of re-parsing per call site.
 - **Wiki hover (`src/wikiLinkHover.ts` + `WikiLinkPopover.tsx`):** debounced module bus; popover fetches the hovered page and renders a floating card.
 - **UI prefs/state:** `recents.ts` (recently-viewed pages), `sidebarPrefs.ts` (collapsed groups), `useEscapeKey.ts`.
+- **`leaflet-draw` is unmaintained (last release 2018)** and its whole surface is 3 call sites in `MapView.tsx` (polygon drawer + per-layer `editing` handle). **Don't add new call sites** — each is migration debt. Successor is pre-chosen and pre-costed in `docs/leaflet-draw-succession.md` (#189); migrating early buys nothing, since `leaflet-geoman` is equally Leaflet-2-bound.
