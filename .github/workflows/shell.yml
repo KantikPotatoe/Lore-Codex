@@ -1,0 +1,44 @@
+name: Desktop shell
+
+# Compiles the Tauri shell whenever src-tauri/ changes, so a tauri.conf.json or
+# capabilities regression surfaces on the PR instead of at release time, when
+# release.yml is the first thing to touch Rust.
+#
+# `cargo check` rather than `npm run tauri build`: build.rs (tauri_build::build)
+# parses tauri.conf.json and resolves every capability permission against the
+# plugins' ACL, so a bad permission fails the job — no linking, no NSIS bundle,
+# no frontend build needed. In the debug profile the frontend assets are not
+# embedded, which is why ../dist can be absent here. The full installer build
+# still happens on version tags.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/shell.yml'
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/shell.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # The shell only ships for Windows (WebView2 + NSIS), so check it there.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # --locked also fails if Cargo.lock has drifted from Cargo.toml.
+      - name: Check the shell compiles
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
