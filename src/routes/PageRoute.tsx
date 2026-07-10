@@ -10,6 +10,7 @@ import Infobox from '../components/Infobox'
 import DraftInput from '../components/DraftInput'
 import Backlinks from '../components/Backlinks'
 import SceneAppearances from '../components/SceneAppearances'
+import PageHistory from '../components/PageHistory'
 import ImageGallery from '../components/ImageGallery'
 import TableOfContents from '../components/TableOfContents'
 import DocumentLinks from '../components/DocumentLinks'
@@ -331,6 +332,7 @@ export default function PageRoute() {
 
           <Backlinks pageId={id} />
           <SceneAppearances pageId={id} />
+          <PageHistory pageId={id} title={page.title} />
         </div>
       </div>
 
