@@ -6,7 +6,8 @@
 // db.* works here as it does under happy-dom.
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db, LoreDB, importAll, importBackupInto, buildGraphData, type LorePage, type TimelineEvent } from '../db'
-import { buildIndex } from '../search'
+import { syncSlice, resetIndex } from '../search'
+import { pageEntries } from '../searchEntries'
 
 async function clearAll(): Promise<void> {
   await Promise.all([
@@ -121,7 +122,7 @@ describe('importAll — XSS sanitization (roadmap #8)', () => {
     expect(await db.pages.get('p1')).toBeTruthy()
 
     const pages = await db.pages.toArray()
-    expect(() => buildIndex(pages)).not.toThrow()
+    expect(() => { resetIndex(); syncSlice('page', pageEntries(pages)) }).not.toThrow()
     expect(() => buildGraphData(pages)).not.toThrow()
   })
 
