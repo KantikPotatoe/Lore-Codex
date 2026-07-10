@@ -23,8 +23,9 @@ Recorded because the issue's premises shaped its effort estimate:
 
 - `MapPin` and `MapRegion` have **no `note` field** — only `label`. There is no pin
   note to index.
-- Only `LorePage` and `Scene` carry `updatedAt`. Events, pins, and regions have **no
-  change signal**, so `syncIndex`'s delta-skip cannot work for them as written.
+- `LorePage`, `TimelineEvent`, and `Scene` carry `updatedAt`; **`MapPin` and
+  `MapRegion` do not**. So pins and regions need a change signal that isn't `updatedAt`.
+  And even events, which have `updatedAt`, need more than it — see below.
 - Navigation targets mostly exist already: `/map?pin=<id>`, `/timeline?event=<id>`,
   and `/book/:bookId?scene=<id>` are live. Only `?region=` is new.
 - `MapView` already supports `FocusTarget { kind: 'region' }` (pans via `fitBounds`)
@@ -61,13 +62,23 @@ union on `kind`. `searchPages` has exactly one consumer (`SearchModal`) plus
 `src/search.test.ts`, so the blast radius is contained — and the change is wanted
 anyway, since the navigation target genuinely differs per type.
 
-### Why signature + lazy build, not an `updatedAt` column
+### Why signature + lazy build, not `updatedAt` alone
 
-Adding `updatedAt` to `TimelineEvent`/`MapPin`/`MapRegion` would cost a Dexie schema
-bump to v13, a `CURRENT_SCHEMA_VERSION` bump, a `MIGRATIONS` ladder step to backfill
-old backups, and a change to every write path. A signature is a string compare over raw
-source fields — `O(n)` memcmp, no DOM parse — and it *subsumes* `updatedAt`, which is
-itself only a proxy for "the raw fields changed".
+`updatedAt` is insufficient here for two distinct reasons:
+
+1. **Pins and regions don't have it.** Adding it would cost a Dexie schema bump to v13,
+   a `CURRENT_SCHEMA_VERSION` bump, a `MIGRATIONS` ladder step to backfill old backups,
+   and a change to every pin/region write path.
+2. **Even where it exists, a join can invalidate the index without touching it.** An
+   event's indexed date text is derived from its *calendar*; rename a month and the
+   event's text changes while `event.updatedAt` stands still. A page rename changes a
+   pin's indexed text while the pin record stands still. `updatedAt` tracks a record's
+   *own* writes, not its joins.
+
+A signature is a string compare over the exact source fields `build()` reads — `O(n)`
+memcmp, no DOM parse. It *subsumes* `updatedAt` (a record whose own fields are all it
+reads uses `String(updatedAt)` as its signature) and it extends cleanly to the joined
+fields that `updatedAt` can't see. One mechanism, uniform across all five kinds.
 
 ## Architecture
 
@@ -172,17 +183,19 @@ Violating it makes the index silently serve stale rows. The joins are what force
 ### Signatures
 
 ```
-page   →  String(updatedAt)
-event  →  [title, description, category, startYear, startMonth, startDay,
-           endYear, endMonth, endDay, calendarId, calendarSignature(cal)].join('\0')
-pin    →  [label, mapId, mapName, pageTitle ?? ''].join('\0')
+page   →  String(updatedAt)                                       // no join; own fields only
+event  →  [updatedAt, calendarId, calendarSignature(cal)].join('\0')  // updatedAt covers own fields; calendar is the join
+pin    →  [label, mapId, mapName, pageTitle ?? ''].join('\0')     // no updatedAt on the record
 region →  [label, mapId, mapName, pageTitle ?? ''].join('\0')
-scene  →  [updatedAt, chapterTitle, chapterOrder].join('\0')
+scene  →  [updatedAt, chapterTitle, chapterOrder].join('\0')      // updatedAt covers own fields; chapter is the join
 ```
 
-`updatedAt` is not privileged. It is merely the cheapest valid signature *when a
-record's own fields are all that `build()` reads*. Where a join exists (scene →
-chapter), the joined fields join the signature. Same rule, applied uniformly.
+`updatedAt` is not privileged. It is the cheapest valid signature *for the record's own
+fields*, so where it exists (page, event, scene) it stands in for the whole record —
+and the joined fields (event → calendar, scene → chapter) are appended because
+`updatedAt` cannot see them. Pins and regions have no `updatedAt`, so they list their
+own fields explicitly. Same rule throughout: the signature covers exactly what
+`build()` reads.
 
 ### Indexed text
 
@@ -201,9 +214,10 @@ Map name is **display-only** (`subtitle`), not indexed.
 - The map slice subscribes to `pages`, so every page edit re-runs it. Acceptable: the
   signature compare is over short label strings and never parses HTML, so the expensive
   `stripHtml` in `build()` stays gated.
-- The event signature retains each event's raw description string in memory. Events
-  number in the hundreds, not thousands. This is the price of not adding an `updatedAt`
-  column.
+- The events slice subscribes to `calendars`, so a calendar edit re-runs it. Acceptable
+  for the same reason: `calendarSignature(cal)` is a concat of month and era names, no
+  HTML parse, and `build()`'s `stripHtml(description)` only fires when `updatedAt` or
+  the calendar signature actually moved.
 
 ## Result shape and navigation
 
