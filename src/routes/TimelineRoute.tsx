@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, pageRepo, type TimelineEvent } from '../db'
+import { resolveDisplayCalendar } from '../timelineDisplay'
 import CalendarEditor from '../components/CalendarEditor'
 import EmptyState from '../components/EmptyState'
 import EventEditor from '../components/EventEditor'
@@ -27,11 +28,7 @@ export default function TimelineRoute() {
   const focusEventId = searchParams.get('event')
   const focusEvent = focusEventId ? events.find((e) => e.id === focusEventId) : undefined
 
-  const displayCal =
-    calendars.find((c) => c.id === displayCalId) ??
-    calendars.find((c) => c.id === focusEvent?.calendarId) ??
-    calendars[0] ??
-    null
+  const displayCal = resolveDisplayCalendar(calendars, displayCalId, focusEvent)
 
   const visibleEvents = categoryFilter
     ? events.filter((e) => e.category.toLowerCase().includes(categoryFilter.toLowerCase()))
