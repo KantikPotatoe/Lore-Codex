@@ -60,3 +60,32 @@ describe('HomeRoute — On this day', () => {
     expect(screen.queryByText('On this day')).toBeNull()
   })
 })
+
+describe('HomeRoute — World health', () => {
+  it('is suppressed on an empty world', async () => {
+    renderHome()
+    await screen.findByText('Your world is unwritten')
+    expect(screen.queryByText('World health')).toBeNull()
+  })
+
+  it('shows the all-clear line when there are no problems', async () => {
+    // Two pages linking to each other so neither is an orphan, and no broken
+    // links or stubs — a genuinely clean world.
+    const link = (t: string) => `<p><a data-wikilink data-title="${t}">${t}</a></p>`
+    await createPage({ title: 'Alpha', content: link('Beta') })
+    await createPage({ title: 'Beta', content: link('Alpha') })
+    renderHome()
+    await screen.findByText('World health')
+    expect(screen.getByText(/Nothing dangling/)).toBeTruthy()
+  })
+
+  it('shows counts when there are problems', async () => {
+    await createPage({ title: 'Stubby', status: 'Stub' })
+    renderHome()
+    await screen.findByText('World health')
+    // A lone page with no inbound links is also an orphan, alongside the stub.
+    expect(screen.getByText('0 broken links')).toBeTruthy()
+    expect(screen.getByText('1 orphan')).toBeTruthy()
+    expect(screen.getByText('1 stub')).toBeTruthy()
+  })
+})
