@@ -376,9 +376,10 @@ The pure boundary that turns Dexie records into `IndexEntry[]`. Home of the join
 **Files:**
 - Create: `src/searchEntries.ts`
 - Test: `src/searchEntries.test.ts` (new; pure — no db, no index)
+- Modify: `src/db/import-sanitize.test.ts` (migrate a stale `buildIndex` call — Task 1 removed that export; this is the one consumer outside SearchModal, which Task 5 handles)
 
 **Interfaces:**
-- Consumes (Task 1): `IndexEntry`, `ResultMeta` from `./search`.
+- Consumes (Task 1): `IndexEntry`, `ResultMeta`, `syncSlice`, `resetIndex` from `./search`.
 - Produces:
   - `function calendarSignature(cal: Calendar): string`
   - `function pageEntries(pages: LorePage[]): IndexEntry[]`
@@ -633,13 +634,46 @@ export function resultHref(r: ResultMeta): string {
 Run: `npm run test:run -- src/searchEntries.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Verify search.ts is still type-only, then commit**
+- [ ] **Step 5: Migrate the stale `buildIndex` consumer in `import-sanitize.test.ts`**
 
-Run: `npm run lint && npm run build`
-Expected: no errors. (Confirms `searchEntries.ts` compiles and imports only types from `./db`.)
+Task 1 removed `buildIndex`, but `src/db/import-sanitize.test.ts` still imports it (line 9) and calls it at line 124 to assert that indexing a malformed imported page does not throw. Migrate it to the new API — `pageEntries` (this task) now exists, and running it through `syncSlice` exercises the same `build()`/`stripHtml` path the old call did.
+
+Change the import at `src/db/import-sanitize.test.ts:9` from:
+
+```ts
+import { buildIndex } from '../search'
+```
+to:
+```ts
+import { syncSlice, resetIndex } from '../search'
+import { pageEntries } from '../searchEntries'
+```
+
+Change the assertion at `src/db/import-sanitize.test.ts:124` from:
+
+```ts
+    expect(() => buildIndex(pages)).not.toThrow()
+```
+to:
+```ts
+    expect(() => { resetIndex(); syncSlice('page', pageEntries(pages)) }).not.toThrow()
+```
+
+Run: `npm run test:run -- src/db/import-sanitize.test.ts`
+Expected: PASS (the malformed-row test still asserts indexing does not throw, now via the real page adapter).
+
+- [ ] **Step 6: Lint, verify slices, then commit**
+
+Run: `npm run lint`
+Expected: clean.
+
+Run: `npm run test:run -- src/searchEntries.test.ts src/db/import-sanitize.test.ts`
+Expected: both PASS.
+
+> Note: a full `npm run build` / whole-suite run still fails at this point — `App.tsx` and `SearchModal.tsx(.test)` reference the removed `syncIndex`/`searchPages`, which Tasks 3 and 5 migrate. That is expected mid-plan; do not try to fix those here. `searchEntries.ts` staying type-only for its `./db` import is confirmed by lint + the fact it type-checks against the `import type` line.
 
 ```bash
-git add src/searchEntries.ts src/searchEntries.test.ts
+git add src/searchEntries.ts src/searchEntries.test.ts src/db/import-sanitize.test.ts
 git commit -m "feat: record→index adapters with join-aware signatures (#176)"
 ```
 
