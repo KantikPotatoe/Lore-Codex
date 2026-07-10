@@ -2,24 +2,28 @@ name: Desktop
 
 # Compile-checks the Tauri shell (src-tauri) so a PR can't silently break the
 # desktop build — the main CI only exercises the web target. `cargo check`
-# (not a full bundle) keeps feedback fast; the real installer is built locally
-# / by a future release workflow. Scoped by paths: pure web changes skip it.
+# (not a full bundle) keeps feedback fast; release.yml builds the real
+# installer on a version tag. Scoped by paths: pure web changes skip it.
 #
-# The frontend build must run first: tauri's generate_context! macro embeds
-# ../dist at compile time, so `cargo check` fails without it.
+# The check is enough to catch the regressions that used to surface only at
+# release: build.rs (tauri_build::build) parses tauri.conf.json — including the
+# `version` it reads from package.json — and resolves every capability
+# permission against the plugins' ACL, so an unknown permission fails here.
+#
+# No frontend build is needed: generate_context! only embeds ../dist in the
+# release profile, and this runs in debug (where it resolves devUrl instead).
+# The embedded-asset path is covered by release.yml.
 on:
   push:
     branches: [main]
     paths:
       - 'src-tauri/**'
       - 'package.json'
-      - 'package-lock.json'
       - '.github/workflows/desktop.yml'
   pull_request:
     paths:
       - 'src-tauri/**'
       - 'package.json'
-      - 'package-lock.json'
       - '.github/workflows/desktop.yml'
 
 permissions:
@@ -31,18 +35,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build frontend (embedded by generate_context!)
-        run: npm run build
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -51,5 +43,6 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # --locked also fails if Cargo.lock has drifted from Cargo.toml.
       - name: Check the shell crate
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
