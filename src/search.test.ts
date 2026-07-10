@@ -1,36 +1,111 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { buildIndex, syncIndex, searchPages, highlightSnippet } from './search'
-import type { LorePage } from './db'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import {
+  syncSlice, searchAll, applyCaps, resetIndex, highlightSnippet,
+  type IndexEntry, type SearchKind, type ResultMeta,
+} from './search'
 
 // search.ts uses stripHtml (DOMParser), so the suite-default happy-dom env applies.
 
-const page = (over: Partial<LorePage> & { id: string }): LorePage => ({
-  title: '',
-  category: 'Character',
-  content: '',
-  summary: '',
-  tags: [],
-  createdAt: 1,
-  updatedAt: 1,
-  ...over,
+beforeEach(() => resetIndex())
+
+// A synthetic page entry — search.ts is agnostic about real record shapes.
+const pageEntry = (id: string, title: string, body = ''): IndexEntry => ({
+  id,
+  signature: `${title}\0${body}`,
+  build: () => ({
+    text: `${title} ${body}`,
+    snippetSource: body || title,
+    meta: { kind: 'page', id, title, category: 'Character' } as ResultMeta,
+  }),
 })
 
-const ids = (q: string): string[] => searchPages(q).map((r) => r.id).sort()
+const keysFor = (q: string): string[] => searchAll(q).map((r) => `${r.kind}:${r.id}`)
 
-// Reset to a clean, initialised index before each test (buildIndex swaps in a fresh
-// Index and clears the store), so syncIndex runs from a realistic post-build state.
-beforeEach(() => buildIndex([]))
+describe('syncSlice + searchAll', () => {
+  it('finds an entry by indexed text and returns a composed result', () => {
+    syncSlice('page', [pageEntry('a', 'Gandalf', 'a wizard of the realm')])
+    const results = searchAll('wizard')
+    expect(results).toHaveLength(1)
+    expect(results[0]).toMatchObject({ kind: 'page', id: 'a', title: 'Gandalf' })
+    expect(results[0].snippet).toContain('wizard')
+  })
 
-describe('buildIndex + searchPages', () => {
-  it('finds pages by title, stripped body, and tags', () => {
-    buildIndex([
-      page({ id: 'a', title: 'Gandalf', content: '<p>a <b>wizard</b> of the realm</p>' }),
-      page({ id: 'b', title: 'Frodo', summary: 'a hobbit', tags: ['ringbearer'] }),
-    ])
-    expect(ids('Gandalf')).toEqual(['a'])
-    expect(ids('wizard')).toEqual(['a']) // HTML tags stripped before indexing
-    expect(ids('ringbearer')).toEqual(['b'])
-    expect(searchPages('')).toEqual([])
+  it('returns [] for an empty query and before any sync', () => {
+    expect(searchAll('')).toEqual([])
+    resetIndex()
+    expect(searchAll('anything')).toEqual([])
+  })
+
+  it('adds, updates, and removes within a slice', () => {
+    syncSlice('page', [pageEntry('a', 'Strider')])
+    expect(keysFor('Strider')).toEqual(['page:a'])
+    syncSlice('page', [pageEntry('a', 'Aragorn')])
+    expect(keysFor('Aragorn')).toEqual(['page:a'])
+    expect(keysFor('Strider')).toEqual([])
+    syncSlice('page', []) // 'a' dropped
+    expect(keysFor('Aragorn')).toEqual([])
+  })
+
+  it('isolates slices: clearing events leaves pages searchable', () => {
+    syncSlice('page', [pageEntry('p', 'Rivendell')])
+    syncSlice('event', [{
+      id: 'e', signature: 'v1',
+      build: () => ({ text: 'Council of Elrond', snippetSource: '', meta: { kind: 'event', id: 'e', title: 'Council', subtitle: '' } }),
+    }])
+    expect(keysFor('Council')).toEqual(['event:e'])
+    syncSlice('event', []) // clear only the event slice
+    expect(keysFor('Council')).toEqual([])
+    expect(keysFor('Rivendell')).toEqual(['page:p']) // page slice untouched
+  })
+
+  it('skips build() when the signature is unchanged, reruns it when it changes', () => {
+    const build = vi.fn(() => ({
+      text: 'Legolas', snippetSource: '', meta: { kind: 'page', id: 'a', title: 'Legolas', category: 'Character' } as ResultMeta,
+    }))
+    const entry = (sig: string): IndexEntry => ({ id: 'a', signature: sig, build })
+
+    syncSlice('page', [entry('sig-1')])
+    expect(build).toHaveBeenCalledTimes(1)
+    syncSlice('page', [entry('sig-1')]) // unchanged → gated
+    expect(build).toHaveBeenCalledTimes(1)
+    syncSlice('page', [entry('sig-2')]) // changed → rebuilds
+    expect(build).toHaveBeenCalledTimes(2)
+  })
+})
+
+const QUOTAS: Record<SearchKind, number> = { page: 8, event: 5, scene: 5, pin: 4, region: 4 }
+
+describe('applyCaps', () => {
+  it('returns all hits, in rank order, when only one kind matches (no regression vs page-only search)', () => {
+    const ranked = Array.from({ length: 30 }, (_, i) => `page:p${i}`)
+    const kept = applyCaps(ranked, QUOTAS, 20)
+    expect(kept).toEqual(ranked.slice(0, 20)) // 20 pages, original order
+  })
+
+  it('guarantees each competing kind its reserved seats, total = limit, order preserved', () => {
+    // 10 pages, then 10 events, then 10 scenes, all lower-ranked than the pages.
+    const ranked = [
+      ...Array.from({ length: 10 }, (_, i) => `page:p${i}`),
+      ...Array.from({ length: 10 }, (_, i) => `event:e${i}`),
+      ...Array.from({ length: 10 }, (_, i) => `scene:s${i}`),
+    ]
+    const kept = applyCaps(ranked, QUOTAS, 20)
+    expect(kept).toHaveLength(20)
+    const kind = (k: string) => k.split(':')[0]
+    expect(kept.filter((k) => kind(k) === 'event').length).toBeGreaterThanOrEqual(5)
+    expect(kept.filter((k) => kind(k) === 'scene').length).toBeGreaterThanOrEqual(5)
+    // output is a subsequence of the input (relative order preserved)
+    let last = -1
+    for (const k of kept) {
+      const idx = ranked.indexOf(k)
+      expect(idx).toBeGreaterThan(last)
+      last = idx
+    }
+  })
+
+  it('returns everything when there are fewer hits than the limit, with no padding', () => {
+    const ranked = ['page:a', 'event:b', 'pin:c']
+    expect(applyCaps(ranked, QUOTAS, 20)).toEqual(ranked)
   })
 })
 
@@ -41,8 +116,6 @@ describe('highlightSnippet', () => {
   })
 
   it('escapes HTML in the snippet so stored text cannot become live markup', () => {
-    // stripHtml decodes entities, so a page whose *visible text* is an HTML tag
-    // (self-typed or from an imported backup) reaches the snippet as raw markup.
     expect(highlightSnippet('<img src=x onerror=alert(1)>', 'img')).toBe(
       '&lt;<mark>img</mark> src=x onerror=alert(1)&gt;',
     )
@@ -60,63 +133,5 @@ describe('highlightSnippet', () => {
 
   it('treats regex metacharacters in the query as literals', () => {
     expect(highlightSnippet('cost (a+b)', '(a+b)')).toBe('cost <mark>(a+b)</mark>')
-  })
-})
-
-describe('syncIndex — incremental deltas', () => {
-  it('adds a new page', () => {
-    syncIndex([page({ id: 'a', title: 'Aragorn' })])
-    expect(ids('Aragorn')).toEqual(['a'])
-  })
-
-  it('updates a changed page (new term found, old term gone)', () => {
-    const p = page({ id: 'a', title: 'Strider', updatedAt: 1 })
-    syncIndex([p])
-    expect(ids('Strider')).toEqual(['a'])
-
-    syncIndex([{ ...p, title: 'Aragorn', updatedAt: 2 }])
-    expect(ids('Aragorn')).toEqual(['a'])
-    expect(ids('Strider')).toEqual([]) // old indexed text replaced
-  })
-
-  it('removes a page that is no longer present', () => {
-    syncIndex([page({ id: 'a', title: 'Boromir' }), page({ id: 'b', title: 'Faramir' })])
-    expect(ids('Boromir')).toEqual(['a'])
-
-    syncIndex([page({ id: 'b', title: 'Faramir' })]) // 'a' dropped
-    expect(ids('Boromir')).toEqual([])
-    expect(ids('Faramir')).toEqual(['b'])
-  })
-
-  it('skips re-indexing a page whose updatedAt is unchanged', () => {
-    syncIndex([page({ id: 'a', title: 'Legolas', updatedAt: 5 })])
-    expect(ids('Legolas')).toEqual(['a'])
-
-    // Same updatedAt but different content: syncIndex must treat it as unchanged and
-    // skip the re-parse, so the index still reflects the originally-indexed text.
-    syncIndex([page({ id: 'a', title: 'Gimli', updatedAt: 5 })])
-    expect(ids('Legolas')).toEqual(['a'])
-    expect(ids('Gimli')).toEqual([])
-  })
-
-  it('applies a mix of add, update, remove, and skip in one call', () => {
-    syncIndex([
-      page({ id: 'keep', title: 'Unchanged', updatedAt: 1 }),
-      page({ id: 'edit', title: 'Before', updatedAt: 1 }),
-      page({ id: 'gone', title: 'Doomed', updatedAt: 1 }),
-    ])
-
-    syncIndex([
-      page({ id: 'keep', title: 'Unchanged', updatedAt: 1 }), // skip (same updatedAt)
-      page({ id: 'edit', title: 'After', updatedAt: 2 }), // update
-      page({ id: 'fresh', title: 'Newcomer', updatedAt: 1 }), // add
-      // 'gone' omitted → remove
-    ])
-
-    expect(ids('Unchanged')).toEqual(['keep'])
-    expect(ids('After')).toEqual(['edit'])
-    expect(ids('Before')).toEqual([])
-    expect(ids('Newcomer')).toEqual(['fresh'])
-    expect(ids('Doomed')).toEqual([])
   })
 })
