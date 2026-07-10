@@ -105,6 +105,7 @@ export interface MapRepository {
   updatePin(id: string, changes: Change<MapPin>): Promise<void>
   removePin(id: string): Promise<void>
 
+  getRegion(id: string): Promise<MapRegion | undefined>
   /** Every region across all maps. */
   listRegions(): Promise<MapRegion[]>
   /** Regions on one map (empty when `mapId` is falsy). */
@@ -136,6 +137,7 @@ export const mapRepo: MapRepository = {
     await db.pins.delete(id)
   },
 
+  getRegion: (id) => db.regions.get(id),
   listRegions: () => db.regions.toArray(),
   listRegionsForMap: (mapId) =>
     mapId ? db.regions.where('mapId').equals(mapId).toArray() : Promise.resolve([]),
