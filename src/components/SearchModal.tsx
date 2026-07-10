@@ -140,7 +140,7 @@ export default function SearchModal({ onClose }: Props) {
               return (
                 <a
                   key={`${row.kind}:${row.id}`}
-                  href={resultHref(row)}
+                  href={'#' + resultHref(row)}
                   className={`search-result${i === selected ? ' is-selected' : ''}`}
                   onClick={(e) => { e.preventDefault(); go(row) }}
                   onMouseEnter={(e) => {

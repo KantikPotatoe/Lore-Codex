@@ -94,7 +94,7 @@ describe('SearchModal', () => {
     const row = await screen.findByText('Ashfall begins')
     expect(screen.getByText('Event')).toBeTruthy() // badge
     const link = row.closest('a')
-    expect(link?.getAttribute('href')).toContain('/timeline?event=e1')
+    expect(link?.getAttribute('href')).toBe('#/timeline?event=e1')
   })
 
   it('wires page-hover on a page row in the same harness (control for the next test)', async () => {
