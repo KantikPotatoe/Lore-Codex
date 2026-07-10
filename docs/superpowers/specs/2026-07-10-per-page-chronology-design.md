@@ -159,7 +159,7 @@ highlight animation.
 | `yearLength === 0` | Already guarded inside `absoluteToDate`; `formatDate` still returns a string. |
 | Event both links and mentions | One row, `roles: ['linked', 'mention']`. |
 | Page has no matching events | Panel renders nothing at all. |
-| Page renamed | `renamePage()` rewrites `[[Title]]` tokens in page bodies and infoboxes but **not** in event descriptions, so mention-matched rows silently drop. Pre-existing gap, **out of scope**, tracked separately; `pageId`-linked rows survive a rename regardless. |
+| Page renamed | `renamePage()` rewrites the `data-title` attribute on wiki-link anchors in page bodies, infobox refs, manuscript scenes **and** timeline-event descriptions (`db/pages.ts:205-208`), so both `linked` rows (id-based) and `mention` rows (title-based) survive a rename. |
 
 ## Out of scope
 
@@ -167,7 +167,6 @@ highlight animation.
   birth/death event kind in the data model, so any lifespan would be guesswork.
 - **Event→page refs beyond `pageId`.** A multi-ref cast list on events (the way
   `Scene` carries `castPageIds`) is a data-model change, not this panel.
-- **Fixing `renamePage` to rewrite event descriptions.** See the table above.
 
 ## Testing
 

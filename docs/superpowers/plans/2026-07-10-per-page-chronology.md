@@ -653,10 +653,6 @@ the page, in chronological order, each row deep-linking to that event.
 
 Design: `docs/superpowers/specs/2026-07-10-per-page-chronology-design.md`.
 
-**Known gap, out of scope:** `renamePage()` rewrites `[[Title]]` tokens in page
-bodies and infoboxes but not in event descriptions, so renaming a page drops its
-mention-matched rows. Pre-existing; `Linked` rows are unaffected. Worth its own issue.
-
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"

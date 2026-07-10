@@ -49,7 +49,7 @@ export default function PageHistory({ pageId, title }: { pageId: string; title: 
             <Link to={`/timeline?event=${event.id}`} className="page-history-row">
               <span className="page-history-date">
                 {calendar ? dateLabel(calendar, event.startAbsolute) : '—'}
-                {calendar && event.endAbsolute != null &&
+                {calendar && event.endAbsolute != null && event.endAbsolute !== event.startAbsolute &&
                   ` — ${dateLabel(calendar, event.endAbsolute)}`}
               </span>
               <span className="page-history-title">
