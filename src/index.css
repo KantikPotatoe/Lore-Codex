@@ -54,13 +54,20 @@ a { color: inherit; text-decoration: none; }
 
 /* Keyboard focus ring. Only shows for keyboard nav (:focus-visible), never on
    mouse click. Uses outline (not box-shadow) so it survives the overflow:hidden
-   panels (infobox, cards) that would clip a shadow ring. */
+   panels (infobox, cards) that would clip a shadow ring.
+
+   Deliberately sets NO border-radius (#215). An outline already follows its
+   element's own radius, and outline-offset lifts the ring clear regardless — so
+   a border-radius here shapes nothing. What it DOES do is win: this selector is
+   specificity 0-1-1, which outranks any single-class card rule (0-1-0), so it
+   overrode the card itself and flattened .browse-card / .book-card / .world-card
+   to 3px corners while focused. Leave it off: the ring now follows each
+   element's real shape. */
 a:focus-visible, button:focus-visible, input:focus-visible,
 select:focus-visible, textarea:focus-visible, summary:focus-visible,
 [tabindex]:focus-visible, .ProseMirror:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 3px;
 }
 
 /* Warm selection — the browser default is blue and fights the parchment look. */
