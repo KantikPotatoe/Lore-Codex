@@ -47,14 +47,20 @@ function keyKind(key: string): SearchKind {
   return key.slice(0, key.indexOf(':')) as SearchKind
 }
 
+// Single construction site for the index so the tokenizer config can't drift
+// between ensureIndex() and resetIndex().
+function newIndex(): Index {
+  return new Index({ tokenize: 'forward', resolution: 5 })
+}
+
 function ensureIndex(): Index {
-  if (!activeIdx) activeIdx = new Index({ tokenize: 'forward', resolution: 5 })
+  if (!activeIdx) activeIdx = newIndex()
   return activeIdx
 }
 
 /** Swap in a fresh empty index and clear the store. Used by tests. */
 export function resetIndex(): void {
-  activeIdx = new Index({ tokenize: 'forward', resolution: 5 })
+  activeIdx = newIndex()
   store.clear()
 }
 
