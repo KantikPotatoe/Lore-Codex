@@ -1537,11 +1537,12 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 
 .lore-hero-title {
   font-family: var(--display);
-  font-size: 45px;
+  font-size: clamp(44px, 6vw, 64px);
   font-weight: 600;
   color: var(--accent);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  line-height: 1.1;
   margin: 0 0 8px;
 }
 
@@ -1834,7 +1835,10 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 
 /* Add-world tile */
 .world-card-add {
-  border-radius: var(--radius);
+  position: relative;
+  min-height: 240px;
+  border-radius: 120px 120px var(--radius) var(--radius)
+               / 40px  40px  var(--radius) var(--radius);
   border: 2px dashed var(--border);
   background: transparent;
   color: var(--ink-faint);
@@ -1844,10 +1848,10 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 222px;
-  font-size: 14px;
   font-family: var(--sans);
-  transition: border-color var(--dur-1), color var(--dur-1);
+  font-size: 14px;
+  transition: border-color var(--dur-1) var(--ease-out),
+              color var(--dur-1) var(--ease-out);
 }
 
 .world-card-add:hover:not(:disabled) {
