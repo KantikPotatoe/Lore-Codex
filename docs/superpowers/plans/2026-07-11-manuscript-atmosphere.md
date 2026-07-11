@@ -17,7 +17,7 @@
 - **Import from the barrel.** Always `import { … } from '../db'` (or `'../../db'`), never from `src/db/schema.ts` directly. `barrel.test.ts` fails if new public API isn't re-exported from `src/db/index.ts`. (This plan adds no new `db` API, so nothing to re-export.)
 - **Preserve these exact strings** — existing tests match on them and must stay green without edits: `no books yet`, `no plotlines yet`, `select a scene` (all case-insensitive substring matches).
 - **Preserve the `.book-card` class name.** It is listed in the shared stagger selector in `src/index.css` and `ManuscriptRoute.test.tsx` locates cards with `.closest('.book-card')`.
-- **No rem in `src/index.css`.** The manuscript block is the file's last rem holdout; the whole file is px after Task 2.
+- **No rem in the manuscript block of `src/index.css`.** (Other sections of the file — home, sidebar, graph, world-health — also use rem. Normalizing those is **out of scope** for #168; see the follow-up note in Task 2.)
 - **Motion tokens only** — `--dur-1` (120ms), `--dur-2` (180ms), `--dur-3` (240ms), `--ease-out`, `--ease-settle`. Introduce no new durations or easings.
 - **TypeScript is `strict`.** No `any`, no non-null assertions added.
 - **Definition of done:** `npm run lint`, `npm run build`, and `npm run test:run` all pass. CI runs all three.
@@ -151,10 +151,7 @@ Do not touch anything else in the block — no reordering, no renaming, no prope
 Run: `sed -n '2143,2665p' src/index.css | grep -c rem`
 Expected: `0`
 
-Then confirm the file as a whole is rem-free:
-
-Run: `grep -n "[0-9.]rem" src/index.css`
-Expected: no output.
+**Do not** extend this to the rest of the file. Other sections (home, sidebar, graph, world-health) also use rem — roughly 96 occurrences. Normalizing those is a separate, unrelated change and is **out of scope for #168**; file it as a follow-up issue instead of widening this PR.
 
 - [ ] **Step 3: Verify the build and tests still pass**
 

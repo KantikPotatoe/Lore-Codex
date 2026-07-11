@@ -10,8 +10,8 @@ Session 2 of the visual-polish program (session 1 = the quiet-library motion
 system, `2026-07-04-motion-system-design.md`, merged as #167; the directional
 page-transition follow-up landed as #172/#213). The manuscript area is the
 weakest CSS in the app: plain panel cards, none of the shared `.parchment` /
-`.elevated` language, and the only block in `index.css` still written in rem
-while the rest of the file is px.
+`.elevated` language, and a block that drifted to rem while most of `index.css`
+is px.
 
 This pass turns the book library into a **shelf of bound books** — the showcase
 item — and sweeps the surrounding manuscript chrome onto the app's shared type,
@@ -122,7 +122,10 @@ So **grain and elevation go where there is material to carry them: the covers.**
 ### 5. Units, empty states, motion
 
 - **Units.** The manuscript block in `src/index.css` (currently ~lines 2143–2665)
-  converts rem → px throughout — the last rem holdout in the file.
+  converts rem → px throughout, onto the px convention most of the file follows.
+  Other sections (home, sidebar, graph, world-health) carry rem too — ~96
+  occurrences. Normalizing those is unrelated to this pass and stays out of
+  scope; it is worth a follow-up issue of its own.
 - **Empty states.** All three manuscript empties adopt the shared `EmptyState`
   component: the shelf (with the create-book CTA), the plotline grid, and the
   write view's no-scene-selected pane. Each **keeps its current copy** — "no books
