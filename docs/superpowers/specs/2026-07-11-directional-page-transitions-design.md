@@ -19,16 +19,22 @@ unchanged (`--dur-3`, `--ease-settle`).
 
 ## Direction detection
 
-react-router v7 maintains a monotonic `idx` in `window.history.state`. A pure
-helper decides direction from the previous idx, next idx, and navigation type:
+react-router v7 maintains a monotonic `idx` in `window.history.state` (populated
+only when navigation goes through `<Link>`/`navigate` — which this app uses).
+A pure helper decides direction from the previous idx, next idx, and nav type:
 
 ```
 navDirection(prevIdx, nextIdx, navType) -> 'forward' | 'back'
 ```
 
-- `nextIdx < prevIdx` → `back`
-- `nextIdx > prevIdx` → `forward`
-- equal / missing idx / first render / `PUSH` / `REPLACE` → `forward` (neutral default)
+- both idx known → `nextIdx < prevIdx ? 'back' : 'forward'` (idx is the primary signal)
+- idx incomparable (returning to the session's first, pre-router entry, which
+  carries no idx) → tiebreaker: `navType === 'POP'` with a known previous entry → `back`
+- otherwise → `forward` (neutral default: first navigation, PUSH onto an idx-less entry)
+
+The `navType` tiebreaker was added after live browser verification showed
+back-navigation to the session's first entry (idx-less) otherwise animating as
+forward.
 
 `useNavDirection()` is a thin hook: reads `history.state?.idx` and `useNavigationType()`
 on each `location` change, holds the previous idx in a ref, returns the current

@@ -2057,10 +2057,20 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .lightbox-next { right: -56px; }
 .lightbox-nav:hover { background: rgba(0,0,0,.7); }
 
-/* Route transition: content fades in and rises slightly on navigation. */
-.route-fade { height: 100%; animation: route-fade-in var(--dur-3) var(--ease-settle); }
-@keyframes route-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
+/* Route transition: content fades in on navigation, with a directional lean
+   set by data-nav (see useNavDirection). Forward (a new page) rises from just
+   below; back (returning to the previous page) settles from just above.
+   Both land at the natural resting state, so a cancelled animation never hides
+   content. */
+.route-fade { height: 100%; }
+.route-fade[data-nav='forward'] { animation: route-fade-forward var(--dur-3) var(--ease-settle); }
+.route-fade[data-nav='back']    { animation: route-fade-back var(--dur-3) var(--ease-settle); }
+@keyframes route-fade-forward {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes route-fade-back {
+  from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: none; }
 }
 
