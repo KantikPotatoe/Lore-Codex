@@ -129,9 +129,12 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
    highlight, so panels read as lit from above rather than as flat fills.
    Deliberately scoped to floating content panels. Excluded: .browse-card and
    .modal-dialog carry their own (hover / deep) shadows; .sidebar is structural
-   chrome, not a floating panel. Note: on an overflow:hidden panel whose child
-   paints over the top edge (e.g. .infobox's coloured title bar), the inner
-   highlight is occluded and the lit-from-above cue comes from the drop shadow. */
+   chrome, not a floating panel. .book-card is included despite having its own
+   :hover shadow because it still needs a resting elevation — :hover's higher
+   specificity simply overrides it with a deeper shadow. Note: on an
+   overflow:hidden panel whose child paints over the top edge (e.g. .infobox's
+   coloured title bar), the inner highlight is occluded and the lit-from-above
+   cue comes from the drop shadow. */
 .elevated,
 .lore-card,
 .infobox,
