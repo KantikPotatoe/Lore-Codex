@@ -129,9 +129,10 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
    highlight, so panels read as lit from above rather than as flat fills.
    Deliberately scoped to floating content panels. Excluded: .browse-card and
    .modal-dialog carry their own (hover / deep) shadows; .sidebar is structural
-   chrome, not a floating panel. .book-card is included despite having its own
-   :hover shadow because it still needs a resting elevation — :hover's higher
-   specificity simply overrides it with a deeper shadow. Note: on an
+   chrome, not a floating panel. .book-card is included, despite also carrying
+   its own :hover shadow, because a cover is a physical object resting on a
+   shelf and needs a RESTING elevation too — :hover's higher specificity
+   simply overrides it with a deeper shadow on lift. Note: on an
    overflow:hidden panel whose child paints over the top edge (e.g. .infobox's
    coloured title bar), the inner highlight is occluded and the lit-from-above
    cue comes from the drop shadow. */
@@ -2154,8 +2155,6 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .manuscript-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
   margin-bottom: 20px;
 }
 /* The shelf. Each cover carries --cover-hue inline (deterministic from the title,
@@ -2167,6 +2166,14 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 16px;
 }
+/* overflow: hidden is load-bearing, not just spine-clipping: a grid item's
+   min-height: auto resolves to its content-based minimum unless overflow is
+   non-visible, so this is what lets aspect-ratio: 2 / 3 actually govern the
+   cover's height instead of its content — remove it to "un-clip" a long title
+   and the whole shelf's proportions break. Also: background-color must stay a
+   LONGHAND here, never the background shorthand — .book-card is in the shared
+   .parchment selector list above, which supplies background-image (the paper
+   grain); the shorthand would silently wipe it. */
 .book-card {
   position: relative;
   aspect-ratio: 2 / 3;
@@ -2220,6 +2227,11 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   letter-spacing: 0.02em;
   color: var(--accent-soft);
   margin: auto 0; /* centres the title in the space above the rule */
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .book-card-rule {
   width: 34px;
@@ -2247,9 +2259,9 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   color: var(--ink);
   background: linear-gradient(
     180deg,
-    rgba(21, 19, 15, 0) 0%,
-    rgba(21, 19, 15, 0.92) 38%,
-    rgba(21, 19, 15, 0.97) 100%
+    color-mix(in srgb, var(--bg) 0%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 92%, transparent) 38%,
+    color-mix(in srgb, var(--bg) 97%, transparent) 100%
   );
   opacity: 0;
   transition: opacity var(--dur-2) var(--ease-settle);
@@ -2345,11 +2357,6 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   background: var(--accent);
   color: var(--bg);
 }
-.book-grid-view {
-  padding: 48px;
-  text-align: center;
-}
-
 /* Write view: binder + editor two-pane */
 .book-write {
   display: grid;
