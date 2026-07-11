@@ -2293,10 +2293,39 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 .book-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 16px;
+}
+.book-head-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+/* Quiet until touched: the blurb reads as text, and only shows its edges on
+   hover/focus, so the header doesn't sprout a form field. */
+.book-blurb-input {
+  width: 100%;
+  min-height: 38px;
+  resize: vertical;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink-dim);
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.5;
+  transition: border-color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out);
+}
+.book-blurb-input:hover:not(:disabled) {
+  border-color: var(--border);
+}
+.book-blurb-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+  color: var(--ink);
 }
 .seg-control {
   display: inline-flex;
