@@ -36,6 +36,10 @@ export function eventEntries(events: TimelineEvent[], calendars: Calendar[]): In
       signature: [e.updatedAt, e.calendarId, calSig].join('\0'),
       build: () => {
         const body = stripHtml(e.description)
+        // No opts → formatDate reads only month names + era name/startYear, exactly
+        // what calendarSignature covers. Passing opts (e.g. { showWeekday: true })
+        // would pull in cal.weekdays / month days, which the signature does NOT
+        // track → stale entries; extend calendarSignature if you add opts here.
         const date = cal ? formatDate(cal, e.startYear, e.startMonth, e.startDay) : ''
         return {
           text: [e.title, body, e.category, date].join(' '),
