@@ -1638,6 +1638,15 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
     0 6px 18px rgba(0, 0, 0, 0.28);
 }
 
+/* :hover (0-1-1) outranks --active (0-1-0) and box-shadow does not stack across
+   rules, so without this the "you are here" ring would vanish the moment you
+   pointed at the current world's card. Re-assert it alongside the hover shadow. */
+.world-card--active:hover {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
 /* Banner */
 .world-card-banner {
   position: relative;
@@ -1877,6 +1886,13 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   flex-direction: column;
   align-items: center;
   gap: 14px;
+}
+
+/* The hero's "+ New World" and this CTA render on screen at once (first run);
+   both are primary buttons and must match. Padding only — margin-top and
+   width:auto already come from .empty-state-actions / .lore-empty above. */
+.lore-empty .empty-state-actions .primary-btn {
+  padding: 10px 26px;
 }
 
 /* --- Timeline ------------------------------------------------------------- */

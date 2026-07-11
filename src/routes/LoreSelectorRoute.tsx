@@ -140,30 +140,6 @@ export default function LoreSelectorRoute() {
                 <span className="world-card-enter">Enter →</span>
               </div>
 
-              {/* Handling controls, over the banner — never on the engraved mat. Icon-only,
-                  so aria-label is their only accessible name, and it names the world: N
-                  cards render at once and "Rename world" alone would be ambiguous. */}
-              <div className="world-card-actions">
-                <button
-                  className="world-card-action"
-                  aria-label={`Rename ${lore.name}`}
-                  title="Rename world"
-                  onClick={() => startRename(lore)}
-                >✎</button>
-                <button
-                  className="world-card-action"
-                  aria-label={`Change banner for ${lore.name}`}
-                  title="Change banner"
-                  onClick={() => openBannerPicker(lore.id)}
-                >🖼</button>
-                <button
-                  className="world-card-action danger"
-                  aria-label={`Delete ${lore.name}`}
-                  title="Delete world"
-                  onClick={() => setPendingDelete(lore)}
-                >✕</button>
-              </div>
-
               {/* The mat. */}
               <div className="world-card-mat">
                 <div className="world-card-title-row">
@@ -196,6 +172,30 @@ export default function LoreSelectorRoute() {
                 <span className="world-card-date">
                   Founded {new Date(lore.createdAt).toLocaleDateString()}
                 </span>
+              </div>
+
+              {/* Handling controls, over the banner — never on the engraved mat. Icon-only,
+                  so aria-label is their only accessible name, and it names the world: N
+                  cards render at once and "Rename world" alone would be ambiguous. */}
+              <div className="world-card-actions">
+                <button
+                  className="world-card-action"
+                  aria-label={`Rename ${lore.name}`}
+                  title="Rename world"
+                  onClick={() => startRename(lore)}
+                >✎</button>
+                <button
+                  className="world-card-action"
+                  aria-label={`Change banner for ${lore.name}`}
+                  title="Change banner"
+                  onClick={() => openBannerPicker(lore.id)}
+                >🖼</button>
+                <button
+                  className="world-card-action danger"
+                  aria-label={`Delete ${lore.name}`}
+                  title="Delete world"
+                  onClick={() => setPendingDelete(lore)}
+                >✕</button>
               </div>
             </div>
           )
