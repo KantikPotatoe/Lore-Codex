@@ -112,9 +112,13 @@ logic **verbatim**: `:hover`/`:focus-within` on `.world-card`, with the existing
 `@media (hover: none) { opacity: 1 }` fallback so they are always visible on
 touch. Only position, size, and labels change.
 
-Because they are icon-only they **must** carry `aria-label`s — "Rename world",
-"Change banner", "Delete world". This is the pass's one real accessibility
-obligation and its one real regression risk (§6).
+Because they are icon-only they **must** carry `aria-label`s. The labels **name
+their world** — `Rename ${lore.name}`, `Change banner for ${lore.name}`,
+`Delete ${lore.name}` — because the selector renders N cards: a bare "Rename
+world" would repeat identically on every gateway, leaving a screen-reader user
+no way to tell which world a control belongs to (and making `getByRole` ambiguous
+in tests). This is the pass's one real accessibility obligation and its one real
+regression risk (§6).
 
 The `.world-card-name` button stays as the keyboard-reachable "enter this world"
 control. `text-transform: uppercase` is presentational, so the button's
@@ -243,10 +247,11 @@ assertion.
 
 **New coverage.** The pass is ~95% CSS, so the tests are few but pointed:
 
-- **Corner controls expose accessible names.** The three actions become
-  icon-only, so `getByRole('button', { name: /rename world/i })` (and Banner,
-  Delete) must resolve. An icon button silently losing its label is exactly the
-  bug this refactor could ship, and it is invisible to the eye.
+- **Corner controls expose accessible names that identify their world.** The
+  three actions become icon-only, so
+  `getByRole('button', { name: /rename the westerlands/i })` (and Banner, Delete)
+  must resolve. An icon button silently losing its label is exactly the bug this
+  refactor could ship, and it is invisible to the eye.
 - **Add-tile renders only when `lores.length > 0`**, and the empty state only
   when it is `0`.
 
