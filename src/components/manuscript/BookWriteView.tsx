@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../db'
+import EmptyState from '../EmptyState'
 import BinderTree from './BinderTree'
 import SceneEditor from './SceneEditor'
 
@@ -22,7 +23,11 @@ export default function BookWriteView({ bookId, selectedSceneId, onSelectScene }
         {scene ? (
           <SceneEditor key={scene.id} scene={scene} />
         ) : (
-          <p className="empty-hint">Select a scene to start writing.</p>
+          <EmptyState
+            icon="✍️"
+            title="Select a scene to start writing"
+            message="Pick one from the binder, or add a scene to a chapter."
+          />
         )}
       </div>
     </div>

@@ -5,6 +5,7 @@ import {
   createBeat, updateBeat, deleteBeat, sceneStatusColor, TYPE_COLORS,
   type Scene, type Chapter, type Plotline, type Beat,
 } from '../../db'
+import EmptyState from '../EmptyState'
 import StructureControls from './StructureControls'
 
 const NO_SCENES: Scene[] = []
@@ -86,7 +87,11 @@ export default function BookGridView({ bookId }: { bookId: string }) {
         <StructureControls bookId={bookId} />
       </div>
       {plotlines.length === 0 ? (
-        <p className="empty-hint">No plotlines yet. Add one to start plotting.</p>
+        <EmptyState
+          icon="🧵"
+          title="No plotlines yet"
+          message="Add a plotline to start weaving threads through your chapters."
+        />
       ) : (
         <div className="grid-scroll">
           <table className="grid-table">
