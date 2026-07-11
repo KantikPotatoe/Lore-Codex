@@ -1522,7 +1522,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 /* ── Lore Selector ───────────────────────────────────────────────────── */
 .lore-selector {
   min-height: 100vh;
-  padding: 3rem 2rem 5rem;
+  padding: 48px 32px 80px;
   max-width: 980px;
   margin: 0 auto;
 }
@@ -1530,25 +1530,25 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 /* Hero */
 .lore-hero {
   text-align: center;
-  padding: 2rem 0 2.5rem;
+  padding: 32px 0 40px;
 }
 
 .lore-hero-title {
   font-family: var(--display);
-  font-size: 2.8rem;
+  font-size: 45px;
   font-weight: 600;
   color: var(--accent);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  margin: 0 0 0.5rem;
+  margin: 0 0 8px;
 }
 
 .lore-hero-tagline {
   font-family: var(--serif);
-  font-size: 1.05rem;
+  font-size: 17px;
   font-style: italic;
   color: var(--ink-dim);
-  margin: 0 0 1.25rem;
+  margin: 0 0 20px;
 }
 
 .lore-hero-rule {
@@ -1557,20 +1557,20 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   height: 1px;
   background: var(--accent);
   opacity: 0.45;
-  margin: 0 auto 1.5rem;
+  margin: 0 auto 24px;
 }
 
 .lore-hero-actions .primary-btn {
   width: auto;
   padding: 10px 26px;
-  font-size: 0.95rem;
+  font-size: 15px;
 }
 
 /* Grid */
 .lore-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1.25rem;
+  gap: 20px;
 }
 
 /* World card */
@@ -1616,7 +1616,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 
 .world-card-initial {
   font-family: var(--display);
-  font-size: 4rem;
+  font-size: 64px;
   font-weight: 600;
   color: var(--accent);
   opacity: 0.4;
@@ -1632,7 +1632,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   bottom: 10px;
   right: 12px;
   z-index: 1;
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
   color: rgba(255,255,255,0.9);
   letter-spacing: 0.06em;
@@ -1648,17 +1648,17 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 
 /* Card body */
 .world-card-body {
-  padding: 0.8rem 1rem 1rem;
+  padding: 13px 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 6px;
 }
 
 /* Title row: world name + active badge */
 .world-card-title-row {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 7px;
   min-width: 0;
 }
 
@@ -1666,7 +1666,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   background: none;
   border: none;
   padding: 0;
-  font-size: 1.02rem;
+  font-size: 16px;
   font-weight: 600;
   color: var(--ink);
   cursor: pointer;
@@ -1685,7 +1685,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 
 .world-card-badge {
   flex-shrink: 0;
-  font-size: 0.63rem;
+  font-size: 10px;
   font-weight: 600;
   color: var(--accent);
   border: 1px solid var(--accent);
@@ -1699,7 +1699,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .lore-rename-input {
   flex: 1;
   min-width: 0;
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: 600;
   background: var(--bg-2);
   border: 1px solid var(--accent);
@@ -1710,15 +1710,15 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 
 .world-card-date {
-  font-size: 0.72rem;
+  font-size: 12px;
   color: var(--ink-faint);
 }
 
 /* Hover-revealed actions */
 .world-card-actions {
   display: flex;
-  gap: 0.4rem;
-  margin-top: 0.4rem;
+  gap: 6px;
+  margin-top: 6px;
   flex-wrap: wrap;
   opacity: 0;
   transition: opacity var(--dur-1);
@@ -1734,7 +1734,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 
 .world-card-actions .ghost-btn {
-  font-size: 0.75rem;
+  font-size: 12px;
   padding: 3px 10px;
 }
 
@@ -1749,9 +1749,9 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 8px;
   min-height: 222px;
-  font-size: 0.9rem;
+  font-size: 14px;
   font-family: var(--sans);
   transition: border-color var(--dur-1), color var(--dur-1);
 }
@@ -1767,22 +1767,22 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 
 .world-card-add-icon {
-  font-size: 2.2rem;
+  font-size: 35px;
   line-height: 1;
 }
 
 /* Empty state */
 .lore-empty {
   text-align: center;
-  padding: 4rem 2rem;
+  padding: 64px 32px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 16px;
 }
 
 .lore-empty-glyph {
-  font-size: 5rem;
+  font-size: 80px;
   color: var(--accent);
   opacity: 0.18;
   line-height: 1;
@@ -1791,7 +1791,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 
 .lore-empty p {
   font-family: var(--serif);
-  font-size: 1.1rem;
+  font-size: 18px;
   font-style: italic;
   color: var(--ink-dim);
   margin: 0;
@@ -1800,7 +1800,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .lore-empty .primary-btn {
   width: auto;
   padding: 10px 26px;
-  margin-top: 0.5rem;
+  margin-top: 8px;
 }
 
 /* --- Timeline ------------------------------------------------------------- */
