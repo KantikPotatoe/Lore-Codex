@@ -126,22 +126,45 @@ export default function LoreSelectorRoute() {
               className={`world-card${isActive ? ' world-card--active' : ''}`}
               style={{ '--stagger-i': Math.min(i, 12) } as CSSProperties}
             >
-              {/* Banner / placeholder */}
-              <div
-                className="world-card-banner"
-                onClick={() => switchLore(lore.id)}
-                style={lore.banner ? { backgroundImage: `url(${lore.banner})` } : undefined}
-              >
+              {/* The gateway. The image sits on its own layer so the hover zoom scales it
+                  without dragging the decorated initial and the "Enter →" whisper with it. */}
+              <div className="world-card-banner" onClick={() => switchLore(lore.id)}>
+                <div
+                  className="world-card-banner-img"
+                  style={lore.banner ? { backgroundImage: `url(${lore.banner})` } : undefined}
+                />
                 {!lore.banner && (
-                  <span className="world-card-initial">
-                    {lore.name.charAt(0).toUpperCase()}
-                  </span>
+                  <span className="world-card-initial">{lore.name.charAt(0).toUpperCase()}</span>
                 )}
                 <span className="world-card-enter">Enter →</span>
               </div>
 
-              {/* Card body */}
-              <div className="world-card-body">
+              {/* Handling controls, over the banner — never on the engraved mat. Icon-only,
+                  so aria-label is their only accessible name, and it names the world: N
+                  cards render at once and "Rename world" alone would be ambiguous. */}
+              <div className="world-card-actions">
+                <button
+                  className="world-card-action"
+                  aria-label={`Rename ${lore.name}`}
+                  title="Rename world"
+                  onClick={() => startRename(lore)}
+                >✎</button>
+                <button
+                  className="world-card-action"
+                  aria-label={`Change banner for ${lore.name}`}
+                  title="Change banner"
+                  onClick={() => openBannerPicker(lore.id)}
+                >🖼</button>
+                <button
+                  className="world-card-action danger"
+                  aria-label={`Delete ${lore.name}`}
+                  title="Delete world"
+                  onClick={() => setPendingDelete(lore)}
+                >✕</button>
+              </div>
+
+              {/* The mat. */}
+              <div className="world-card-mat">
                 <div className="world-card-title-row">
                   {renamingId === lore.id ? (
                     <input
@@ -170,14 +193,8 @@ export default function LoreSelectorRoute() {
                 </div>
 
                 <span className="world-card-date">
-                  Created {new Date(lore.createdAt).toLocaleDateString()}
+                  Founded {new Date(lore.createdAt).toLocaleDateString()}
                 </span>
-
-                <div className="world-card-actions">
-                  <button className="ghost-btn" onClick={() => startRename(lore)}>✎ Rename</button>
-                  <button className="ghost-btn" onClick={() => openBannerPicker(lore.id)}>🖼 Banner</button>
-                  <button className="ghost-btn danger" onClick={() => setPendingDelete(lore)}>✕ Delete</button>
-                </div>
               </div>
             </div>
           )
