@@ -235,9 +235,15 @@ describe('LoreSelectorRoute — gateway cards', () => {
     expect(await screen.findByText(/^Founded /)).toBeTruthy()
   })
 
+  // DELIBERATE GREEN-FOREVER GUARD — read this before "fixing" it.
+  // This test passes against the OLD code too, and that is the point: it pins a
+  // property that must NOT change. The mat uppercases via CSS text-transform,
+  // which is presentational, so the accessible name stays what the user typed.
+  // It goes red only if someone later "helpfully" uppercases in the TSX with
+  // .toUpperCase(), which would corrupt the name for screen readers.
+  // It is a regression guard, not a discriminating test for this task — the two
+  // tests above are the ones that must go RED before Step 3.
   it('keeps the world name button exposing the true mixed-case name', async () => {
-    // The mat uppercases via text-transform, which is presentational only — the
-    // accessible name must remain what the user actually typed.
     vi.mocked(listLores).mockResolvedValue([world({ name: 'The Westerlands' })])
     render(<LoreSelectorRoute />)
     expect(await screen.findByRole('button', { name: 'The Westerlands' })).toBeTruthy()
@@ -248,7 +254,10 @@ describe('LoreSelectorRoute — gateway cards', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npm run test:run -- src/routes/LoreSelectorRoute.test.tsx`
-Expected: the three new tests FAIL — "Unable to find an accessible element with the role \"button\" and name `/^rename the westerlands$/i`" (today's button is labelled "✎ Rename"), and no `Founded ` text (today it reads "Created …"). The four existing wizard tests must still PASS.
+
+Expected: the **first two** new tests FAIL — "Unable to find an accessible element with the role \"button\" and name `/^rename the westerlands$/i`" (today's button is labelled "✎ Rename"), and no `Founded ` text (today it reads "Created …"). The third (mixed-case name) **passes already, by design** — see its comment; it is a regression guard, not a discriminating test. The four existing wizard tests must still PASS.
+
+Do not proceed until those two are genuinely RED. A test that cannot fail against the old code cannot pin the new code.
 
 - [ ] **Step 3: Restructure the card markup**
 
@@ -394,7 +403,12 @@ In the selector block, replace every rule from `/* World card */` through `.worl
   border-radius: 120px 120px var(--radius) var(--radius)
                / 40px  40px  var(--radius) var(--radius);
   overflow: hidden;
-  background: var(--panel);
+  /* background-COLOR, never the `background:` shorthand. .parchment (index.css
+     ~:116) supplies background-image: var(--parchment-noise), and this rule sits
+     ~1450 lines later — the shorthand would reset background-image to none and
+     silently wipe the grain. .book-card uses the longhand for exactly this
+     reason. */
+  background-color: var(--panel);
   border: 1px solid var(--border);
   transition: border-color var(--dur-1) var(--ease-out),
               box-shadow   var(--dur-1) var(--ease-out),
@@ -640,6 +654,7 @@ Expected: all pass.
 - [ ] **Step 8: Verify by eye**
 
 Run `npm run dev`, open `http://localhost:5174/#/`. Confirm:
+0. **The parchment grain actually survived.** In devtools, inspect a `.world-card` and check its computed `background-image` contains the `--parchment-noise` SVG data URI, **not** `none`. If it is `none`, something re-introduced the `background:` shorthand and silently wiped the grain (see the comment on `.world-card`).
 1. Cards have a shallow arched crown with a gold hairline following it.
 2. Hover: card lifts, gold rule brightens, banner drifts in — and the initial / "Enter →" **do not scale**.
 3. Hover reveals three icon buttons at the top-right, **fully visible, not clipped by the arch**.
