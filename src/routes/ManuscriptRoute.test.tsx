@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { db, createBook, createChapter, createScene, updateScene } from '../db'
+import { db, createBook, createChapter, createScene, updateScene, TYPE_COLORS } from '../db'
 import ManuscriptRoute from './ManuscriptRoute'
+import { coverHue } from '../bookCover'
 
 afterEach(async () => {
   cleanup()
@@ -57,5 +58,27 @@ describe('ManuscriptRoute', () => {
     const last = (await screen.findByText('Book 14')).closest('.book-card') as HTMLElement
     expect(first.style.getPropertyValue('--stagger-i')).toBe('0')
     expect(last.style.getPropertyValue('--stagger-i')).toBe('12')
+  })
+
+  it('gives each cover a deterministic hue derived from the title', async () => {
+    await db.books.add({ id: 'b1', title: 'The Ashen Crown', synopsis: '', order: 0, createdAt: 1, updatedAt: 1 })
+    render(<MemoryRouter><ManuscriptRoute /></MemoryRouter>)
+    const card = (await screen.findByText('The Ashen Crown')).closest('.book-card') as HTMLElement
+    expect(card.style.getPropertyValue('--cover-hue')).toBe(coverHue('The Ashen Crown', TYPE_COLORS))
+  })
+
+  it('shows the blurb on the cover when the book has one', async () => {
+    await db.books.add({
+      id: 'b1', title: 'Salt and Iron', synopsis: 'Two smugglers, one debt.',
+      order: 0, createdAt: 1, updatedAt: 1,
+    })
+    render(<MemoryRouter><ManuscriptRoute /></MemoryRouter>)
+    expect(await screen.findByText('Two smugglers, one debt.')).toBeTruthy()
+  })
+
+  it('offers an add-tile on the shelf once a book exists', async () => {
+    await db.books.add({ id: 'b1', title: 'One', synopsis: '', order: 0, createdAt: 1, updatedAt: 1 })
+    render(<MemoryRouter><ManuscriptRoute /></MemoryRouter>)
+    expect(await screen.findByRole('button', { name: /new book/i })).toBeTruthy()
   })
 })
