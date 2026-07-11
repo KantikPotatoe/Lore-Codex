@@ -118,4 +118,23 @@ describe('LoreSelectorRoute — gateway cards', () => {
     render(<LoreSelectorRoute />)
     expect(await screen.findByRole('button', { name: 'The Westerlands' })).toBeTruthy()
   })
+
+  it('shows the add-tile beside existing worlds, and the empty state when there are none', async () => {
+    vi.mocked(listLores).mockResolvedValue([world()])
+    const { unmount } = render(<LoreSelectorRoute />)
+
+    // Two "New World" buttons with a world present: the hero's, and the add-tile.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /new world/i })).toHaveLength(2))
+    expect(screen.queryByText(/no worlds yet/i)).toBeNull()
+    unmount()
+
+    // With none, the add-tile is gone (only the hero's button) and the empty state
+    // carries the CTA, so the affordance is never absent.
+    vi.mocked(listLores).mockResolvedValue([])
+    render(<LoreSelectorRoute />)
+
+    expect(await screen.findByText(/no worlds yet — your stories await/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /create your first world/i })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /new world/i })).toHaveLength(1)
+  })
 })

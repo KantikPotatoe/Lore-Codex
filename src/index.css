@@ -1869,36 +1869,14 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   line-height: 1;
 }
 
-/* Empty state */
-.lore-empty {
-  text-align: center;
-  padding: 64px 32px;
-  display: flex;
+/* Empty / first-run state. The shared EmptyState carries the layout; .lore-empty
+   survives only as a scoping hook. Its .empty-state-actions is a flex ROW by
+   default (index.css), which would sit the CTA and the migration hint side by
+   side — so stack them, keeping the primary button above the footnote. */
+.lore-empty .empty-state-actions {
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-}
-
-.lore-empty-glyph {
-  font-size: 80px;
-  color: var(--accent);
-  opacity: 0.18;
-  line-height: 1;
-  user-select: none;
-}
-
-.lore-empty p {
-  font-family: var(--serif);
-  font-size: 18px;
-  font-style: italic;
-  color: var(--ink-dim);
-  margin: 0;
-}
-
-.lore-empty .primary-btn {
-  width: auto;
-  padding: 10px 26px;
-  margin-top: 8px;
+  gap: 14px;
 }
 
 /* --- Timeline ------------------------------------------------------------- */

@@ -16,6 +16,7 @@ import { parseBackup, type BackupCounts } from '../db'
 import { openTextFile } from '../platform'
 import { compressImage } from '../imageUtils'
 import ConfirmDialog from '../components/ConfirmDialog'
+import EmptyState from '../components/EmptyState'
 
 /** A world name derived from a backup's filename — the stem, unless it's one
  *  of our own timestamped export names, which make poor world names. */
@@ -217,15 +218,15 @@ export default function LoreSelectorRoute() {
       {/* Empty state — shown when no worlds exist */}
       {lores.length === 0 && (
         <div className="lore-empty">
-          <span className="lore-empty-glyph">❧</span>
-          <p>No worlds yet — your stories await.</p>
-          <button className="primary-btn" onClick={handleCreate} disabled={creating}>
-            {creating ? 'Creating…' : 'Create your first world'}
-          </button>
-          <p className="empty-hint">
-            Coming from the browser version? Use <strong>Import World</strong> above with a
-            backup file (Settings → Back up now, once per world) to bring each world across.
-          </p>
+          <EmptyState icon="❧" title="No worlds yet — your stories await.">
+            <button className="primary-btn" onClick={handleCreate} disabled={creating}>
+              {creating ? 'Creating…' : 'Create your first world'}
+            </button>
+            <p className="empty-hint">
+              Coming from the browser version? Use <strong>Import World</strong> above with a
+              backup file (Settings → Back up now, once per world) to bring each world across.
+            </p>
+          </EmptyState>
         </div>
       )}
 
