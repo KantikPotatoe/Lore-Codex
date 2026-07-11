@@ -30,9 +30,11 @@ import { bootstrapDefaultLore } from './lores'
 import { installStorageErrorListener } from './storageError'
 import { installTabSyncListener } from './tabSync'
 import { shouldOpenSearch } from './searchShortcut'
+import { useNavDirection } from './navDirection'
 
 export default function App() {
   const location = useLocation()
+  const navDir = useNavDirection()
   const [searchOpen, setSearchOpen] = useState(false)
   const contentRef = useRef<HTMLElement>(null)
   const [showTop, setShowTop] = useState(false)
@@ -92,7 +94,7 @@ export default function App() {
       <Sidebar onOpenSearch={() => setSearchOpen(true)} />
       <main className="content" ref={contentRef} onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 600)}>
         <BackupBanner />
-        <div className="route-fade" key={location.pathname}>
+        <div className="route-fade" data-nav={navDir} key={location.pathname}>
           <Suspense fallback={<div className="content-pad">Loading…</div>}>
             <Routes>
               <Route path="/home" element={<HomeRoute />} />
