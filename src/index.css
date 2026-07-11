@@ -103,7 +103,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
    without it, delayed cards flash visible then vanish.
    Reduced motion: the global clamp zeroes animation-delay too, so these
    cards appear instantly and simultaneously. */
-.browse-card, .book-card, .world-card, .world-card-add {
+.browse-card, .book-card, .world-card, .world-card-add, .book-card-add {
   animation: rise-in var(--dur-3) var(--ease-settle) backwards;
   animation-delay: calc(var(--stagger-i, 0) * 25ms);
 }
@@ -118,6 +118,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .lore-card,
 .ov-card,
 .browse-card,
+.book-card,
 .modal-dialog,
 .sidebar {
   background-image: var(--parchment-noise);
@@ -128,12 +129,17 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
    highlight, so panels read as lit from above rather than as flat fills.
    Deliberately scoped to floating content panels. Excluded: .browse-card and
    .modal-dialog carry their own (hover / deep) shadows; .sidebar is structural
-   chrome, not a floating panel. Note: on an overflow:hidden panel whose child
-   paints over the top edge (e.g. .infobox's coloured title bar), the inner
-   highlight is occluded and the lit-from-above cue comes from the drop shadow. */
+   chrome, not a floating panel. .book-card is included, despite also carrying
+   its own :hover shadow, because a cover is a physical object resting on a
+   shelf and needs a RESTING elevation too — :hover's higher specificity
+   simply overrides it with a deeper shadow on lift. Note: on an
+   overflow:hidden panel whose child paints over the top edge (e.g. .infobox's
+   coloured title bar), the inner highlight is occluded and the lit-from-above
+   cue comes from the drop shadow. */
 .elevated,
 .lore-card,
 .infobox,
+.book-card,
 .ov-card {
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.25),
@@ -2144,49 +2150,150 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 /* Manuscript — books index + book workspace (Book → Chapter → Scene) */
 /* ------------------------------------------------------------------ */
 .manuscript-page {
-  padding: 1.5rem 2rem;
+  padding: 24px 32px;
 }
 .manuscript-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 20px;
 }
+/* The shelf. Each cover carries --cover-hue inline (deterministic from the title,
+   see src/bookCover.ts). TYPE_COLORS are bright accents tuned for small marks, so
+   the spine and board mix the hue down into a bookbinding register rather than
+   using it raw — a shelf of bound books in a dim room, not a colour picker. */
 .book-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 16px;
 }
+/* overflow: hidden is load-bearing, not just spine-clipping: a grid item's
+   min-height: auto resolves to its content-based minimum unless overflow is
+   non-visible, so this is what lets aspect-ratio: 2 / 3 actually govern the
+   cover's height instead of its content — remove it to "un-clip" a long title
+   and the whole shelf's proportions break. Also: background-color must stay a
+   LONGHAND here, never the background shorthand — .book-card is in the shared
+   .parchment selector list above, which supplies background-image (the paper
+   grain); the shorthand would silently wipe it. */
 .book-card {
+  position: relative;
+  aspect-ratio: 2 / 3;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding: 1rem 1.1rem;
-  background: var(--panel);
+  text-align: center;
+  padding: 22px 16px 16px 30px; /* left padding clears the spine */
+  background-color: color-mix(in srgb, var(--cover-hue, var(--accent)) 7%, var(--panel));
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 3px 8px 8px 3px; /* square at the spine, rounded at the fore-edge */
+  overflow: hidden;
   text-decoration: none;
   color: var(--ink);
-  transition: border-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
+  transition: transform var(--dur-1) var(--ease-settle),
+              box-shadow var(--dur-1) var(--ease-settle);
+}
+/* The spine. */
+.book-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--cover-hue, var(--accent)) 55%, #1a1512),
+    color-mix(in srgb, var(--cover-hue, var(--accent)) 30%, #120f0c)
+  );
+  border-right: 1px solid rgba(0, 0, 0, 0.5);
+}
+/* Gold rule tooled just inboard of the spine. */
+.book-card::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .book-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
 }
 .book-card-title {
   font-family: var(--display);
-  font-size: 1.1rem;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
   color: var(--accent-soft);
+  margin: auto 0; /* centres the title in the space above the rule */
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.book-card-synopsis {
-  color: var(--ink-dim);
-  font-size: 0.9rem;
+.book-card-rule {
+  width: 34px;
+  height: 1px;
+  margin: 10px auto;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .book-card-stats {
+  font-size: 11px;
   color: var(--ink-faint);
-  font-size: 0.8rem;
-  margin-top: 0.15rem;
+}
+/* Back-of-the-book blurb. Supplementary, never the only copy — hover content
+   doesn't exist on touch, so the book workspace always shows it too. Revealed on
+   keyboard focus as well as hover; the card is a <Link>, so :focus-visible fires. */
+.book-card-blurb {
+  position: absolute;
+  left: 14px; /* starts at the spine's inner edge */
+  right: 0;
+  bottom: 0;
+  padding: 30px 14px 14px 16px;
+  text-align: left;
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg) 0%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 92%, transparent) 38%,
+    color-mix(in srgb, var(--bg) 97%, transparent) 100%
+  );
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease-settle);
+}
+.book-card:hover .book-card-blurb,
+.book-card:focus-visible .book-card-blurb {
+  opacity: 1;
+}
+/* An empty slot at the end of the shelf. Mirrors .world-card-add. */
+.book-card-add {
+  aspect-ratio: 2 / 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 13px;
+  transition: border-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+}
+.book-card-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.book-card-add-icon {
+  font-size: 35px;
+  line-height: 1;
 }
 
 /* Book workspace */
@@ -2194,14 +2301,43 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 1.25rem 1.5rem;
+  padding: 20px 24px;
 }
 .book-head {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.book-head-row {
+  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: 16px;
+}
+/* Quiet until touched: the blurb reads as text, and only shows its edges on
+   hover/focus, so the header doesn't sprout a form field. */
+.book-blurb-input {
+  width: 100%;
+  min-height: 38px;
+  resize: vertical;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink-dim);
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.5;
+  transition: border-color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out);
+}
+.book-blurb-input:hover:not(:disabled) {
+  border-color: var(--border);
+}
+.book-blurb-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+  color: var(--ink);
 }
 .seg-control {
   display: inline-flex;
@@ -2210,7 +2346,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   overflow: hidden;
 }
 .seg {
-  padding: 0.4rem 1rem;
+  padding: 6px 16px;
   background: transparent;
   border: none;
   color: var(--ink-dim);
@@ -2221,16 +2357,11 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   background: var(--accent);
   color: var(--bg);
 }
-.book-grid-view {
-  padding: 3rem;
-  text-align: center;
-}
-
 /* Write view: binder + editor two-pane */
 .book-write {
   display: grid;
-  grid-template-columns: 16rem 1fr;
-  gap: 1.25rem;
+  grid-template-columns: 256px 1fr;
+  gap: 20px;
   flex: 1;
   min-height: 0;
 }
@@ -2241,28 +2372,28 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 /* Binder */
 .binder {
   border-right: 1px solid var(--border);
-  padding-right: 0.75rem;
+  padding-right: 12px;
   overflow-y: auto;
 }
 .binder-chapter {
-  margin-bottom: 1rem;
+  margin-bottom: 16px;
 }
 .binder-chapter-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.35rem;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 .binder-chapter-title {
   font-family: var(--display);
-  font-size: 0.95rem;
+  font-size: 15px;
   color: var(--ink);
   cursor: text;
 }
 .binder-chapter-title-input {
   font-family: var(--display);
-  font-size: 0.95rem;
+  font-size: 15px;
   color: var(--ink);
   background: transparent;
   border: none;
@@ -2281,8 +2412,8 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border-radius: 6px;
   color: var(--ink-faint);
   cursor: pointer;
-  font-size: 0.75rem;
-  padding: 0.15rem 0.4rem;
+  font-size: 12px;
+  padding: 2px 6px;
 }
 .binder-add:hover,
 .binder-add-chapter:hover {
@@ -2291,15 +2422,15 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 .binder-add-chapter {
   width: 100%;
-  padding: 0.4rem;
-  margin-top: 0.5rem;
+  padding: 6px;
+  margin-top: 8px;
 }
 .binder-scene {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px;
   width: 100%;
-  padding: 0.35rem 0.5rem;
+  padding: 6px 8px;
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -2323,14 +2454,14 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 .binder-scene-words {
   color: var(--ink-faint);
-  font-size: 0.75rem;
+  font-size: 12px;
 }
 
 /* Scene editor + meta panel */
 .scene-editor {
   display: grid;
-  grid-template-columns: 1fr 18rem;
-  gap: 1.25rem;
+  grid-template-columns: 1fr 288px;
+  gap: 20px;
   height: 100%;
   min-height: 0;
 }
@@ -2338,16 +2469,16 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 12px;
 }
 .scene-title-input {
   font-family: var(--display);
-  font-size: 1.4rem;
+  font-size: 22px;
   color: var(--accent-soft);
   background: transparent;
   border: none;
   border-bottom: 1px solid transparent;
-  padding: 0.25rem 0;
+  padding: 4px 0;
 }
 .scene-title-input:focus {
   outline: none;
@@ -2355,35 +2486,35 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 .scene-meta {
   border-left: 1px solid var(--border);
-  padding-left: 1rem;
+  padding-left: 16px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 12px;
 }
 .scene-meta-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  font-size: 0.85rem;
+  gap: 8px;
+  font-size: 14px;
   color: var(--ink-dim);
 }
 .scene-meta-row.scene-meta-col {
   flex-direction: column;
   align-items: stretch;
-  gap: 0.3rem;
+  gap: 5px;
 }
 .scene-meta textarea {
-  min-height: 4rem;
+  min-height: 64px;
   resize: vertical;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--ink);
-  padding: 0.4rem;
+  padding: 6px;
   font-family: var(--sans);
-  font-size: 0.85rem;
+  font-size: 14px;
 }
 .scene-meta select,
 .scene-meta input[type='number'] {
@@ -2391,18 +2522,18 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--ink);
-  padding: 0.25rem 0.4rem;
+  padding: 4px 6px;
 }
 
 /* "Appears in" — manuscript scene references on a wiki page */
 .appears-in {
-  margin-top: 1rem;
+  margin-top: 16px;
 }
 .appears-in-head {
   font-family: var(--display);
-  font-size: 0.9rem;
+  font-size: 14px;
   color: var(--ink-dim);
-  margin-bottom: 0.5rem;
+  margin-bottom: 8px;
 }
 .appears-in-list {
   list-style: none;
@@ -2410,7 +2541,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 8px;
 }
 .appears-in-row {
   display: flex;
@@ -2422,40 +2553,40 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   color: var(--accent);
 }
 .appears-in-scene {
-  font-size: 0.9rem;
+  font-size: 14px;
 }
 .appears-in-loc {
-  font-size: 0.75rem;
+  font-size: 12px;
   color: var(--ink-faint);
 }
 .appears-in-roles {
   display: inline-flex;
-  gap: 0.25rem;
-  margin-top: 0.15rem;
+  gap: 4px;
+  margin-top: 2px;
   flex-wrap: wrap;
 }
 .appears-in-role {
-  font-size: 0.65rem;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--ink-dim);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 0.05rem 0.3rem;
+  padding: 1px 5px;
 }
 
 /* Manuscript plotline grid board */
 .grid-board {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 12px;
   min-height: 0;
   flex: 1;
 }
 .grid-board-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 8px;
 }
 .grid-scroll {
   overflow: auto;
@@ -2464,21 +2595,21 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 .grid-table {
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: 14px;
 }
 .grid-corner {
   position: sticky;
   left: 0;
   z-index: 3;
   background: var(--panel);
-  min-width: 12rem;
+  min-width: 192px;
 }
 .grid-chapter {
   background: var(--panel);
   color: var(--accent-soft);
   font-family: var(--display);
   font-weight: 400;
-  padding: 0.3rem 0.6rem;
+  padding: 5px 10px;
   border: 1px solid var(--border);
   text-align: center;
 }
@@ -2486,9 +2617,9 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   background: var(--bg);
   color: var(--ink-dim);
   font-weight: 400;
-  padding: 0.35rem 0.6rem;
+  padding: 6px 10px;
   border: 1px solid var(--border);
-  min-width: 9rem;
+  min-width: 144px;
   white-space: nowrap;
 }
 .grid-lane {
@@ -2497,17 +2628,17 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   z-index: 2;
   background: var(--panel);
   border: 1px solid var(--border);
-  padding: 0.25rem 0.4rem;
-  min-width: 12rem;
+  padding: 4px 6px;
+  min-width: 192px;
 }
 .grid-lane-controls {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 4px;
 }
 .lane-swatch {
-  width: 0.9rem;
-  height: 0.9rem;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 1px solid var(--border);
   cursor: pointer;
@@ -2520,7 +2651,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border: 1px solid transparent;
   color: var(--ink);
   font-family: var(--sans);
-  padding: 0.15rem 0.25rem;
+  padding: 2px 4px;
   border-radius: 4px;
 }
 .lane-name:focus {
@@ -2533,8 +2664,8 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border: none;
   color: var(--ink-faint);
   cursor: pointer;
-  font-size: 0.75rem;
-  padding: 0.1rem 0.2rem;
+  font-size: 12px;
+  padding: 2px 3px;
 }
 .lane-btn:hover {
   color: var(--ink);
@@ -2544,10 +2675,10 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 .grid-cell {
   border: 1px solid var(--border);
-  padding: 0.25rem;
+  padding: 4px;
   vertical-align: top;
   cursor: text;
-  min-width: 9rem;
+  min-width: 144px;
 }
 .grid-cell-add {
   color: var(--ink-faint);
@@ -2559,25 +2690,25 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .grid-beat {
   display: block;
   border-radius: 4px;
-  padding: 0.3rem 0.4rem;
+  padding: 5px 6px;
   color: var(--ink);
   white-space: pre-wrap;
 }
 .grid-beat-editor {
   width: 100%;
-  min-height: 3rem;
+  min-height: 48px;
   resize: vertical;
   background: var(--bg);
   border: 1px solid var(--accent);
   border-radius: 4px;
   color: var(--ink);
-  padding: 0.3rem;
+  padding: 5px;
   font-family: var(--sans);
-  font-size: 0.85rem;
+  font-size: 14px;
 }
 .grid-beat-label {
   display: block;
-  font-size: 0.7rem;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--accent-soft);
@@ -2588,7 +2719,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border: none;
   color: var(--ink-faint);
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: 12px;
   line-height: 1;
 }
 .grid-beat-unplace:hover {
@@ -2600,7 +2731,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .grid-lane-structure-name {
   font-family: var(--display);
   color: var(--accent-soft);
-  padding: 0.25rem 0.4rem;
+  padding: 4px 6px;
   display: block;
 }
 
@@ -2608,14 +2739,14 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .structure-controls {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 12px;
   flex-wrap: wrap;
 }
 .structure-pick {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
+  gap: 6px;
+  font-size: 14px;
   color: var(--ink-dim);
 }
 .structure-pick select {
@@ -2623,16 +2754,16 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--ink);
-  padding: 0.25rem 0.4rem;
+  padding: 4px 6px;
 }
 .structure-tray {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 6px;
   flex-wrap: wrap;
 }
 .structure-tray-head {
-  font-size: 0.75rem;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--ink-faint);
@@ -2640,14 +2771,14 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .structure-tray-beat {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 5px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 0.15rem 0.35rem;
+  padding: 2px 6px;
 }
 .structure-tray-label {
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--ink);
 }
 .structure-tray-beat select {
@@ -2655,11 +2786,11 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--ink);
-  font-size: 0.75rem;
+  font-size: 12px;
 }
 .book-compile {
   display: inline-flex;
-  gap: 0.4rem;
+  gap: 6px;
   margin-left: auto;
 }
 

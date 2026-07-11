@@ -49,4 +49,14 @@ describe('BookRoute', () => {
     expect(await screen.findByRole('button', { name: /epub/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /print|pdf/i })).toBeTruthy()
   })
+
+  it('edits the blurb, which is what the shelf shows on the cover', async () => {
+    await db.books.add({ id: 'b1', title: 'My Novel', synopsis: '', order: 0, createdAt: 1, updatedAt: 1 })
+    renderAt('/book/b1')
+    const blurb = await screen.findByLabelText('Book blurb') as HTMLTextAreaElement
+    fireEvent.change(blurb, { target: { value: 'A queen burns her own capital.' } })
+    await waitFor(async () =>
+      expect((await db.books.get('b1'))?.synopsis).toBe('A queen burns her own capital.'),
+    )
+  })
 })

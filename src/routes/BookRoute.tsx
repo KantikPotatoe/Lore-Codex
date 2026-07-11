@@ -22,22 +22,32 @@ export default function BookRoute() {
   return (
     <div className="book-workspace">
       <div className="book-head">
-        <input
-          className="page-title book-title-input"
-          aria-label="Book title"
-          value={book?.title ?? ''}
-          placeholder="Untitled Book"
+        <div className="book-head-row">
+          <input
+            className="page-title book-title-input"
+            aria-label="Book title"
+            value={book?.title ?? ''}
+            placeholder="Untitled Book"
+            disabled={!book}
+            onChange={(e) => updateBook(bookId, { title: e.target.value })}
+          />
+          <div className="seg-control">
+            <button className={view === 'write' ? 'seg active' : 'seg'} onClick={() => setView('write')}>Write</button>
+            <button className={view === 'grid' ? 'seg active' : 'seg'} onClick={() => setView('grid')}>Grid</button>
+          </div>
+          <div className="book-compile">
+            <button className="ghost-btn" onClick={() => exportBookEpub(bookId)}>EPUB</button>
+            <button className="ghost-btn" onClick={() => printBook(bookId)}>Print / PDF</button>
+          </div>
+        </div>
+        <textarea
+          className="book-blurb-input"
+          aria-label="Book blurb"
+          placeholder="A line about this book — shown on its cover."
+          value={book?.synopsis ?? ''}
           disabled={!book}
-          onChange={(e) => updateBook(bookId, { title: e.target.value })}
+          onChange={(e) => updateBook(bookId, { synopsis: e.target.value })}
         />
-        <div className="seg-control">
-          <button className={view === 'write' ? 'seg active' : 'seg'} onClick={() => setView('write')}>Write</button>
-          <button className={view === 'grid' ? 'seg active' : 'seg'} onClick={() => setView('grid')}>Grid</button>
-        </div>
-        <div className="book-compile">
-          <button className="ghost-btn" onClick={() => exportBookEpub(bookId)}>EPUB</button>
-          <button className="ghost-btn" onClick={() => printBook(bookId)}>Print / PDF</button>
-        </div>
       </div>
       {view === 'write' ? (
         <BookWriteView bookId={bookId} selectedSceneId={selectedSceneId} onSelectScene={selectScene} />
