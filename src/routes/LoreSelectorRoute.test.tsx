@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import LoreSelectorRoute from './LoreSelectorRoute'
 import { openTextFile } from '../platform'
-import { importLoreFromBackup, switchLore } from '../lores'
+import { importLoreFromBackup, switchLore, listLores, type Lore } from '../lores'
 
 // The wizard is the first-run migration path from the browser version (desktop
 // transition Phase 1): pick a backup file → confirm name + counts → a new
@@ -28,6 +28,9 @@ vi.mock('../lores', () => ({
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  // clearAllMocks() clears calls but NOT implementations, so a mockResolvedValue
+  // set by one test would leak into the next. Put the world list back to empty.
+  vi.mocked(listLores).mockResolvedValue([])
 })
 
 const backupJson = JSON.stringify({ pages: [{ id: 'p1' }] })
@@ -76,5 +79,62 @@ describe('LoreSelectorRoute — import-world wizard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Import World/ }))
     await waitFor(() => expect(openTextFile).toHaveBeenCalled())
     expect(screen.queryByLabelText(/World name/i)).toBeNull()
+  })
+})
+
+function world(over: Partial<Lore> = {}): Lore {
+  const created = Date.UTC(2026, 2, 3)
+  return { id: 'w1', name: 'The Westerlands', banner: null, createdAt: created, updatedAt: created, ...over }
+}
+
+describe('LoreSelectorRoute — gateway cards', () => {
+  it('names each corner control after its world', async () => {
+    // The controls are icon-only (✎ 🖼 ✕), so aria-label is their ONLY accessible
+    // name — and it must identify the world, because N cards render at once.
+    vi.mocked(listLores).mockResolvedValue([world()])
+    render(<LoreSelectorRoute />)
+
+    expect(await screen.findByRole('button', { name: /^rename the westerlands$/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^change banner for the westerlands$/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^delete the westerlands$/i })).toBeTruthy()
+  })
+
+  it('engraves the founding date on the mat', async () => {
+    vi.mocked(listLores).mockResolvedValue([world()])
+    render(<LoreSelectorRoute />)
+    expect(await screen.findByText(/^Founded /)).toBeTruthy()
+  })
+
+  // DELIBERATE GREEN-FOREVER GUARD — read this before "fixing" it.
+  // This test passes against the OLD code too, and that is the point: it pins a
+  // property that must NOT change. The mat uppercases via CSS text-transform,
+  // which is presentational, so the accessible name stays what the user typed.
+  // It goes red only if someone later "helpfully" uppercases in the TSX with
+  // .toUpperCase(), which would corrupt the name for screen readers.
+  // It is a regression guard, not a discriminating test for this task — the two
+  // tests above are the ones that must go RED before Step 3.
+  it('keeps the world name button exposing the true mixed-case name', async () => {
+    vi.mocked(listLores).mockResolvedValue([world({ name: 'The Westerlands' })])
+    render(<LoreSelectorRoute />)
+    expect(await screen.findByRole('button', { name: 'The Westerlands' })).toBeTruthy()
+  })
+
+  it('shows the add-tile beside existing worlds, and the empty state when there are none', async () => {
+    vi.mocked(listLores).mockResolvedValue([world()])
+    const { unmount } = render(<LoreSelectorRoute />)
+
+    // Two "New World" buttons with a world present: the hero's, and the add-tile.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /new world/i })).toHaveLength(2))
+    expect(screen.queryByText(/no worlds yet/i)).toBeNull()
+    unmount()
+
+    // With none, the add-tile is gone (only the hero's button) and the empty state
+    // carries the CTA, so the affordance is never absent.
+    vi.mocked(listLores).mockResolvedValue([])
+    render(<LoreSelectorRoute />)
+
+    expect(await screen.findByText(/no worlds yet — your stories await/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /create your first world/i })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /new world/i })).toHaveLength(1)
   })
 })

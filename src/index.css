@@ -54,13 +54,20 @@ a { color: inherit; text-decoration: none; }
 
 /* Keyboard focus ring. Only shows for keyboard nav (:focus-visible), never on
    mouse click. Uses outline (not box-shadow) so it survives the overflow:hidden
-   panels (infobox, cards) that would clip a shadow ring. */
+   panels (infobox, cards) that would clip a shadow ring.
+
+   Deliberately sets NO border-radius (#215). An outline already follows its
+   element's own radius, and outline-offset lifts the ring clear regardless — so
+   a border-radius here shapes nothing. What it DOES do is win: this selector is
+   specificity 0-1-1, which outranks any single-class card rule (0-1-0), so it
+   overrode the card itself and flattened .browse-card / .book-card / .world-card
+   to 3px corners while focused. Leave it off: the ring now follows each
+   element's real shape. */
 a:focus-visible, button:focus-visible, input:focus-visible,
 select:focus-visible, textarea:focus-visible, summary:focus-visible,
 [tabindex]:focus-visible, .ProseMirror:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 3px;
 }
 
 /* Warm selection — the browser default is blue and fights the parchment look. */
@@ -119,6 +126,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .ov-card,
 .browse-card,
 .book-card,
+.world-card,
 .modal-dialog,
 .sidebar {
   background-image: var(--parchment-noise);
@@ -140,6 +148,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .lore-card,
 .infobox,
 .book-card,
+.world-card,
 .ov-card {
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.25),
@@ -1515,7 +1524,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 /* ── Lore Selector ───────────────────────────────────────────────────── */
 .lore-selector {
   min-height: 100vh;
-  padding: 3rem 2rem 5rem;
+  padding: 48px 32px 80px;
   max-width: 980px;
   margin: 0 auto;
 }
@@ -1523,25 +1532,26 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 /* Hero */
 .lore-hero {
   text-align: center;
-  padding: 2rem 0 2.5rem;
+  padding: 32px 0 40px;
 }
 
 .lore-hero-title {
   font-family: var(--display);
-  font-size: 2.8rem;
+  font-size: clamp(44px, 6vw, 64px);
   font-weight: 600;
   color: var(--accent);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  margin: 0 0 0.5rem;
+  line-height: 1.1;
+  margin: 0 0 8px;
 }
 
 .lore-hero-tagline {
   font-family: var(--serif);
-  font-size: 1.05rem;
+  font-size: 17px;
   font-style: italic;
   color: var(--ink-dim);
-  margin: 0 0 1.25rem;
+  margin: 0 0 20px;
 }
 
 .lore-hero-rule {
@@ -1550,135 +1560,258 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   height: 1px;
   background: var(--accent);
   opacity: 0.45;
-  margin: 0 auto 1.5rem;
+  margin: 0 auto 24px;
 }
 
 .lore-hero-actions .primary-btn {
   width: auto;
   padding: 10px 26px;
-  font-size: 0.95rem;
+  font-size: 15px;
 }
 
 /* Grid */
 .lore-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1.25rem;
+  gap: 20px;
 }
 
-/* World card */
+/* World card — an arched gateway of tooled parchment.
+
+   The crown is a SHALLOW ELLIPSE (120px across, 40px tall), not a semicircle.
+   This is load-bearing, not taste: the frame is overflow:hidden so it can clip
+   the banner to the arch, and the handling controls sit at the frame's top-right
+   — a deeper crown would clip them in half. Geometry: with semi-axes a=120,
+   b=40, a point 12px in from the right edge is 108px from the ellipse's centre,
+   so the top edge there has descended only 40 − 40·√(1 − (108/120)²) ≈ 23px.
+   .world-card-actions sits at top:32px and clears it.
+   DEEPEN THE ARCH AND YOU MUST MOVE THE CONTROLS. They are coupled. */
 .world-card {
-  border-radius: var(--radius);
+  position: relative;
+  border-radius: 120px 120px var(--radius) var(--radius)
+               / 40px  40px  var(--radius) var(--radius);
   overflow: hidden;
-  background: var(--panel);
+  /* background-COLOR, never the `background:` shorthand. .parchment (index.css
+     ~:116) supplies background-image: var(--parchment-noise), and this rule sits
+     ~1450 lines later — the shorthand would reset background-image to none and
+     silently wipe the grain. .book-card uses the longhand for exactly this
+     reason. */
+  background-color: var(--panel);
   border: 1px solid var(--border);
-  transition: border-color var(--dur-1), box-shadow var(--dur-1), transform var(--dur-1);
+  transition: border-color var(--dur-1) var(--ease-out),
+              box-shadow   var(--dur-1) var(--ease-out),
+              transform    var(--dur-1) var(--ease-settle);
+}
+
+/* The tooled gold rule, following the arch just inboard of the frame. Same
+   material as .book-card's spine rule. */
+.world-card::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  z-index: 2;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 112px 112px 6px 6px / 32px 32px 6px 6px;
+  transition: border-color var(--dur-1) var(--ease-out);
 }
 
 .world-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
   transform: translateY(-3px);
 }
 
+/* Hover: the gold CATCHES light. It never emits it. */
+.world-card:hover::after {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+/* box-shadow follows border-radius, so the active ring arcs around the crown for
+   free. The elevation triple is repeated here because box-shadow does not stack
+   across rules — without it, being active would flatten the card off the shelf. */
 .world-card--active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 1px 2px rgba(0, 0, 0, 0.25),
+    0 6px 18px rgba(0, 0, 0, 0.28);
+}
+
+/* :hover (0-1-1) outranks --active (0-1-0) and box-shadow does not stack across
+   rules, so without this the "you are here" ring would vanish the moment you
+   pointed at the current world's card. Re-assert it alongside the hover shadow. */
+.world-card--active:hover {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 10px 28px rgba(0, 0, 0, 0.5);
 }
 
 /* Banner */
 .world-card-banner {
-  height: 155px;
-  cursor: pointer;
-  background: linear-gradient(135deg, var(--panel-2) 0%, var(--bg-2) 100%);
-  background-size: cover;
-  background-position: center;
   position: relative;
+  height: 170px;
+  cursor: pointer;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* The image, on its own layer purely so the hover zoom is composited and does
+   not scale the text sitting over it. The inline background-image (when the
+   world has a banner) overrides this gradient; background-size/-position below
+   the shorthand survive either way. */
+.world-card-banner-img {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--panel-2) 0%, var(--bg-2) 100%);
+  background-size: cover;
+  background-position: center;
+  transform-origin: center;
+  transition: transform var(--dur-3) var(--ease-settle);
+}
+
+.world-card:hover .world-card-banner-img {
+  transform: scale(1.04);
+}
+
+/* Vignette, so the whisper stays legible over any banner. */
 .world-card-banner::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 55%);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.4) 0%, transparent 55%);
   pointer-events: none;
 }
 
+/* The decorated initial does NOT scale on hover — gold leaf sits still. */
 .world-card-initial {
+  position: relative;
+  z-index: 1;
   font-family: var(--display);
-  font-size: 4rem;
+  font-size: 64px;
   font-weight: 600;
   color: var(--accent);
   opacity: 0.4;
   user-select: none;
   line-height: 1;
-  position: relative;
-  z-index: 1;
 }
 
-/* "Enter →" affordance fades in on hover */
 .world-card-enter {
   position: absolute;
   bottom: 10px;
   right: 12px;
   z-index: 1;
-  font-size: 0.78rem;
+  font-size: 12px;
   font-weight: 600;
-  color: rgba(255,255,255,0.9);
+  color: rgba(255, 255, 255, 0.9);
   letter-spacing: 0.06em;
   opacity: 0;
-  transition: opacity var(--dur-1);
-  text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+  transition: opacity var(--dur-1) var(--ease-out);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
   pointer-events: none;
 }
 
-.world-card:hover .world-card-enter {
-  opacity: 1;
+.world-card:hover .world-card-enter { opacity: 1; }
+
+/* Handling controls, over the banner. top:32px clears the arch — see the
+   geometry note on .world-card. z-index 3 puts them above the gold rule (2). */
+.world-card-actions {
+  position: absolute;
+  top: 32px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease-out);
 }
 
-/* Card body */
-.world-card-body {
-  padding: 0.8rem 1rem 1rem;
+.world-card:hover .world-card-actions,
+.world-card:focus-within .world-card-actions { opacity: 1; }
+
+/* Hover-revealed UI does not exist on touch. */
+@media (hover: none) {
+  .world-card-actions { opacity: 1; }
+}
+
+.world-card-action {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  transition: background var(--dur-1) var(--ease-out),
+              color var(--dur-1) var(--ease-out),
+              border-color var(--dur-1) var(--ease-out);
+}
+
+.world-card-action:hover {
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.world-card-action.danger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* The mat — engraved parchment. Name and founding date only. */
+.world-card-mat {
+  position: relative;
+  z-index: 1;
+  padding: 14px 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
 }
 
-/* Title row: world name + active badge */
 .world-card-title-row {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  justify-content: center;
+  gap: 7px;
+  max-width: 100%;
   min-width: 0;
 }
 
+/* text-transform is PRESENTATIONAL: the button's accessible name stays the
+   world's true mixed-case name. Do not uppercase in the TSX. */
 .world-card-name {
+  flex: 0 1 auto;
+  min-width: 0;
   background: none;
   border: none;
   padding: 0;
-  font-size: 1.02rem;
+  font-family: var(--display);
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--ink);
   cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  flex: 1;
-  min-width: 0;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color var(--dur-1) var(--ease-out);
 }
 
-.world-card-name:hover {
-  color: var(--accent);
-}
+.world-card-name:hover { color: var(--accent); }
 
 .world-card-badge {
   flex-shrink: 0;
-  font-size: 0.63rem;
+  font-size: 10px;
   font-weight: 600;
   color: var(--accent);
   border: 1px solid var(--accent);
@@ -1692,7 +1825,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .lore-rename-input {
   flex: 1;
   min-width: 0;
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: 600;
   background: var(--bg-2);
   border: 1px solid var(--accent);
@@ -1700,40 +1833,21 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   padding: 2px 6px;
   color: var(--ink);
   font-family: inherit;
+  text-align: center;
 }
 
 .world-card-date {
-  font-size: 0.72rem;
+  font-size: 11px;
   color: var(--ink-faint);
-}
-
-/* Hover-revealed actions */
-.world-card-actions {
-  display: flex;
-  gap: 0.4rem;
-  margin-top: 0.4rem;
-  flex-wrap: wrap;
-  opacity: 0;
-  transition: opacity var(--dur-1);
-}
-
-.world-card:hover .world-card-actions,
-.world-card:focus-within .world-card-actions {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .world-card-actions { opacity: 1; }
-}
-
-.world-card-actions .ghost-btn {
-  font-size: 0.75rem;
-  padding: 3px 10px;
+  letter-spacing: 0.04em;
 }
 
 /* Add-world tile */
 .world-card-add {
-  border-radius: var(--radius);
+  position: relative;
+  min-height: 240px;
+  border-radius: 120px 120px var(--radius) var(--radius)
+               / 40px  40px  var(--radius) var(--radius);
   border: 2px dashed var(--border);
   background: transparent;
   color: var(--ink-faint);
@@ -1742,11 +1856,11 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  min-height: 222px;
-  font-size: 0.9rem;
+  gap: 8px;
   font-family: var(--sans);
-  transition: border-color var(--dur-1), color var(--dur-1);
+  font-size: 14px;
+  transition: border-color var(--dur-1) var(--ease-out),
+              color var(--dur-1) var(--ease-out);
 }
 
 .world-card-add:hover:not(:disabled) {
@@ -1760,40 +1874,25 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 
 .world-card-add-icon {
-  font-size: 2.2rem;
+  font-size: 35px;
   line-height: 1;
 }
 
-/* Empty state */
-.lore-empty {
-  text-align: center;
-  padding: 4rem 2rem;
-  display: flex;
+/* Empty / first-run state. The shared EmptyState carries the layout; .lore-empty
+   survives only as a scoping hook. Its .empty-state-actions is a flex ROW by
+   default (index.css), which would sit the CTA and the migration hint side by
+   side — so stack them, keeping the primary button above the footnote. */
+.lore-empty .empty-state-actions {
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 14px;
 }
 
-.lore-empty-glyph {
-  font-size: 5rem;
-  color: var(--accent);
-  opacity: 0.18;
-  line-height: 1;
-  user-select: none;
-}
-
-.lore-empty p {
-  font-family: var(--serif);
-  font-size: 1.1rem;
-  font-style: italic;
-  color: var(--ink-dim);
-  margin: 0;
-}
-
-.lore-empty .primary-btn {
-  width: auto;
+/* The hero's "+ New World" and this CTA render on screen at once (first run);
+   both are primary buttons and must match. Padding only — margin-top and
+   width:auto already come from .empty-state-actions / .lore-empty above. */
+.lore-empty .empty-state-actions .primary-btn {
   padding: 10px 26px;
-  margin-top: 0.5rem;
 }
 
 /* --- Timeline ------------------------------------------------------------- */
