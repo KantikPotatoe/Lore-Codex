@@ -20,6 +20,7 @@
 - **No `setTimeout` for the whisper.** Its decay is a CSS animation, restarted by re-keying the element.
 - **Existing tests must stay green without edits.** `HomeRoute.test.tsx` asserts on text, not on `.lore-card`. If it goes red, the change drifted — that is not a licence to edit the assertion.
 - **Gold hairline material** is written inline as the rest of the file writes it: `color-mix(in srgb, var(--accent) 22%, transparent)`. There is **no `--rule` token** in `:root` and this plan does not add one.
+- **Never write the `background:` shorthand on a `.parchment` member.** `.parchment` (`index.css:123-133`) sets `background-image: var(--parchment-noise)` on a list that includes `.ov-card` and `.browse-card`. Any later `background:` shorthand on those selectors has the same specificity (one class), so it wins — and **resets `background-image` to `none`, silently killing the grain**. Always use the `background-color:` longhand. This trap has already bitten `.book-card` (#168) and `.world-card` (#169); their ledgers record it. **It is currently live on `.ov-card` (`:366`) and `.browse-card` (`:1112`), and this plan fixes both** (Tasks 3 and 5) — the grain is dead on them today.
 - Verify with `npm run lint`, `npm run build`, `npm run test:run` — all three green before the PR.
 - PR label: `version:minor`. Closes #170.
 
@@ -445,6 +446,30 @@ In `src/index.css`, `.browse-card-status` currently carries `margin-top: 6px` an
 }
 ```
 
+- [ ] **Step 4b: Un-wipe the card's parchment grain**
+
+`.browse-card` is on the `.parchment` list (`index.css:127`), but its own rule (`:1112`) then re-declares the **`background:` shorthand**, which resets `background-image` to `none` — so the grain has never actually rendered on a browse card. Same specificity, later in the file, shorthand wins. Change that one declaration to the longhand:
+
+```css
+.browse-card {
+  background-color: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; text-decoration: none; color: inherit;
+  display: flex; flex-direction: column;
+  transition: transform var(--dur-1), box-shadow var(--dur-1);
+}
+```
+
+**Only `background:` → `background-color:` changes.** Leave every other declaration exactly as it is.
+
+This is a real (pre-existing) visual change to `/browse` and `/tag`, not just to Home — the cards gain the grain they were always supposed to have. It is deliberate and signed off; call it out in the PR body.
+
+Verify it took, rather than trusting the source:
+
+```bash
+grep -n "^\.browse-card {" -A2 src/index.css
+```
+Expected: the rule now reads `background-color: var(--panel);`. There must be **no** `background:` shorthand on `.browse-card` anywhere.
+
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run src/components/BrowseCard.test.tsx`
@@ -703,7 +728,7 @@ Still in `src/index.css`, replace the `.home-title-input` rule with one that mat
 }
 ```
 
-Then add the engraved rule to the stat cards, directly after the `.ov-label` rule (~line 368) — replacing it:
+Then add the engraved rule to the stat cards, replacing the `.ov-label` rule (~line 368):
 
 ```css
 .ov-label {
@@ -715,7 +740,20 @@ Then add the engraved rule to the stat cards, directly after the `.ov-label` rul
 }
 ```
 
-`.ov-card` is already on the `.parchment` and `.elevated` selector lists, so it needs nothing else — and it gets **no hover state**: a stat card is not interactive.
+**And un-wipe the stat card's grain.** `.ov-card` is on the `.parchment` list (`index.css:126`), but its own rule (`:366`) re-declares the **`background:` shorthand**, resetting `background-image` to `none` — so the grain has never rendered on a stat card. Change that one declaration to the longhand (everything else in the rule stays byte-for-byte):
+
+```css
+.ov-card { background-color: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 2px; }
+```
+
+That is what actually delivers the spec's "stat cards on the shared elevation language" — the elevation was already there, the *material* was not. `.ov-card` needs nothing else, and gets **no hover state**: a stat card is not interactive.
+
+Verify:
+
+```bash
+grep -n "^\.ov-card" src/index.css
+```
+Expected: `background-color: var(--panel)`. No `background:` shorthand on `.ov-card` anywhere.
 
 - [ ] **Step 4: Finish the rem→px conversion and re-verify the dead code**
 
