@@ -138,7 +138,7 @@ export default function HomeRoute() {
   return (
     <div className="home">
       <div
-        className="home-hero"
+        className={activeLore?.banner ? 'home-hero has-banner' : 'home-hero'}
         style={activeLore?.banner ? {
           backgroundImage: `url(${activeLore.banner})`,
           backgroundSize: 'cover',

@@ -315,37 +315,103 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 /* --- Home ----------------------------------------------------------------- */
 .home { max-width: 880px; margin: 0 auto; padding: 48px 40px 80px; }
 .home-hero { position: relative; }
-.home-hero h1 { font-family: var(--display); font-size: 40px; margin: 0 0 6px; color: var(--ink); }
+
+/* The world's title page — engraved in the same hand as the selector's gateway,
+   but tuned down from its clamp(44px, 6vw, 64px) / 0.14em: that hero is the
+   fixed short string "LORE CODEX", while this one is a user's world name and
+   may well be "The Chronicles of the Shattered Kingdoms". */
+.home-hero h1 {
+  font-family: var(--display);
+  font-size: clamp(32px, 4vw, 46px);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
+  color: var(--ink);
+}
 .home-hero p { color: var(--ink-dim); font-size: 17px; margin: 0 0 20px; font-family: var(--serif); }
-.home-hero[style*="background-image"] {
+
+/* Banner mode. A gradient scrim, not a text-shadow: it stays legible over a
+   bright banner, which a shadow does not. */
+.home-hero.has-banner {
   color: #fff;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
   min-height: 220px;
-  padding: 3rem 2rem;
+  padding: 48px 32px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  border-radius: var(--radius);
+  overflow: hidden;
 }
-.home-banner-controls { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+.home-hero.has-banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0.25) 45%, transparent);
+}
+.home-hero.has-banner > * { position: relative; z-index: 1; }
+
+.home-banner-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .home-cta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .home-cta .primary-btn { width: auto; }
-.home-stats { display: flex; gap: 28px; margin: 32px 0; }
-.stat { color: var(--ink-dim); font-size: 15px; }
-.stat-num { font-family: var(--display); font-size: 28px; color: var(--accent); margin-right: 6px; }
 .home-section { margin-top: 40px; }
 .home-section h2 {
   font-family: var(--display); font-size: 20px; color: var(--ink);
   border-bottom: 1px solid transparent; padding-bottom: 8px;
   border-image: linear-gradient(to right, var(--accent) 0%, var(--border) 28%, var(--border) 100%) 1;
 }
-.home-section-sub { color: var(--ink-faint); margin: -0.25rem 0 0.75rem; font-size: 0.9rem; }
+
+/* The program's one decorative flourish: a gold hairline with a centre diamond,
+   closing each section. The header's gradient underline LABELS a section; this
+   CLOSES one — different jobs, so they don't compete.
+
+   Two details carry it. (1) The gradient's hard stops punch a 32px hole in the
+   middle of the rule, and the glyph sits in that hole — that is what gives a
+   real line-with-centred-diamond from a single pseudo-element instead of a line
+   running through the glyph. (2) The adjacent-sibling selector does the
+   placement: Home has six conditionally-rendered sections, and `+` guarantees
+   the ornament only ever appears BETWEEN two that actually rendered — never
+   above the first, never below the last, whatever the user has toggled off. No
+   markup, no "is this the first section?" logic.
+
+   `content: '✦' / ''` supplies empty alt text so screen readers skip it. */
+.home-section + .home-section::before {
+  /* Rule-scoped alias for the gold hairline this file writes inline elsewhere
+     (the book spine, the gateway's tooled rule). Local — names no new material. */
+  --rule: color-mix(in srgb, var(--accent) 22%, transparent);
+
+  content: '✦' / '';
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1;
+  color: color-mix(in srgb, var(--accent) 55%, transparent);
+  margin: 44px 0 40px;
+  background: linear-gradient(to right,
+      transparent,
+      var(--rule) 15%,
+      var(--rule) calc(50% - 16px),
+      transparent calc(50% - 16px),
+      transparent calc(50% + 16px),
+      var(--rule) calc(50% + 16px),
+      var(--rule) 85%,
+      transparent)
+    center / 100% 1px no-repeat;
+}
+
+.home-section-sub { color: var(--ink-faint); margin: -4px 0 12px; font-size: 14px; }
 .muted { color: var(--ink-faint); }
 .ghost-btn.active { border-color: var(--accent); color: var(--accent); }
 
 /* Home personalisation (edit mode) */
 .home-title-input {
-  font-family: var(--display); font-size: 40px; background: transparent; border: none;
-  border-bottom: 1px dashed var(--border); color: var(--ink); width: 100%; padding: 0 0 4px; margin-bottom: 8px;
+  font-family: var(--display);
+  font-size: clamp(32px, 4vw, 46px);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: transparent; border: none;
+  border-bottom: 1px dashed var(--border); color: var(--ink); width: 100%;
+  padding: 0 0 4px; margin-bottom: 8px;
 }
 .home-tagline-input {
   font-family: var(--serif); font-size: 17px; background: transparent; border: none;
@@ -361,9 +427,15 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 
 /* Overview */
 .overview-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 16px 0; }
-.ov-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 2px; }
+.ov-card { background-color: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 2px; }
 .ov-num { font-family: var(--display); font-size: 30px; color: var(--accent); line-height: 1.1; }
-.ov-label { color: var(--ink-faint); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.5px; }
+.ov-label {
+  color: var(--ink-faint); font-size: 12.5px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  margin-top: 8px;
+  padding-top: 8px;
+}
 .overview-breakdowns { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 8px; }
 @media (max-width: 620px) { .overview-breakdowns { grid-template-columns: 1fr; } }
 .ov-block h3 { font-family: var(--serif); font-size: 15px; color: var(--ink-dim); margin: 0 0 10px; font-weight: 600; }
@@ -383,9 +455,9 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 
 .on-this-day {
   display: flex;
-  gap: 0.9rem;
+  gap: 14px;
   align-items: flex-start;
-  padding: 1rem 1.15rem;
+  padding: 16px 18px;
   border: 1px solid var(--border);
   border-radius: 10px;
   text-decoration: none;
