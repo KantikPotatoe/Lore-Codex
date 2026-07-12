@@ -1584,8 +1584,8 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border-radius: 8px;
 }
 .snapshot-meta { display: flex; flex-direction: column; gap: 2px; }
-.snapshot-time { font-size: 0.9rem; color: var(--ink); }
-.snapshot-count { font-size: 0.78rem; color: var(--ink-faint); }
+.snapshot-time { font-size: 14px; color: var(--ink); }
+.snapshot-count { font-size: 12.5px; color: var(--ink-faint); }
 
 /* --- Search modal --------------------------------------------------------- */
 .search-overlay {
