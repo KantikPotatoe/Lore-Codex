@@ -122,7 +122,6 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
    to the standing chrome selectors so no markup changes are needed. */
 .parchment,
 .infobox,
-.lore-card,
 .ov-card,
 .browse-card,
 .book-card,
@@ -145,7 +144,6 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
    coloured title bar), the inner highlight is occluded and the lit-from-above
    cue comes from the drop shadow. */
 .elevated,
-.lore-card,
 .infobox,
 .book-card,
 .world-card,
@@ -378,19 +376,10 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .status-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-dim); }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
-.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
-.lore-card {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 16px; transition: transform var(--dur-1), border-color var(--dur-1);
-}
-.lore-card:hover { transform: translateY(-2px); border-color: var(--accent); }
-.lore-card h3 { font-family: var(--serif); margin: 10px 0 4px; font-size: 19px; }
-.lore-card p { color: var(--ink-dim); font-size: 13.5px; margin: 0; }
-.card-badge, .category-badge {
+.category-badge {
   display: inline-block; font-size: 11px; font-weight: 600; color: #1c160a;
   padding: 2px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;
 }
-.card-badges { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
 .on-this-day {
   display: flex;
