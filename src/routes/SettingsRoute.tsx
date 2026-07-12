@@ -275,10 +275,19 @@ export default function SettingsRoute() {
               Your lore is saved inside Firefox. To keep a copy that survives even if the browser is
               cleared, point Firefox's downloads at a cloud-synced folder:
             </p>
-            <ol>
-              <li>Make a folder inside <em>Dropbox</em>, <em>OneDrive</em>, or <em>Google Drive</em> (e.g. <code>Lore Backups</code>).</li>
-              <li>In Firefox: <em>Settings → General → Files and Applications → Downloads</em>, set "Save files to" to that folder.</li>
-              <li>Click <strong>Back up now</strong> whenever the warning appears — the file lands in your synced folder and is copied to the cloud automatically.</li>
+            <ol className="backup-steps" aria-label="Backup steps">
+              <li>
+                <strong>Make a synced folder.</strong> Anywhere inside <em>Dropbox</em>,{' '}
+                <em>OneDrive</em>, or <em>Google Drive</em> — e.g. <code>Lore Backups</code>.
+              </li>
+              <li>
+                <strong>Point Firefox at it.</strong> <em>Settings → General → Files and
+                Applications → Downloads</em>, then set "Save files to" to that folder.
+              </li>
+              <li>
+                <strong>Back up when warned.</strong> The file lands in your synced folder and
+                is copied to the cloud automatically.
+              </li>
             </ol>
           </div>
         )}
