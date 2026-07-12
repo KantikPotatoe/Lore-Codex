@@ -347,9 +347,20 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0.25) 45%, transparent);
+  /* The hero is bottom-anchored, so the TITLE — not the button row — sits high
+     in the content stack. Keep the scrim dark where the text actually is; the
+     buttons carry their own fills and need no help. */
+  background: linear-gradient(to top,
+      rgba(0, 0, 0, 0.80),
+      rgba(0, 0, 0, 0.60) 70%,
+      rgba(0, 0, 0, 0.18) 92%,
+      transparent);
 }
 .home-hero.has-banner > * { position: relative; z-index: 1; }
+/* Belt-and-braces over a bright banner: the scrim does the work, this keeps the
+   glyph edges crisp against a busy image. */
+.home-hero.has-banner h1,
+.home-hero.has-banner p { text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55); }
 
 .home-banner-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .home-cta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -532,26 +543,31 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 }
 .title-input:focus { border-color: var(--accent); }
 .title-input:focus:not(:focus-visible) { outline: none; }
-.page-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.page-header-actions { display: flex; gap: 8px; flex-shrink: 0; position: relative; }
 /* "Saved" whisper — the motion system's last deferred item. It decays in pure
    CSS: PageRoute re-keys the span on each save, remounting it and restarting
    this animation from frame 0. No timer, so nothing to clean up. It ends at
-   opacity 0 and the node goes inert. */
+   opacity 0 and the node goes inert. Taken out of flow so mounting it cannot
+   shove the ✓ Done / 🗑 buttons sideways. */
 .save-whisper {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 8px;
+  white-space: nowrap;
   font-family: var(--serif);
   font-style: italic;
   font-size: 12px;
   letter-spacing: 0.02em;
   color: var(--ink-faint);
-  align-self: center;
-  margin-right: 4px;
   animation: whisper 1600ms var(--ease-out) forwards;
 }
 @keyframes whisper {
   0%   { opacity: 0; }
   12%  { opacity: 1; }
   70%  { opacity: 1; }
-  100% { opacity: 0; }
+  100% { opacity: 0; visibility: hidden; }
 }
 
 /* The global reduced-motion clamp forces animation-duration to 0.01ms, which
