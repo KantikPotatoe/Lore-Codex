@@ -375,7 +375,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
    markup, no "is this the first section?" logic.
 
    `content: '✦' / ''` supplies empty alt text so screen readers skip it. */
-.home-section + .home-section::before {
+.home > .home-section + .home-section::before {
   /* Rule-scoped alias for the gold hairline this file writes inline elsewhere
      (the book spine, the gateway's tooled rule). Local — names no new material. */
   --rule: color-mix(in srgb, var(--accent) 22%, transparent);
