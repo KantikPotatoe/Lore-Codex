@@ -119,7 +119,13 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
    A faint greyscale noise layered over the (solid) panel fills so chrome reads
    as material, not flat colour. The reading surface (.ProseMirror) is excluded
    deliberately for legibility. Reusable via .parchment; also applied directly
-   to the standing chrome selectors so no markup changes are needed. */
+   to the standing chrome selectors so no markup changes are needed.
+
+   MEMBERS OF THIS LIST: set your fill with the `background-color:` longhand,
+   never the `background:` shorthand. The shorthand resets background-image to
+   none, so a member's own rule — same specificity, later in the file — silently
+   wipes the grain set here. Nothing errors; the texture just never renders.
+   This has now bitten #168, #169, #170 and #218. */
 .parchment,
 .infobox,
 .ov-card,
@@ -163,7 +169,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .sidebar {
   width: 290px;
   flex-shrink: 0;
-  background: var(--bg-2);
+  background-color: var(--bg-2);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -275,7 +281,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
   animation: fade-in var(--dur-2) var(--ease-out);
 }
 .modal-dialog {
-  background: var(--panel);
+  background-color: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   max-width: 460px;
@@ -827,7 +833,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 
 /* --- Infobox -------------------------------------------------------------- */
 .infobox {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  background-color: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden; font-size: 14px;
 }
 .infobox-title {
