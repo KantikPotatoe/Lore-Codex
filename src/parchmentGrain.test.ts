@@ -13,6 +13,11 @@ import { join } from 'node:path'
  * This guard evaluates the REAL cascade: it loads the real stylesheet, mounts a
  * bare element per member, and asks the engine what it actually computed. A
  * regex over the source could not see specificity or source order. This can.
+ *
+ * NOT COVERED: each member is mounted as a bare `<div class="X">` with no
+ * ancestors and no second class. A rule that only kills the grain when the
+ * member appears in CONTEXT — a compound class, an ancestor selector, or a
+ * media query — will not be caught, because that context never exists here.
  */
 
 // Read from disk, NOT `import css from './index.css?raw'` — Vitest stubs CSS
@@ -24,11 +29,21 @@ function parchmentMembers(sheet: string): string[] {
   const stripped = sheet.replace(/\/\*[\s\S]*?\*\//g, '')
   const rule = /([^}{]+)\{\s*background-image:\s*var\(--parchment-noise\)\s*;?\s*\}/.exec(stripped)
   if (!rule) throw new Error('Could not find the .parchment rule in index.css')
-  return rule[1]
+  const selectors = rule[1]
     .split(',')
     .map((s) => s.trim())
-    .filter((s) => /^\.[\w-]+$/.test(s))
-    .map((s) => s.slice(1))
+    .filter((s) => s.length > 0)
+  const simple = selectors.filter((s) => /^\.[\w-]+$/.test(s))
+  if (simple.length !== selectors.length) {
+    const discarded = selectors.filter((s) => !/^\.[\w-]+$/.test(s))
+    throw new Error(
+      `.parchment list contains selector(s) this guard cannot mount: ${discarded
+        .map((s) => `"${s}"`)
+        .join(', ')}. Extend parchmentMembers() to handle them — a silently-dropped ` +
+        'member is an unguarded member.',
+    )
+  }
+  return simple.map((s) => s.slice(1))
 }
 
 describe('parchment grain', () => {
