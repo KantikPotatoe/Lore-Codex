@@ -27,4 +27,19 @@ describe('BrowseCard', () => {
     render(<MemoryRouter><BrowseCard page={makePage({ title: 'Zephyr' })} /></MemoryRouter>)
     expect(screen.getByText('Z')).toBeTruthy()
   })
+
+  it('renders a meta note beside the status when given one', () => {
+    render(
+      <MemoryRouter>
+        <BrowseCard page={makePage()} meta="3 months ago" />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('3 months ago')).toBeTruthy()
+  })
+
+  it('omits the meta element entirely when not given one', () => {
+    // Without this, every /browse and /tag card would carry an empty node.
+    const { container } = render(<MemoryRouter><BrowseCard page={makePage()} /></MemoryRouter>)
+    expect(container.querySelector('.browse-card-meta')).toBeNull()
+  })
 })
