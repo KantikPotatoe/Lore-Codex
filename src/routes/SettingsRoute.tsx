@@ -285,7 +285,7 @@ export default function SettingsRoute() {
                 Applications → Downloads</em>, then set "Save files to" to that folder.
               </li>
               <li>
-                <strong>Back up when warned.</strong> The file lands in your synced folder and
+                <strong>Click "Back up now" when warned.</strong> The file lands in your synced folder and
                 is copied to the cloud automatically.
               </li>
             </ol>

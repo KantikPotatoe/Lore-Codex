@@ -89,6 +89,6 @@ describe('SettingsRoute', () => {
     // Each step leads with what you DO, so the list is scannable without reading it.
     expect(within(steps).getByText('Make a synced folder.')).toBeTruthy()
     expect(within(steps).getByText('Point Firefox at it.')).toBeTruthy()
-    expect(within(steps).getByText('Back up when warned.')).toBeTruthy()
+    expect(within(steps).getByText('Click "Back up now" when warned.')).toBeTruthy()
   })
 })
