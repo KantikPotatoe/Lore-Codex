@@ -43,7 +43,7 @@ export default function PageRoute() {
   // (below) still targets the page that was being edited, not the new one.
   const [contentWriter] = useState(() =>
     flushableDebounce<[string, string]>((pageId, html) => {
-      void pageRepo.update(pageId, { content: html })
+      void pageRepo.updateContent(pageId, html)
     }, CONTENT_WRITE_DELAY_MS),
   )
   const [tagInput, setTagInput] = useState('')
@@ -278,13 +278,7 @@ export default function PageRoute() {
             key={id}
             content={page.content}
             editable={editing}
-            onChange={(html) => {
-              // Tiptap emits an update when the editor initialises and again when
-              // `editable` flips. Writing then would bump `updatedAt` with identical
-              // content — making "recently edited" mean "recently opened", and making
-              // the header whisper "Saved" at someone who changed nothing.
-              if (html !== page.content) contentWriter.call(id, html)
-            }}
+            onChange={(html) => contentWriter.call(id, html)}
             onBlur={() => contentWriter.flush()}
             onInsertImage={(dataUrl) => addBodyImage(id, dataUrl)}
             onWikiClick={wiki.follow}

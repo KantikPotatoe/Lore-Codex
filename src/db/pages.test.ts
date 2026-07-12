@@ -3,6 +3,7 @@ import {
   db,
   createPage,
   updatePage,
+  updateContent,
   deletePage,
   findPageIdByTitle,
   renamePage,
@@ -105,6 +106,42 @@ describe('createPage', () => {
     await createPage()
     const titles = (await db.pages.toArray()).map((p) => p.title)
     expect(titles).toEqual(['Untitled', 'Untitled'])
+  })
+})
+
+describe('updateContent', () => {
+  it('does not touch updatedAt when the content is unchanged (no-op write)', async () => {
+    const id = await createPage({ title: 'Bilbo', content: '<p>There and back again</p>' })
+    const before = (await db.pages.get(id))!.updatedAt
+
+    // Wait out the tick so a real write (if one wrongly happened) would be detectable.
+    const t = Date.now()
+    while (Date.now() === t) await new Promise((r) => setTimeout(r, 1))
+
+    await updateContent(id, '<p>There and back again</p>')
+
+    const after = (await db.pages.get(id))!
+    expect(after.updatedAt).toBe(before)
+    expect(after.content).toBe('<p>There and back again</p>')
+  })
+
+  it('writes the new content and advances updatedAt on a real change', async () => {
+    const id = await createPage({ title: 'Bilbo', content: '<p>There and back again</p>' })
+    const before = (await db.pages.get(id))!.updatedAt
+
+    const t = Date.now()
+    while (Date.now() === t) await new Promise((r) => setTimeout(r, 1))
+
+    await updateContent(id, '<p>A very unexpected party</p>')
+
+    const after = (await db.pages.get(id))!
+    expect(after.content).toBe('<p>A very unexpected party</p>')
+    expect(after.updatedAt).toBeGreaterThan(before)
+  })
+
+  it('no-ops on an unknown id without throwing', async () => {
+    await expect(updateContent('does-not-exist', '<p>x</p>')).resolves.toBeUndefined()
+    expect(await db.pages.get('does-not-exist')).toBeUndefined()
   })
 })
 

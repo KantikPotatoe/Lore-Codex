@@ -57,6 +57,22 @@ export async function updatePage(id: string, changes: Partial<LorePage>): Promis
   await db.pages.update(id, { ...changes, ...derived, updatedAt: now() })
 }
 
+/** Write the body only if it actually changed.
+ *
+ *  Tiptap emits an update when the editor initialises and again when `editable`
+ *  flips — both with identical HTML. Writing then would bump `updatedAt` without
+ *  an edit, which makes "recently edited" mean "recently opened" and makes the
+ *  page header whisper "Saved" at someone who changed nothing.
+ *
+ *  The comparison is against the DB, not against a `useLiveQuery` value: that
+ *  value lags the database, and a stale comparison could let a pending write
+ *  resurrect content the user had already deleted. */
+export async function updateContent(id: string, content: string): Promise<void> {
+  const page = await db.pages.get(id)
+  if (!page || page.content === content) return
+  await updatePage(id, { content })
+}
+
 export async function deletePage(id: string): Promise<void> {
   // One transaction so the delete + gallery cleanup + ref unlinks either all land
   // or all roll back — a mid-sequence failure can't leave orphaned images or refs
