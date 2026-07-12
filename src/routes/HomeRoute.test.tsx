@@ -34,6 +34,17 @@ describe('HomeRoute — Dusty corners', () => {
     await screen.findByText('Fresh Page') // in Recently edited
     expect(screen.queryByText('Dusty corners')).toBeNull()
   })
+
+  it('shows how long a dusty page has been neglected', async () => {
+    // The one piece of information the shared card does not carry on its own —
+    // it rides in via BrowseCard's `meta` slot, so it is worth pinning down.
+    const id = await createPage({ title: 'Forgotten Ruin' })
+    await db.pages.update(id, { updatedAt: Date.now() - 200 * DAY })
+    renderHome()
+    const heading = await screen.findByText('Dusty corners')
+    const section = heading.closest('section')!
+    expect(within(section).getByText('6 months ago')).toBeTruthy()
+  })
 })
 
 describe('HomeRoute — On this day', () => {

@@ -8,7 +8,6 @@ import {
   getMeta,
   setMeta,
   categoryColor,
-  statusColor,
   pageStatus,
   STATUSES,
   computeWorldHealth,
@@ -18,6 +17,7 @@ import {
 import { selectStalePages, staleLabel, pickFeaturedEvent, todayIndex } from '../rediscovery'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
+import BrowseCard from '../components/BrowseCard'
 import { getLore, renameLore, setLoreBanner, currentLoreId } from '../lores'
 import { compressImage } from '../imageUtils'
 import { formatDate } from '../calendar'
@@ -138,7 +138,7 @@ export default function HomeRoute() {
   return (
     <div className="home">
       <div
-        className="home-hero"
+        className={activeLore?.banner ? 'home-hero has-banner' : 'home-hero'}
         style={activeLore?.banner ? {
           backgroundImage: `url(${activeLore.banner})`,
           backgroundSize: 'cover',
@@ -320,16 +320,9 @@ export default function HomeRoute() {
               <button className="primary-btn" onClick={handleNew}>+ Create your first page</button>
             </EmptyState>
           ) : (
-            <div className="card-grid">
-              {recent.map((p) => (
-                <Link key={p.id} to={`/page/${p.id}`} className="lore-card">
-                  <div className="card-badges">
-                    <span className="card-badge" style={{ background: categoryColor(p.category) }}>{p.category}</span>
-                    <span className="status-badge" style={{ borderColor: statusColor(pageStatus(p)), color: statusColor(pageStatus(p)) }}>{pageStatus(p)}</span>
-                  </div>
-                  <h3>{p.title}</h3>
-                  {p.summary && <p>{p.summary}</p>}
-                </Link>
+            <div className="browse-grid">
+              {recent.map((p, i) => (
+                <BrowseCard key={p.id} page={p} index={i} />
               ))}
             </div>
           )}
@@ -341,16 +334,9 @@ export default function HomeRoute() {
         <section className="home-section">
           <h2>Dusty corners</h2>
           <p className="home-section-sub">Pages you haven't touched in a while — revisit?</p>
-          <div className="card-grid">
-            {dusty.map((p) => (
-              <Link key={p.id} to={`/page/${p.id}`} className="lore-card">
-                <div className="card-badges">
-                  <span className="card-badge" style={{ background: categoryColor(p.category) }}>{p.category}</span>
-                  <span className="muted">{staleLabel(p.updatedAt)}</span>
-                </div>
-                <h3>{p.title}</h3>
-                {p.summary && <p>{p.summary}</p>}
-              </Link>
+          <div className="browse-grid">
+            {dusty.map((p, i) => (
+              <BrowseCard key={p.id} page={p} index={i} meta={staleLabel(p.updatedAt)} />
             ))}
           </div>
         </section>

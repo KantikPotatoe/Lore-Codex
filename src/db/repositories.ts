@@ -21,6 +21,7 @@ import { db } from './schema'
 import {
   createPage,
   updatePage,
+  updateContent,
   deletePage,
   renamePage,
   findPageIdByTitle,
@@ -63,6 +64,9 @@ export interface PageRepository {
   backlinks(pageId: string): Promise<LorePage[]>
   create(partial?: Partial<LorePage>): Promise<string>
   update(id: string, changes: Partial<LorePage>): Promise<void>
+  /** Write the body only if it actually changed (see `updateContent` in `pages.ts`
+   *  for why the comparison has to happen against the DB, not a stale value). */
+  updateContent(id: string, content: string): Promise<void>
   rename(id: string, title: string): Promise<void>
   remove(id: string): Promise<void>
 }
@@ -80,6 +84,7 @@ export const pageRepo: PageRepository = {
   backlinks: getBacklinks,
   create: createPage,
   update: updatePage,
+  updateContent,
   rename: renamePage,
   remove: deletePage,
 }

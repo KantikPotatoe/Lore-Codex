@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { pageRepo, mapRepo, addBodyImage, defaultInfobox, STATUSES, categoryColor, statusColor, pageStatus, type Infobox as InfoboxType } from '../db'
 import { usePage } from '../usePage'
+import { useSaveWhisper } from '../useSaveWhisper'
 import { useWikiLinkNavigation } from '../useWikiLinkNavigation'
 import LoreEditor from '../components/LoreEditor'
 import References from '../components/References'
@@ -33,13 +34,16 @@ export default function PageRoute() {
   const wiki = useWikiLinkNavigation()
 
   const [editing, setEditing] = useState(false)
+  // "Saved" whisper: any write to this page advances `updatedAt`. `page` may be
+  // undefined here (still loading) — the hook handles that and stays quiet.
+  const savedAt = useSaveWhisper(id, page?.updatedAt, editing)
   // Debounced content writer. App.tsx keys the route wrapper on the pathname,
   // so /page/A → /page/B unmounts this component and builds a fresh writer. The
   // page id travels in the call args, so the outgoing writer's pending flush
   // (below) still targets the page that was being edited, not the new one.
   const [contentWriter] = useState(() =>
     flushableDebounce<[string, string]>((pageId, html) => {
-      void pageRepo.update(pageId, { content: html })
+      void pageRepo.updateContent(pageId, html)
     }, CONTENT_WRITE_DELAY_MS),
   )
   const [tagInput, setTagInput] = useState('')
@@ -173,6 +177,9 @@ export default function PageRoute() {
             )}
           </div>
           <div className="page-header-actions">
+            {savedAt !== null && (
+              <span key={savedAt} className="save-whisper" role="status">Saved</span>
+            )}
             <button
               className="ghost-btn"
               onClick={() => {
