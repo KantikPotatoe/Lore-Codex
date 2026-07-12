@@ -134,6 +134,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .world-card,
 .modal-dialog,
 .settings-section,
+.template-editor,
 .sidebar {
   background-image: var(--parchment-noise);
 }
@@ -155,7 +156,8 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .book-card,
 .world-card,
 .ov-card,
-.settings-section {
+.settings-section,
+.template-editor {
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.25),
     0 6px 18px rgba(0, 0, 0, 0.28),
@@ -911,7 +913,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .template-new { margin-top: 6px; }
 
 .template-editor {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
+  background-color: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
 }
 .template-editor.empty { display: flex; align-items: center; justify-content: center; min-height: 160px; }
 .template-editor-head { display: flex; gap: 10px; margin-bottom: 14px; }
@@ -929,9 +931,22 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .color-custom { width: 26px; height: 24px; padding: 0; background: none; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
 
 .template-items { display: flex; flex-direction: column; gap: 6px; }
-.template-item { display: flex; align-items: center; gap: 8px; }
+.template-item {
+  display: flex; align-items: center; gap: 8px;
+  background-color: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 8px;
+}
 .template-item-move { display: flex; flex-direction: column; line-height: 0.7; }
-.template-item-move .tag-x { padding: 0 4px; font-size: 9px; }
+
+/* Hit targets. These were a 9px glyph in a 4px-padded box — the "cramped rows"
+   complaint. `>` scopes the remove button without colliding with the nested
+   move buttons (both would be (0,2,0) and decided by source order alone). */
+.template-item-move .tag-x { padding: 2px 6px; font-size: 9px; border-radius: 4px; }
+.template-item-move .tag-x:hover { background: var(--panel-2); }
+.template-item > .tag-x { padding: 4px 7px; border-radius: 5px; }
+.template-item > .tag-x:hover { background: var(--panel-2); }
 .template-item-label {
   flex: 1; min-width: 0; background: var(--bg-2); border: 1px solid var(--border); color: var(--ink);
   border-radius: 6px; padding: 6px 9px;
