@@ -133,6 +133,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .book-card,
 .world-card,
 .modal-dialog,
+.settings-section,
 .sidebar {
   background-image: var(--parchment-noise);
 }
@@ -153,7 +154,8 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .infobox,
 .book-card,
 .world-card,
-.ov-card {
+.ov-card,
+.settings-section {
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.25),
     0 6px 18px rgba(0, 0, 0, 0.28),
@@ -372,7 +374,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .home-cta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .home-cta .primary-btn { width: auto; }
 .home-section { margin-top: 40px; }
-.home-section h2 {
+.home-section h2, .settings-section h2 {
   font-family: var(--display); font-size: 20px; color: var(--ink);
   border-bottom: 1px solid transparent; padding-bottom: 8px;
   border-image: linear-gradient(to right, var(--accent) 0%, var(--border) 28%, var(--border) 100%) 1;
@@ -2308,8 +2310,23 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .back-to-top:hover { filter: brightness(1.07); }
 
 /* Settings page */
-.settings-page { max-width: 860px; }
+.settings-page { max-width: 880px; margin: 0 auto; padding: 48px 40px 80px; }
 .settings-title { margin: 0 0 18px; }
+
+/* Back-of-house: the sections are OBJECTS, grouped by material rather than by a
+   decorative rule. Home's diamond ornament is deliberately not used here — see
+   the workshop spec. `background-color` (never `background:`) because this is a
+   .parchment member; the shorthand would wipe the grain (#218). */
+.settings-section {
+  background-color: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin-top: 20px;
+}
+.settings-section.danger-zone {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
 .settings-controls { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
 .settings-field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--ink-dim); }
 .settings-field input { width: 120px; background: var(--bg-2); border: 1px solid var(--border); color: var(--ink); border-radius: 6px; padding: 6px 8px; }

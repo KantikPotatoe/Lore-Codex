@@ -148,7 +148,7 @@ export default function SettingsRoute() {
       <h1 className="settings-title">Settings</h1>
 
       {/* Auto-snapshots */}
-      <section className="home-section">
+      <section className="settings-section">
         <h2>Auto-snapshots</h2>
         <div className="settings-controls">
           <label className="settings-field">
@@ -201,7 +201,7 @@ export default function SettingsRoute() {
       </section>
 
       {/* Linking */}
-      <section className="home-section">
+      <section className="settings-section">
         <h2>Linking</h2>
         <label className="settings-field settings-field-check">
           <input
@@ -218,7 +218,7 @@ export default function SettingsRoute() {
       </section>
 
       {/* Backup & data */}
-      <section className="home-section backup">
+      <section className="settings-section backup">
         <h2>Backup &amp; data</h2>
 
         <div className="backup-status">
@@ -285,7 +285,7 @@ export default function SettingsRoute() {
       </section>
 
       {/* Danger zone */}
-      <section className="home-section danger-zone">
+      <section className="settings-section danger-zone">
         <h2>Danger zone</h2>
         <p className="empty-hint">Deleting this world removes all its pages, maps, and history. This cannot be undone — back up first.</p>
         <button className="danger-btn" onClick={() => setConfirmDelete(true)}>Delete this world</button>
