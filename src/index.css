@@ -472,6 +472,33 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .title-input:focus { border-color: var(--accent); }
 .title-input:focus:not(:focus-visible) { outline: none; }
 .page-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+/* "Saved" whisper — the motion system's last deferred item. It decays in pure
+   CSS: PageRoute re-keys the span on each save, remounting it and restarting
+   this animation from frame 0. No timer, so nothing to clean up. It ends at
+   opacity 0 and the node goes inert. */
+.save-whisper {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--ink-faint);
+  align-self: center;
+  margin-right: 4px;
+  animation: whisper 1600ms var(--ease-out) forwards;
+}
+@keyframes whisper {
+  0%   { opacity: 0; }
+  12%  { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* The global reduced-motion clamp forces animation-duration to 0.01ms, which
+   would flash the whisper invisibly and lose the information entirely. So say
+   it statically instead: no motion, no loss of meaning. */
+@media (prefers-reduced-motion: reduce) {
+  .save-whisper { animation: none; opacity: 1; }
+}
 .page-meta { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
 .summary-text { color: var(--ink-dim); font-family: var(--serif); font-size: 16px; font-style: italic; }
 .category-select, .summary-input {
