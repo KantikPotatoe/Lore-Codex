@@ -465,12 +465,12 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
   transition: border-color 0.15s ease;
 }
 .on-this-day:hover { border-color: var(--accent); }
-.otd-icon { font-size: 1.8rem; line-height: 1; }
-.otd-body { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
-.otd-title { font-family: var(--display); font-size: 1.15rem; color: var(--ink); }
-.otd-date { color: var(--accent-soft); font-size: 0.9rem; }
-.otd-snippet { color: var(--ink-faint); font-size: 0.9rem; }
-.otd-link { color: var(--accent); font-size: 0.85rem; margin-top: 0.2rem; }
+.otd-icon { font-size: 29px; line-height: 1; }
+.otd-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.otd-title { font-family: var(--display); font-size: 18px; color: var(--ink); }
+.otd-date { color: var(--accent-soft); font-size: 14px; }
+.otd-snippet { color: var(--ink-faint); font-size: 14px; }
+.otd-link { color: var(--accent); font-size: 14px; margin-top: 3px; }
 
 /* Status badge: outlined pill tinted by the status color. */
 .status-badge {
