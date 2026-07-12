@@ -14,6 +14,15 @@ import { useState } from 'react'
  *  while rendering" pattern — the same one PageRoute already uses to reset edit
  *  mode when the route's page id changes.
  *
+ *  `updatedAt` is tracked in both modes, so a write that lands while the user
+ *  is only reading is never mistaken for a save. But that write must not
+ *  leak forward either: entering edit mode (an `editing` transition to `true`)
+ *  establishes a FRESH BASELINE — it re-syncs to whatever `updatedAt` is
+ *  already current and drops any `savedAt` accumulated while reading (or left
+ *  over from a previous edit session). Only a write that lands *after* that
+ *  baseline is ever announced, and the whisper is only ever returned while
+ *  `editing` is true.
+ *
  *  @param id        the open page's id — a change means we navigated
  *  @param updatedAt the live-queried page's `updatedAt`; `undefined` while loading
  *  @param editing   whether the editor is open
@@ -29,6 +38,7 @@ export function useSaveWhisper(
   const [seenId, setSeenId] = useState(id)
   const [seenAt, setSeenAt] = useState<number | undefined>(undefined)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [seenEditing, setSeenEditing] = useState(editing)
 
   if (id !== seenId) {
     // A different page. Forget everything: its first `updatedAt` is an arrival,
@@ -36,14 +46,25 @@ export function useSaveWhisper(
     setSeenId(id)
     setSeenAt(undefined)
     setSavedAt(null)
-  } else if (updatedAt !== undefined && updatedAt !== seenAt) {
-    // `seenAt === undefined` means this is the first `updatedAt` we have seen
-    // for this page — it loaded, nobody saved.
-    if (seenAt !== undefined) setSavedAt(updatedAt)
+    setSeenEditing(editing)
+  } else if (editing && !seenEditing) {
+    // Entering edit mode. Whatever `updatedAt` is already current — even if
+    // it changed in this very render — predates (or is concurrent with) the
+    // start of editing, not a save made while editing. Re-sync to it and
+    // drop any `savedAt` carried over from the reading period (or a prior
+    // edit session), so only writes that land from here on are announced.
     setSeenAt(updatedAt)
+    setSavedAt(null)
+    setSeenEditing(editing)
+  } else {
+    if (editing !== seenEditing) setSeenEditing(editing)
+    if (updatedAt !== undefined && updatedAt !== seenAt) {
+      // `seenAt === undefined` means this is the first `updatedAt` we have
+      // seen for this page — it loaded, nobody saved.
+      if (seenAt !== undefined) setSavedAt(updatedAt)
+      setSeenAt(updatedAt)
+    }
   }
 
-  // Tracked in both modes (so entering edit mode can't whisper about a write
-  // that predates it), but only ever announced while editing.
   return editing ? savedAt : null
 }
