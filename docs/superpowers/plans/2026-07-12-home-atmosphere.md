@@ -197,6 +197,7 @@ export function useSaveWhisper(
   const [seenId, setSeenId] = useState(id)
   const [seenAt, setSeenAt] = useState<number | undefined>(undefined)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [seenEditing, setSeenEditing] = useState(editing)
 
   if (id !== seenId) {
     // A different page. Forget everything: its first `updatedAt` is an arrival,
@@ -204,18 +205,37 @@ export function useSaveWhisper(
     setSeenId(id)
     setSeenAt(undefined)
     setSavedAt(null)
-  } else if (updatedAt !== undefined && updatedAt !== seenAt) {
-    // `seenAt === undefined` means this is the first `updatedAt` we have seen
-    // for this page — it loaded, nobody saved.
-    if (seenAt !== undefined) setSavedAt(updatedAt)
+    setSeenEditing(editing)
+  } else if (editing && !seenEditing) {
+    // Entering edit mode. Whatever `updatedAt` is already current — even if it
+    // changed in this very render — predates the start of editing. Re-sync to
+    // it and drop any `savedAt` carried over from the reading period (or a
+    // prior edit session), so only writes landing from here on are announced.
     setSeenAt(updatedAt)
+    setSavedAt(null)
+    setSeenEditing(editing)
+  } else {
+    if (editing !== seenEditing) setSeenEditing(editing)
+    if (updatedAt !== undefined && updatedAt !== seenAt) {
+      // `seenAt === undefined` means this is the first `updatedAt` we have seen
+      // for this page — it loaded, nobody saved.
+      if (seenAt !== undefined) setSavedAt(updatedAt)
+      setSeenAt(updatedAt)
+    }
   }
 
-  // Tracked in both modes (so entering edit mode can't whisper about a write
-  // that predates it), but only ever announced while editing.
   return editing ? savedAt : null
 }
 ```
+
+> **Why the `seenEditing` branch exists — do not remove it.** Without it, a write
+> that lands while you are only *reading* sets `savedAt` (correctly returning
+> `null` at the time, since you are not editing) and nothing ever clears it — so
+> clicking **Edit** afterwards whispers "Saved" for a write you never made. The
+> same fault re-whispers an old save when you leave edit mode and come back. The
+> first version of this plan shipped that bug; the review caught it. The
+> same-render case is real too: "✓ Done" flushes the debounced content write *and*
+> leaves edit mode, so a write can land in the very render `editing` goes false.
 
 - [ ] **Step 4: Run the test to verify it passes**
 

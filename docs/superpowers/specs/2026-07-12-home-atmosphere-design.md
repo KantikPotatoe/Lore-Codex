@@ -101,21 +101,34 @@ and the purity rule bans a literal `Date.now()` in render).
 `prevId` (`PageRoute.tsx:109-114`) — React's documented "adjust state while
 rendering" pattern:
 
-```tsx
-// `updatedAt` advances on every write to this page, whatever the path (body,
-// summary, status, tags, infobox). Any value past the one we arrived with means
-// a write landed — so one observer covers every save.
-const [seenAt, setSeenAt] = useState<number | undefined>(undefined)
-const [savedAt, setSavedAt] = useState<number | null>(null)
-if (page && page.updatedAt !== seenAt) {
-  // The first observation is the page loading, not a save.
-  if (seenAt !== undefined) setSavedAt(page.updatedAt)
-  setSeenAt(page.updatedAt)
-}
-```
+The hook keeps three things: the last `updatedAt` it saw, the stamp of the write
+that just landed, and — **load-bearing** — the last `editing` value it saw.
 
-Both must reset inside the existing `if (id !== prevId)` block, or the whisper
-would fire on arrival at the next page.
+**Three resets, not one.** The obvious design (track `updatedAt`, gate the output
+on `editing`) has a bug that only shows up in a sequence: you open a page, another
+tab writes to it, and *then* you click Edit. The write set the stamp while you
+were merely reading — correctly returning nothing, because you were not editing —
+but nothing ever cleared it, so entering edit mode announces "Saved" for a write
+you never made. The same fault re-whispers an old save if you leave edit mode and
+come back.
+
+So an **`editing` transition to `true` establishes a fresh baseline**: it re-syncs
+to whatever `updatedAt` is already current and drops any stamp accumulated while
+reading. Only a write landing *after* that baseline is ever announced.
+
+| Branch | Reset |
+|---|---|
+| `id` changed (navigated) | forget everything — the new page's first `updatedAt` is an arrival, not a save |
+| entering edit mode | re-sync `seenAt` to the current `updatedAt`; drop any accumulated stamp |
+| otherwise | a changed `updatedAt` is a save (unless it is the first one we have seen for this page) |
+
+The same-render case is real and is handled by the second branch: the "✓ Done"
+button flushes the debounced content write *and* leaves edit mode, so a write can
+land in the very render `editing` goes false. That write predates the *next* edit
+session, and must not whisper when you click Edit again.
+
+The output is gated on the current `editing`, so the whisper is only ever returned
+while the editor is open.
 
 **Decay is pure CSS.** No `setTimeout`:
 
