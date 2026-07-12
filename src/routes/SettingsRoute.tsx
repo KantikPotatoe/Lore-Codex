@@ -148,7 +148,7 @@ export default function SettingsRoute() {
       <h1 className="settings-title">Settings</h1>
 
       {/* Auto-snapshots */}
-      <section className="home-section">
+      <section className="settings-section">
         <h2>Auto-snapshots</h2>
         <div className="settings-controls">
           <label className="settings-field">
@@ -201,7 +201,7 @@ export default function SettingsRoute() {
       </section>
 
       {/* Linking */}
-      <section className="home-section">
+      <section className="settings-section">
         <h2>Linking</h2>
         <label className="settings-field settings-field-check">
           <input
@@ -218,7 +218,7 @@ export default function SettingsRoute() {
       </section>
 
       {/* Backup & data */}
-      <section className="home-section backup">
+      <section className="settings-section backup">
         <h2>Backup &amp; data</h2>
 
         <div className="backup-status">
@@ -275,17 +275,26 @@ export default function SettingsRoute() {
               Your lore is saved inside Firefox. To keep a copy that survives even if the browser is
               cleared, point Firefox's downloads at a cloud-synced folder:
             </p>
-            <ol>
-              <li>Make a folder inside <em>Dropbox</em>, <em>OneDrive</em>, or <em>Google Drive</em> (e.g. <code>Lore Backups</code>).</li>
-              <li>In Firefox: <em>Settings → General → Files and Applications → Downloads</em>, set "Save files to" to that folder.</li>
-              <li>Click <strong>Back up now</strong> whenever the warning appears — the file lands in your synced folder and is copied to the cloud automatically.</li>
+            <ol className="backup-steps" aria-label="Backup steps">
+              <li>
+                <strong>Make a synced folder.</strong> Anywhere inside <em>Dropbox</em>,{' '}
+                <em>OneDrive</em>, or <em>Google Drive</em> — e.g. <code>Lore Backups</code>.
+              </li>
+              <li>
+                <strong>Point Firefox at it.</strong> <em>Settings → General → Files and
+                Applications → Downloads</em>, then set "Save files to" to that folder.
+              </li>
+              <li>
+                <strong>Click "Back up now" when warned.</strong> The file lands in your synced folder and
+                is copied to the cloud automatically.
+              </li>
             </ol>
           </div>
         )}
       </section>
 
       {/* Danger zone */}
-      <section className="home-section danger-zone">
+      <section className="settings-section danger-zone">
         <h2>Danger zone</h2>
         <p className="empty-hint">Deleting this world removes all its pages, maps, and history. This cannot be undone — back up first.</p>
         <button className="danger-btn" onClick={() => setConfirmDelete(true)}>Delete this world</button>

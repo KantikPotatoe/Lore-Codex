@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { db } from '../db'
 import SettingsRoute from './SettingsRoute'
@@ -78,5 +78,17 @@ describe('SettingsRoute', () => {
     fireEvent.click(await screen.findByText(/Restore from backup/))
     expect(await screen.findByText('Could not read backup')).toBeTruthy()
     expect(screen.queryByText('Replace your codex?')).toBeNull()
+  })
+
+  it('presents the browser backup advice as three scannable steps, not a prose block', async () => {
+    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+
+    const steps = await screen.findByRole('list', { name: 'Backup steps' })
+    expect(within(steps).getAllByRole('listitem')).toHaveLength(3)
+
+    // Each step leads with what you DO, so the list is scannable without reading it.
+    expect(within(steps).getByText('Make a synced folder.')).toBeTruthy()
+    expect(within(steps).getByText('Point Firefox at it.')).toBeTruthy()
+    expect(within(steps).getByText('Click "Back up now" when warned.')).toBeTruthy()
   })
 })

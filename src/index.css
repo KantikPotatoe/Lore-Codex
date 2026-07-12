@@ -133,6 +133,8 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .book-card,
 .world-card,
 .modal-dialog,
+.settings-section,
+.template-editor,
 .sidebar {
   background-image: var(--parchment-noise);
 }
@@ -148,12 +150,16 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
    simply overrides it with a deeper shadow on lift. Note: on an
    overflow:hidden panel whose child paints over the top edge (e.g. .infobox's
    coloured title bar), the inner highlight is occluded and the lit-from-above
-   cue comes from the drop shadow. */
+   cue comes from the drop shadow. .settings-section and .template-editor are
+   included too: both are floating content panels and take the same resting
+   elevation as the rest of this list. */
 .elevated,
 .infobox,
 .book-card,
 .world-card,
-.ov-card {
+.ov-card,
+.settings-section,
+.template-editor {
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.25),
     0 6px 18px rgba(0, 0, 0, 0.28),
@@ -372,7 +378,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible,
 .home-cta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .home-cta .primary-btn { width: auto; }
 .home-section { margin-top: 40px; }
-.home-section h2 {
+.home-section h2, .settings-section h2 {
   font-family: var(--display); font-size: 20px; color: var(--ink);
   border-bottom: 1px solid transparent; padding-bottom: 8px;
   border-image: linear-gradient(to right, var(--accent) 0%, var(--border) 28%, var(--border) 100%) 1;
@@ -909,7 +915,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .template-new { margin-top: 6px; }
 
 .template-editor {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
+  background-color: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
 }
 .template-editor.empty { display: flex; align-items: center; justify-content: center; min-height: 160px; }
 .template-editor-head { display: flex; gap: 10px; margin-bottom: 14px; }
@@ -927,9 +933,23 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .color-custom { width: 26px; height: 24px; padding: 0; background: none; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
 
 .template-items { display: flex; flex-direction: column; gap: 6px; }
-.template-item { display: flex; align-items: center; gap: 8px; }
+.template-item {
+  display: flex; align-items: center; gap: 8px;
+  background-color: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 8px;
+}
 .template-item-move { display: flex; flex-direction: column; line-height: 0.7; }
-.template-item-move .tag-x { padding: 0 4px; font-size: 9px; }
+
+/* Hit targets. These were a 9px glyph in a 4px-padded box — the "cramped rows"
+   complaint. `>` scopes the remove button without colliding with the nested
+   move buttons (both would be (0,2,0) and decided by source order alone). */
+.template-item-move .tag-x { padding: 2px 6px; font-size: 9px; border-radius: 4px; }
+.template-item-move .tag-x:hover:not(:disabled) { background: var(--panel-2); }
+.template-item > .tag-x { padding: 4px 7px; border-radius: 5px; }
+.template-item > .tag-x:hover:not(:disabled) { background: var(--panel-2); }
+.template-item .tag-x:disabled { opacity: 0.4; }
 .template-item-label {
   flex: 1; min-width: 0; background: var(--bg-2); border: 1px solid var(--border); color: var(--ink);
   border-radius: 6px; padding: 6px 9px;
@@ -1066,9 +1086,39 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border-radius: 8px; padding: 14px 18px; margin-top: 18px; font-size: 14px; color: var(--ink-dim);
 }
 .backup-tip p { margin: 6px 0; }
-.backup-tip ol { margin: 8px 0 0; padding-left: 20px; line-height: 1.8; }
 .backup-tip code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; font-size: 13px; color: var(--accent-soft); }
 .backup-tip em { color: var(--ink); font-style: normal; font-weight: 600; }
+
+.backup-steps {
+  margin: 12px 0 0; padding: 0; list-style: none;
+  counter-reset: step;
+  display: flex; flex-direction: column; gap: 10px;
+}
+/* The step's badge is ABSOLUTELY POSITIONED, and the li is left in NORMAL INLINE FLOW.
+   It is tempting to make the li a grid (`grid-template-columns: 22px 1fr`) and let the
+   ::before be the first cell — but in a grid container EVERY element child becomes its own
+   grid ITEM, so each <strong>/<em>/<code> in the sentence gets its own cell and the prose
+   SHATTERS into one fragment per line. The text must stay inline, so the badge cannot be a
+   sibling grid item; it has to be lifted out of flow instead. */
+.backup-steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 32px;
+  line-height: 1.5;
+}
+.backup-steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  font-family: var(--display); font-size: 12px;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 50%;
+}
+.backup-steps strong { color: var(--ink); }
 
 /* --- Maps ----------------------------------------------------------------- */
 
@@ -1547,8 +1597,8 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border-radius: 8px;
 }
 .snapshot-meta { display: flex; flex-direction: column; gap: 2px; }
-.snapshot-time { font-size: 0.9rem; color: var(--ink); }
-.snapshot-count { font-size: 0.78rem; color: var(--ink-faint); }
+.snapshot-time { font-size: 14px; color: var(--ink); }
+.snapshot-count { font-size: 12.5px; color: var(--ink-faint); }
 
 /* --- Search modal --------------------------------------------------------- */
 .search-overlay {
@@ -2308,11 +2358,35 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .back-to-top:hover { filter: brightness(1.07); }
 
 /* Settings page */
-.settings-page { max-width: 860px; }
+.settings-page { max-width: 880px; margin: 0 auto; padding: 48px 40px 80px; }
 .settings-title { margin: 0 0 18px; }
+
+/* Back-of-house: the sections are OBJECTS, grouped by material rather than by a
+   decorative rule. Home's diamond ornament is deliberately not used here — see
+   the workshop spec. `background-color` (never `background:`) because this is a
+   .parchment member; the shorthand would wipe the grain (#218). */
+.settings-section {
+  background-color: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin-top: 20px;
+}
+.settings-section.danger-zone {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
 .settings-controls { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
 .settings-field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--ink-dim); }
 .settings-field input { width: 120px; background: var(--bg-2); border: 1px solid var(--border); color: var(--ink); border-radius: 6px; padding: 6px 8px; }
+
+/* The checkbox row is a ROW, not a column. Both declarations above are one class (0,1,0) and sit
+   ~1600 lines AFTER .settings-field-check (:745), so on source order alone they were silently
+   beating it: `flex-direction: column` stacked the checkbox ABOVE its label, `align-items: center`
+   (uncontested) then centred it, and `width: 120px` gave the checkbox a 120px-wide hit area.
+   Compound selectors (0,2,0) win regardless of where they sit — the same fix as .template-item > .tag-x.
+   Equal specificity + distance is this file's signature trap; see the .parchment note at the top. */
+.settings-field.settings-field-check { flex-direction: row; align-items: center; gap: 8px; }
+.settings-field.settings-field-check input { width: auto; }
 .danger-zone .danger-btn { background: #3a1714; border: 1px solid #7c2d24; color: #f3b9b1; border-radius: 7px; padding: 8px 14px; cursor: pointer; }
 .danger-zone .danger-btn:hover { background: #4a1d18; }
 
