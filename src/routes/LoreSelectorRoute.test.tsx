@@ -219,4 +219,34 @@ describe('LoreSelectorRoute — open last world on launch', () => {
     expect(await screen.findByText(/Choose a world to enter/i)).toBeTruthy()
     expect(screen.queryByText('HOME STUB')).toBeNull()
   })
+
+  it('shows the picker (does not bounce back) on the first "/" arrival after the page loaded elsewhere — the "Switch world" dead-click bug', async () => {
+    // switchLore() reloads to #/home, and so does any plain F5 on a page. In
+    // that case LoreSelectorRoute never mounts on load, so a mount-based
+    // "startup" guard stays false — and the user's deliberate later click on
+    // Sidebar's "Switch world" (a client-side <Link to="/">) gets misread as
+    // a cold launch and redirected straight back to /home: a dead click.
+    // The fix must key "startup" off how the PAGE loaded, not off whether
+    // this route has mounted before.
+    vi.resetModules()
+    window.location.hash = '#/home'
+    try {
+      const { default: FreshLoreSelectorRoute } = await import('./LoreSelectorRoute')
+      const { listLores: freshListLores } = await import('../lores')
+      const { getAppSettings: freshGetAppSettings } = await import('../appSettings')
+      vi.mocked(freshListLores).mockResolvedValue([world()])
+      vi.mocked(freshGetAppSettings).mockResolvedValue(openLastWorldSettings)
+      localStorage.setItem(CURRENT_LORE_KEY, world().id)
+
+      // First-ever mount of this route in this (simulated) page life, but the
+      // page itself loaded at #/home, not at the picker — i.e. this arrival at
+      // "/" is a deliberate client-side navigation (Switch world), not a launch.
+      renderAtRoot(FreshLoreSelectorRoute)
+
+      expect(await screen.findByText(/Choose a world to enter/i)).toBeTruthy()
+      expect(screen.queryByText('HOME STUB')).toBeNull()
+    } finally {
+      window.location.hash = ''
+    }
+  })
 })

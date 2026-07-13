@@ -25,6 +25,17 @@ import EmptyState from '../components/EmptyState'
 // and deleteLore() both reload the page, so this resets exactly when it should.
 let startupHandled = false
 
+// "Startup" = the page LOADED at the picker. A later client-side arrival at "/"
+// is the user ASKING for the picker (Sidebar's "Switch world"), and must never be
+// redirected away. switchLore() reloads to #/home, so a mount-based guard (i.e.
+// "has this route mounted before in this page's life?") would misread the FIRST
+// click after any reload as a cold launch — the route never mounted at #/home,
+// so `startupHandled` was still false, and the deliberate click got bounced
+// straight back (a dead click; a second click then worked, because the bounced
+// mount had set the flag). Read once at module scope, before React mounts.
+const loadedAtRoot =
+  !window.location.hash || window.location.hash === '#' || window.location.hash === '#/'
+
 /** A world name derived from a backup's filename — the stem, unless it's one
  *  of our own timestamped export names, which make poor world names. */
 function nameFromFilename(filename: string): string {
@@ -61,7 +72,9 @@ export default function LoreSelectorRoute() {
       openLastWorld: appSettings.openLastWorld,
       storedLoreId: localStorage.getItem(CURRENT_LORE_KEY),
       knownIds: loresRaw.map((l) => l.id),
-      startupHandled,
+      // The page didn't load at the picker, so this mount is a deliberate
+      // "Switch world" click, not a launch — treat startup as already handled.
+      startupHandled: startupHandled || !loadedAtRoot,
     })
 
   useEffect(() => {
