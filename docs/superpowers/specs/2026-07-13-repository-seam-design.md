@@ -59,9 +59,22 @@ All three must be re-exported from the barrel `src/db/index.ts` (`barrel.test.ts
 - **`SettingsRoute.loadCounts()`** (`SettingsRoute.tsx:98–110`) counts all 14 tables inline. That is infra that leaked into a route, not a UI read; turning it into 14 repo calls would be worse than leaving it. It moves wholesale into `src/db/backup.ts` as `countAll(): Promise<BackupCounts>`, sitting next to the `BackupCounts` type that module already owns. The route then calls one function.
 - **`db.meta.get(LAST_BACKUP_KEY)`** in `BackupBanner.tsx:21` and `SettingsRoute.tsx:46` → the existing `getMeta()` from `db/schema.ts`. No new repo.
 
-### 3.3 One pure-drift fix
+### 3.3 One new `pageRepo` method
 
-`SearchModal.tsx:43` → `pageRepo.list()`.
+`SearchModal.tsx:43` calls `db.pages.bulkGet(ids)` to hydrate the recently-viewed list. `pageRepo` has no bulk read, so add one:
+
+```ts
+/** Several pages by id, in the order given. Ids with no page come back
+ *  `undefined` (callers drop them) — mirrors Dexie's bulkGet contract. */
+getMany(ids: string[]): Promise<(LorePage | undefined)[]>
+```
+
+### 3.4 Behaviour preservation
+
+Repo methods must mirror the **current** queries exactly. Two traps found while planning:
+
+- `getTemplates()` (`db/templates.ts:240`) is *not* equivalent to `db.templates.orderBy('name').toArray()` — it falls back to `BUILTIN_TEMPLATES` when the table is empty. Routing UI reads through it would be a behaviour change. `templateRepo` gets its own `list()` / `listByName()` that mirror the raw queries.
+- `listScenes()` (`db/manuscript.ts:170`) is **chapter**-scoped; every UI caller wants **book**-scoped. That is the one genuinely new read (`listScenesForBook`). By contrast `listBooks()`, `listChapters()`, `listPlotlines()` and `listBeats()` already match their inline UI queries exactly — the UI simply reimplemented them by hand, which is the drift thesis again. `manuscriptRepo` delegates to those.
 
 ## 4. The guardrail
 
