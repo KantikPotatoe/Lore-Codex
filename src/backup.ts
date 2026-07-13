@@ -1,5 +1,6 @@
 import { db, exportAll, setMeta, LAST_BACKUP_KEY } from './db'
 import { saveFile, writeAppData } from './platform'
+import { getAppSettings } from './appSettings'
 
 // ---------------------------------------------------------------------------
 // Backup & storage-safety helpers
@@ -31,7 +32,8 @@ export async function isStoragePersisted(): Promise<boolean> {
  *  the last-backup time is deliberately NOT stamped. */
 export async function downloadBackup(): Promise<void> {
   const json = await exportAll()
-  const saved = await saveFile(json, `lore-backup-${backupStamp()}.json`)
+  const { defaultBackupDir } = await getAppSettings()
+  const saved = await saveFile(json, `lore-backup-${backupStamp()}.json`, { defaultDir: defaultBackupDir })
   if (saved) await setMeta(LAST_BACKUP_KEY, Date.now())
 }
 
@@ -118,6 +120,47 @@ const DAY_MS = 24 * 60 * 60 * 1000
 export function isBackupOverdue(lastBackup: number | null, overdueDays = 7): boolean {
   if (lastBackup === null) return true
   return Date.now() - lastBackup > overdueDays * DAY_MS
+}
+
+/** Whether closing the app should write an exit-backup. Pure, so the policy is
+ *  testable without a window: enabled, and something actually changed since the
+ *  last backup — closing ten times in a row must not litter ten identical files. */
+export function shouldBackupOnExit(
+  enabled: boolean,
+  lastBackup: number | null,
+  latestChange: number,
+): boolean {
+  return enabled && hasUnbackedUpChanges(lastBackup, latestChange)
+}
+
+// Mon..Sun slot names for backupOnExit's rotating filename — see there for why.
+const WEEKDAY_SLOTS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/**
+ * Write a backup to the app's data folder as the desktop app closes.
+ *
+ * The filename is a rotating weekday slot (`exit-Mon.json` .. `exit-Sun.json`),
+ * NOT a timestamp: with backupOnExit on, closing the app once a day with edits
+ * would otherwise write a fresh full export — including every gallery image as
+ * a data URL, plausibly tens of MB — on every close, forever, silently filling
+ * $APPDATA (unlike auto-snapshots, which keep only 10). Seven slots give a
+ * week of rolling history with a bounded footprint, and reusing a filename
+ * needs only a write, not a directory listing + delete — so this stays inside
+ * the `fs:allow-write` scope already granted, with no new permissions
+ * (`fs:allow-read-dir` / `fs:allow-remove`) added to prune old files.
+ *
+ * Deliberately does NOT stamp LAST_BACKUP_KEY. An $APPDATA copy is a safety net,
+ * not a backup that has left the machine — silencing the "back up your world"
+ * banner here would tell the user their data is safe off-disk when it isn't.
+ * (This is also why the chosen backup folder isn't written to: a folder picked
+ * in an earlier session carries no write permission — see platform.ts.)
+ *
+ * Returns false in the browser, where writeAppData is a no-op.
+ */
+export async function backupOnExit(): Promise<boolean> {
+  const json = await exportAll()
+  const slot = WEEKDAY_SLOTS[new Date().getDay()]
+  return writeAppData(`backups/exit-${slot}.json`, json)
 }
 
 // ---------------------------------------------------------------------------

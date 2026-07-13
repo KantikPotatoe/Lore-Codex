@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main-window permissions, deliberately minimal. Everything here backs src/platform.ts (the only module allowed to call shell APIs): saveFile = Save-As dialog + write to the picked path; openTextFile = Open dialog + read of the picked path (the dialog plugin adds picked paths to the fs scope at runtime, so no static path scope is granted for either); writeAppData = pre-import safety copies under $APPDATA/backups.",
+  "description": "Main-window permissions, deliberately minimal. Everything here backs src/platform.ts (the only module allowed to call shell APIs): saveFile = Save-As dialog + write to the picked path; openTextFile = Open dialog + read of the picked path (the dialog plugin adds picked paths to the fs scope at runtime, so no static path scope is granted for either); pickDirectory = Open dialog in directory mode, whose result only pre-fills the Save dialog — it is NOT a write grant; writeAppData = pre-import safety copies and exit-backups under $APPDATA/backups; onCloseRequested = intercept the window close to finish an exit-backup, which needs window:destroy to then actually close it.",
   "windows": [
     "main"
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-destroy",
     "dialog:allow-save",
     "dialog:allow-open",
     "fs:allow-write-file",

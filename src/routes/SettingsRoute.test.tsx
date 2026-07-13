@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { db } from '../db'
 import SettingsRoute from './SettingsRoute'
 import { openTextFile } from '../platform'
+import { registry } from '../registryDb'
+import { getAppSettings } from '../appSettings'
 
 // The import flow goes through the platform seam (native Open dialog in the
 // shell, transient file input in the browser) — mock the seam, not the DOM.
@@ -11,7 +13,8 @@ vi.mock('../platform', () => ({
   openTextFile: vi.fn(),
   writeAppData: vi.fn(async () => false),
   saveFile: vi.fn(async () => true),
-  isTauri: () => false,
+  pickDirectory: vi.fn(async () => null),
+  isTauri: () => false, // the suite runs as the browser build
 }))
 
 afterEach(() => {
@@ -28,7 +31,8 @@ describe('SettingsRoute', () => {
   it('renders the sections and the snapshot policy control', async () => {
     render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
     expect(await screen.findByText('Auto-snapshots')).toBeTruthy()
-    expect(screen.getByText('Linking')).toBeTruthy()
+    // Settings rework (#173): the old "Linking" section was absorbed into "Editor".
+    expect(screen.getByText('Editor')).toBeTruthy()
     expect(screen.getByText('Backup & data')).toBeTruthy()
     expect(screen.getByText('Danger zone')).toBeTruthy()
     // snapshot retention input seeded from defaults (10)
@@ -90,5 +94,35 @@ describe('SettingsRoute', () => {
     expect(within(steps).getByText('Make a synced folder.')).toBeTruthy()
     expect(within(steps).getByText('Point Firefox at it.')).toBeTruthy()
     expect(within(steps).getByText('Click "Back up now" when warned.')).toBeTruthy()
+  })
+})
+
+describe('SettingsRoute app-level options', () => {
+  beforeEach(async () => { await registry.appMeta.clear() })
+
+  it('toggles "open the last world on launch"', async () => {
+    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    const box = await screen.findByLabelText(/open the last world/i)
+    expect((box as HTMLInputElement).checked).toBe(false) // today's behaviour
+    fireEvent.click(box)
+    await waitFor(async () => {
+      expect((await getAppSettings()).openLastWorld).toBe(true)
+    })
+  })
+
+  it('picks a spellcheck language', async () => {
+    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    const select = await screen.findByLabelText(/spellcheck language/i)
+    fireEvent.change(select, { target: { value: 'fr' } })
+    await waitFor(async () => {
+      expect((await getAppSettings()).spellcheckLang).toBe('fr')
+    })
+  })
+
+  it('disables the desktop-only options in the browser', async () => {
+    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    const exit = await screen.findByLabelText(/back up when I close/i)
+    expect((exit as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getAllByText(/desktop app only/i).length).toBeGreaterThan(0)
   })
 })

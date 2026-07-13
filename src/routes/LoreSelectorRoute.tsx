@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   listLores,
@@ -15,8 +16,25 @@ import {
 import { parseBackup, type BackupCounts } from '../db'
 import { openTextFile } from '../platform'
 import { compressImage } from '../imageUtils'
+import { getAppSettings, shouldOpenLastWorld } from '../appSettings'
+import { CURRENT_LORE_KEY } from '../loreId'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
+
+// Only the first arrival at "/" in a page's life may auto-redirect. switchLore()
+// and deleteLore() both reload the page, so this resets exactly when it should.
+let startupHandled = false
+
+// "Startup" = the page LOADED at the picker. A later client-side arrival at "/"
+// is the user ASKING for the picker (Sidebar's "Switch world"), and must never be
+// redirected away. switchLore() reloads to #/home, so a mount-based guard (i.e.
+// "has this route mounted before in this page's life?") would misread the FIRST
+// click after any reload as a cold launch — the route never mounted at #/home,
+// so `startupHandled` was still false, and the deliberate click got bounced
+// straight back (a dead click; a second click then worked, because the bounced
+// mount had set the flag). Read once at module scope, before React mounts.
+const loadedAtRoot =
+  !window.location.hash || window.location.hash === '#' || window.location.hash === '#/'
 
 /** A world name derived from a backup's filename — the stem, unless it's one
  *  of our own timestamped export names, which make poor world names. */
@@ -42,8 +60,34 @@ export default function LoreSelectorRoute() {
   const [importing, setImporting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const lores = useLiveQuery(listLores, []) ?? []
+  const loresRaw = useLiveQuery(listLores, [])
+  const lores = loresRaw ?? []
+  const appSettings = useLiveQuery(() => getAppSettings(), [])
   const activeId = currentLoreId()
+
+  const autoOpen =
+    loresRaw !== undefined &&
+    appSettings !== undefined &&
+    shouldOpenLastWorld({
+      openLastWorld: appSettings.openLastWorld,
+      storedLoreId: localStorage.getItem(CURRENT_LORE_KEY),
+      knownIds: loresRaw.map((l) => l.id),
+      // The page didn't load at the picker, so this mount is a deliberate
+      // "Switch world" click, not a launch — treat startup as already handled.
+      startupHandled: startupHandled || !loadedAtRoot,
+    })
+
+  useEffect(() => {
+    // Set in an effect, never during render — mutating module state while
+    // rendering violates react-hooks/purity (and would misfire under StrictMode).
+    // Gated on both queries having resolved: an empty-deps effect fires in the
+    // first passive-effect pass, before either useLiveQuery result can arrive
+    // (Dexie resolves on a later microtask) — so by the time the data landed,
+    // startupHandled was already true and the redirect could never fire on a
+    // real cold launch. Only mark it handled once the decision was actually made.
+    if (loresRaw === undefined || appSettings === undefined) return
+    startupHandled = true
+  }, [loresRaw, appSettings])
 
   async function handleCreate() {
     setCreating(true)
@@ -99,6 +143,11 @@ export default function LoreSelectorRoute() {
     setBannerTargetId(id)
     bannerInputRef.current?.click()
   }
+
+  // Still loading: render nothing rather than flashing the picker for a frame
+  // before redirecting away from it.
+  if (loresRaw === undefined || appSettings === undefined) return null
+  if (autoOpen) return <Navigate to="/home" replace />
 
   return (
     <div className="lore-selector">
@@ -274,7 +323,7 @@ export default function LoreSelectorRoute() {
               {pendingWizard.counts.books} books. It becomes a brand-new world — nothing
               existing is touched.
             </p>
-            <label className="settings-field">
+            <label className="dialog-field">
               <span>World name</span>
               <input
                 value={pendingWizard.name}

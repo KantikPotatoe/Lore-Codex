@@ -29,10 +29,18 @@ export function isTauri(): boolean {
  * The Tauri plugins are imported lazily so the web bundle's behavior and the
  * test environment stay free of shell modules unless actually in the shell.
  */
-export async function saveFile(data: Blob | string, suggestedName: string): Promise<boolean> {
+export async function saveFile(
+  data: Blob | string,
+  suggestedName: string,
+  opts?: { defaultDir?: string | null },
+): Promise<boolean> {
   if (isTauri()) {
     const { save } = await import('@tauri-apps/plugin-dialog')
-    const path = await save({ defaultPath: suggestedName })
+    // A remembered folder only *pre-fills* the dialog — it grants no write
+    // access on its own (Tauri scopes fs writes to paths picked in the current
+    // session's dialog), and the user still confirms the path.
+    const dir = opts?.defaultDir?.replace(/[\\/]+$/, '')
+    const path = await save({ defaultPath: dir ? `${dir}/${suggestedName}` : suggestedName })
     if (!path) return false
     if (typeof data === 'string') {
       const { writeTextFile } = await import('@tauri-apps/plugin-fs')
@@ -169,4 +177,56 @@ export async function writeAppData(relativePath: string, contents: string): Prom
   }
   await writeTextFile(relativePath, contents, { baseDir: BaseDirectory.AppData })
   return true
+}
+
+/**
+ * Let the user pick a folder. Shell-only: resolves `null` in the browser (no
+ * directory picker exists there) and on cancel.
+ *
+ * The returned path is a *hint for the Save dialog*, not a grant: writing to it
+ * silently in a later session would fail, because Tauri only scopes fs writes to
+ * paths picked in the current session's dialog. See
+ * `src-tauri/capabilities/default.json`.
+ */
+export async function pickDirectory(): Promise<string | null> {
+  if (!isTauri()) return null
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const path = await open({ directory: true, multiple: false })
+  return typeof path === 'string' ? path : null
+}
+
+/**
+ * Run `handler` when the user closes the desktop window, then close it.
+ * Resolves an unsubscribe function; a no-op in the browser, where an async
+ * export cannot be awaited on unload (and nothing is lost anyway — IndexedDB
+ * persists), so no equivalent is offered.
+ *
+ * The close is deliberately wrapped: a failing handler must never wedge the
+ * window shut. Whatever happens, the window is destroyed.
+ */
+export async function onCloseRequested(handler: () => Promise<void>): Promise<() => void> {
+  if (!isTauri()) return () => {}
+  const { getCurrentWindow } = await import('@tauri-apps/api/window')
+  const win = getCurrentWindow()
+  // Guards against re-entry while the handler is still running: `unlisten()`
+  // only happens AFTER the awaited handler resolves, so the listener stays
+  // registered for the whole backup. An impatient second click on the X (or
+  // Alt+F4) during that window — up to 5s, per App.tsx's timeout — would
+  // otherwise re-enter this callback: a second exportAll() running
+  // concurrently with the first, and a second win.destroy() racing the first
+  // (the loser rejecting outside any try/catch, an unhandled rejection).
+  let closing = false
+  const unlisten = await win.onCloseRequested(async (event) => {
+    event.preventDefault() // we need to await the handler before the window goes
+    if (closing) return
+    closing = true
+    try {
+      await handler()
+    } catch {
+      // A failed exit-backup is not a reason to trap the user in the app.
+    }
+    unlisten()
+    await win.destroy()
+  })
+  return unlisten
 }
