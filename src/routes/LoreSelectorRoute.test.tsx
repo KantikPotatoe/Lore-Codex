@@ -25,6 +25,17 @@ vi.mock('../lores', () => ({
   importLoreFromBackup: vi.fn(async () => 'new-world-id'),
 }))
 
+vi.mock('../appSettings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../appSettings')>()),
+  getAppSettings: vi.fn(async () => ({
+    openLastWorld: false, // the picker's own suite must always see the picker
+    spellcheck: true,
+    spellcheckLang: '',
+    backupOnExit: false,
+    defaultBackupDir: null,
+  })),
+}))
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()

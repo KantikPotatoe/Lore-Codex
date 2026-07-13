@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   listLores,
@@ -15,8 +16,14 @@ import {
 import { parseBackup, type BackupCounts } from '../db'
 import { openTextFile } from '../platform'
 import { compressImage } from '../imageUtils'
+import { getAppSettings, shouldOpenLastWorld } from '../appSettings'
+import { CURRENT_LORE_KEY } from '../loreId'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
+
+// Only the first arrival at "/" in a page's life may auto-redirect. switchLore()
+// and deleteLore() both reload the page, so this resets exactly when it should.
+let startupHandled = false
 
 /** A world name derived from a backup's filename — the stem, unless it's one
  *  of our own timestamped export names, which make poor world names. */
@@ -42,8 +49,26 @@ export default function LoreSelectorRoute() {
   const [importing, setImporting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const lores = useLiveQuery(listLores, []) ?? []
+  const loresRaw = useLiveQuery(listLores, [])
+  const lores = loresRaw ?? []
+  const appSettings = useLiveQuery(() => getAppSettings(), [])
   const activeId = currentLoreId()
+
+  const autoOpen =
+    loresRaw !== undefined &&
+    appSettings !== undefined &&
+    shouldOpenLastWorld({
+      openLastWorld: appSettings.openLastWorld,
+      storedLoreId: localStorage.getItem(CURRENT_LORE_KEY),
+      knownIds: loresRaw.map((l) => l.id),
+      startupHandled,
+    })
+
+  useEffect(() => {
+    // Set in an effect, never during render — mutating module state while
+    // rendering violates react-hooks/purity (and would misfire under StrictMode).
+    startupHandled = true
+  }, [])
 
   async function handleCreate() {
     setCreating(true)
@@ -99,6 +124,11 @@ export default function LoreSelectorRoute() {
     setBannerTargetId(id)
     bannerInputRef.current?.click()
   }
+
+  // Still loading: render nothing rather than flashing the picker for a frame
+  // before redirecting away from it.
+  if (loresRaw === undefined || appSettings === undefined) return null
+  if (autoOpen) return <Navigate to="/home" replace />
 
   return (
     <div className="lore-selector">

@@ -71,3 +71,22 @@ export async function updateAppSettings(patch: Partial<AppSettings>): Promise<vo
   const next = { ...(await getAppSettings()), ...patch }
   await registry.appMeta.put({ key: APP_SETTINGS_KEY, value: next })
 }
+
+/** Decide whether launching should skip the picker and reopen the last world.
+ *  Pure, so every guard is testable:
+ *   - `startupHandled` — only ever redirect once per page life, or "switch
+ *     world" would bounce straight back and the picker would be unreachable.
+ *   - `storedLoreId === null` — `deleteLore()` clears CURRENT_LORE_KEY, so the
+ *     just-deleted case must land on the picker, not silently open 'default'.
+ *   - `knownIds` — never redirect into a world that no longer exists. */
+export function shouldOpenLastWorld(args: {
+  openLastWorld: boolean
+  storedLoreId: string | null
+  knownIds: string[]
+  startupHandled: boolean
+}): boolean {
+  const { openLastWorld, storedLoreId, knownIds, startupHandled } = args
+  if (!openLastWorld || startupHandled) return false
+  if (storedLoreId === null) return false
+  return knownIds.includes(storedLoreId)
+}

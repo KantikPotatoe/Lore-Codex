@@ -5,6 +5,7 @@ import {
   updateAppSettings,
   DEFAULT_APP_SETTINGS,
   APP_SETTINGS_KEY,
+  shouldOpenLastWorld,
 } from './appSettings'
 
 describe('appSettings', () => {
@@ -63,5 +64,33 @@ describe('appSettings', () => {
   it('rejects an unknown spellcheck language', async () => {
     await registry.appMeta.put({ key: APP_SETTINGS_KEY, value: { spellcheckLang: 'klingon' } })
     expect((await getAppSettings()).spellcheckLang).toBe('')
+  })
+})
+
+describe('shouldOpenLastWorld', () => {
+  const base = { openLastWorld: true, storedLoreId: 'w1', knownIds: ['w1', 'w2'], startupHandled: false }
+
+  it('opens the remembered world when the pref is on', () => {
+    expect(shouldOpenLastWorld(base)).toBe(true)
+  })
+
+  it('does nothing when the pref is off', () => {
+    expect(shouldOpenLastWorld({ ...base, openLastWorld: false })).toBe(false)
+  })
+
+  it('does not redirect twice in one page life', () => {
+    // Otherwise "switch world" from the sidebar would bounce straight back to
+    // the world the user just left, making the picker unreachable.
+    expect(shouldOpenLastWorld({ ...base, startupHandled: true })).toBe(false)
+  })
+
+  it('shows the picker when no world is remembered', () => {
+    // deleteLore() removes CURRENT_LORE_KEY, so this is the just-deleted case:
+    // land on the picker rather than silently opening 'default'.
+    expect(shouldOpenLastWorld({ ...base, storedLoreId: null })).toBe(false)
+  })
+
+  it('shows the picker when the remembered world is gone', () => {
+    expect(shouldOpenLastWorld({ ...base, knownIds: ['w2'] })).toBe(false)
   })
 })
