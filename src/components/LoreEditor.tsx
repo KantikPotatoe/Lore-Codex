@@ -10,6 +10,7 @@ import { Citation } from '../extensions/Citation'
 import { Autolink, autolinkKey } from '../extensions/Autolink'
 import { BodyImage } from '../extensions/BodyImage'
 import { pageRepo } from '../db'
+import { getAppSettings, DEFAULT_APP_SETTINGS } from '../appSettings'
 import { compressImage } from '../imageUtils'
 import { showWikiHover, scheduleWikiHoverClose } from '../wikiLinkHover'
 import { findOpenWikiQuery, rankWikiTitles } from '../wikiAutocomplete'
@@ -166,6 +167,25 @@ export default function LoreEditor({ content, editable, onChange, onBlur, onInse
     },
     onBlur: () => { setSuggest(null); onBlur?.() },
   })
+
+  // Spellcheck is an app-level (device) preference, so both this editor and the
+  // manuscript SceneEditor — which renders LoreEditor — follow it.
+  const appSettings = useLiveQuery(() => getAppSettings(), [])
+  const spellcheck = appSettings?.spellcheck ?? DEFAULT_APP_SETTINGS.spellcheck
+  const spellcheckLang = appSettings?.spellcheckLang ?? DEFAULT_APP_SETTINGS.spellcheckLang
+
+  useEffect(() => {
+    if (!editor) return
+    // Set on the live DOM rather than through useEditor's deps: re-creating the
+    // editor would rebuild it from the last *saved* `content` and could drop
+    // in-flight edits just because a checkbox moved.
+    const dom = editor.view.dom
+    dom.setAttribute('spellcheck', String(spellcheck))
+    // No lang attribute = the browser/OS picks the dictionary, which is what
+    // "System default" means. An installed dictionary is required either way.
+    if (spellcheckLang) dom.setAttribute('lang', spellcheckLang)
+    else dom.removeAttribute('lang')
+  }, [editor, spellcheck, spellcheckLang])
 
   // Replace the `[[query` text with a real wiki-link node to `title`.
   const acceptSuggestion = useCallback((title: string) => {
