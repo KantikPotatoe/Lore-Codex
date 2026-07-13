@@ -47,4 +47,20 @@ describe('LoreEditor spellcheck', () => {
     })
     expect(container.querySelector('.ProseMirror')?.hasAttribute('lang')).toBe(false)
   })
+
+  it('removes the language when a mounted editor is switched back to system default', async () => {
+    // Settings are reactive (useLiveQuery), so a user switching a *mounted*
+    // editor from a chosen dictionary back to "System default" must see the
+    // `lang` attribute disappear live, not just on a fresh mount.
+    await registry.appMeta.put({ key: APP_SETTINGS_KEY, value: { spellcheckLang: 'fr' } })
+    const { container } = renderEditor()
+    await waitFor(() => {
+      expect(container.querySelector('.ProseMirror')?.getAttribute('lang')).toBe('fr')
+    })
+
+    await registry.appMeta.put({ key: APP_SETTINGS_KEY, value: { spellcheckLang: '' } })
+    await waitFor(() => {
+      expect(container.querySelector('.ProseMirror')?.hasAttribute('lang')).toBe(false)
+    })
+  })
 })
