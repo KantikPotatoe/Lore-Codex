@@ -85,9 +85,11 @@ Default-deny via `no-restricted-imports`, mirroring the platform seam that alrea
 | Tier | `db` banned | `@tauri-apps/*` banned |
 |---|---|---|
 | default (UI) | yes | yes |
-| `platform.ts`, `platform.test.ts` | yes | **no** — it *is* the platform seam |
+| `platform.ts` | yes | **no** — it *is* the platform seam |
 | `src/db/**` + the 5 infra files | **no** — data layer / whole-DB work | yes |
-| `**/*.test.{ts,tsx}` | no | no |
+| `**/*.test.{ts,tsx}` (incl. `platform.test.ts`) | no | no |
+
+`platform.test.ts` is *listed* in the `platform.ts` config block (so its Tauri ban stays on), but it also matches the later `**/*.test.{ts,tsx}` block below, and since a later block **replaces** the rule rather than merging with it, that block's blanket `'off'` wins for `platform.test.ts` too — same as every other test file, and deliberately so (it needs raw `db` for fixtures). Don't "fix" this by reordering the blocks.
 
 The ban covers the named `db` import from the barrel **and** a direct `**/db/schema` import, so the singleton cannot be grabbed one level down to walk around the rule. Nothing does that today (verified); this keeps it that way.
 

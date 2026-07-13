@@ -776,9 +776,14 @@ then, in the exported config:
     },
   },
   {
-    // The platform seam itself (and its tests, which mock the plugin modules)
-    // is the one place allowed to import @tauri-apps/*. It still may not touch
-    // the Dexie singleton.
+    // The platform seam itself is the one place allowed to import
+    // @tauri-apps/*; it still may not touch the Dexie singleton. Its test
+    // file is listed here too but this DB_BAN is inert for it: the later
+    // `**/*.test.{ts,tsx}` block below matches it too and, since a later
+    // block REPLACES the rule rather than merging, that block's blanket
+    // 'off' wins. platform.test.ts ends up under the same test exemption as
+    // every other test file (needs raw `db` for fixtures) — don't "fix"
+    // this by reordering the blocks.
     files: ['src/platform.ts', 'src/platform.test.ts'],
     rules: {
       'no-restricted-imports': ['error', { patterns: [DB_BAN] }],
