@@ -1,5 +1,6 @@
 import { db, exportAll, setMeta, LAST_BACKUP_KEY } from './db'
 import { saveFile, writeAppData } from './platform'
+import { getAppSettings } from './appSettings'
 
 // ---------------------------------------------------------------------------
 // Backup & storage-safety helpers
@@ -31,7 +32,8 @@ export async function isStoragePersisted(): Promise<boolean> {
  *  the last-backup time is deliberately NOT stamped. */
 export async function downloadBackup(): Promise<void> {
   const json = await exportAll()
-  const saved = await saveFile(json, `lore-backup-${backupStamp()}.json`)
+  const { defaultBackupDir } = await getAppSettings()
+  const saved = await saveFile(json, `lore-backup-${backupStamp()}.json`, { defaultDir: defaultBackupDir })
   if (saved) await setMeta(LAST_BACKUP_KEY, Date.now())
 }
 
@@ -118,6 +120,33 @@ const DAY_MS = 24 * 60 * 60 * 1000
 export function isBackupOverdue(lastBackup: number | null, overdueDays = 7): boolean {
   if (lastBackup === null) return true
   return Date.now() - lastBackup > overdueDays * DAY_MS
+}
+
+/** Whether closing the app should write an exit-backup. Pure, so the policy is
+ *  testable without a window: enabled, and something actually changed since the
+ *  last backup — closing ten times in a row must not litter ten identical files. */
+export function shouldBackupOnExit(
+  enabled: boolean,
+  lastBackup: number | null,
+  latestChange: number,
+): boolean {
+  return enabled && hasUnbackedUpChanges(lastBackup, latestChange)
+}
+
+/**
+ * Write a backup to the app's data folder as the desktop app closes.
+ *
+ * Deliberately does NOT stamp LAST_BACKUP_KEY. An $APPDATA copy is a safety net,
+ * not a backup that has left the machine — silencing the "back up your world"
+ * banner here would tell the user their data is safe off-disk when it isn't.
+ * (This is also why the chosen backup folder isn't written to: a folder picked
+ * in an earlier session carries no write permission — see platform.ts.)
+ *
+ * Returns false in the browser, where writeAppData is a no-op.
+ */
+export async function backupOnExit(): Promise<boolean> {
+  const json = await exportAll()
+  return writeAppData(`backups/exit-${backupStamp()}.json`, json)
 }
 
 // ---------------------------------------------------------------------------

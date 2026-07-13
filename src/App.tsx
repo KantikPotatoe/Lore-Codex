@@ -22,8 +22,8 @@ import HealthRoute from './routes/HealthRoute'
 const MapRoute = lazy(() => import('./routes/MapRoute'))
 const GraphRoute = lazy(() => import('./routes/GraphRoute'))
 const BookRoute = lazy(() => import('./routes/BookRoute'))
-import { requestPersistentStorage } from './backup'
-import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, activeLoreId } from './db'
+import { requestPersistentStorage, latestChangeTime, shouldBackupOnExit, backupOnExit, LAST_BACKUP_KEY } from './backup'
+import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, activeLoreId, getMeta } from './db'
 import { maybeTakeSnapshot } from './snapshots'
 import { installSearchIndex } from './searchSync'
 import { bootstrapDefaultLore } from './lores'
@@ -31,6 +31,17 @@ import { installStorageErrorListener } from './storageError'
 import { installTabSyncListener } from './tabSync'
 import { shouldOpenSearch } from './searchShortcut'
 import { useNavDirection } from './navDirection'
+import { onCloseRequested } from './platform'
+import { getAppSettings } from './appSettings'
+
+// onCloseRequested awaits its handler before destroying the window (platform.ts),
+// and only catches a *rejected* handler — a backup that hangs (e.g. a stalled
+// filesystem write) would never resolve and would trap the user in an unclosable
+// app. Racing against a timeout guarantees the window always closes; losing an
+// exit-backup is acceptable, an app you cannot quit is not.
+function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
+  return Promise.race([promise, new Promise<void>((resolve) => setTimeout(resolve, ms))])
+}
 
 export default function App() {
   const location = useLocation()
@@ -73,6 +84,33 @@ export default function App() {
   useEffect(() => {
     const teardown = installSearchIndex()
     return teardown
+  }, [])
+
+  // Desktop only: finish a backup before the window closes. Everything is read
+  // *inside* the handler, at exit time — a value captured now would be stale by
+  // the time the user actually quits.
+  useEffect(() => {
+    let dispose: (() => void) | undefined
+    let cancelled = false
+    onCloseRequested(async () => {
+      await withTimeout(
+        (async () => {
+          const { backupOnExit: enabled } = await getAppSettings()
+          const lastBackup = (await getMeta<number>(LAST_BACKUP_KEY)) ?? null
+          if (shouldBackupOnExit(enabled, lastBackup, await latestChangeTime())) {
+            await backupOnExit()
+          }
+        })(),
+        5000,
+      )
+    }).then((off) => {
+      if (cancelled) off()
+      else dispose = off
+    })
+    return () => {
+      cancelled = true
+      dispose?.()
+    }
   }, [])
 
   // Lore selector: full-screen, no sidebar/overlays (but still surface storage errors)
