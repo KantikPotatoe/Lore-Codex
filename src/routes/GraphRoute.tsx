@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { pageRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, type GraphNode, type LorePage } from '../db'
+import { pageRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, findPath, type GraphNode, type LorePage } from '../db'
 import { useGraphPrefs } from '../useGraphPrefs'
 import { useWikiLinkNavigation } from '../useWikiLinkNavigation'
 import GraphView from '../components/GraphView'
+import GraphPathControls from '../components/GraphPathControls'
 import EmptyState from '../components/EmptyState'
 import HubsOrphansPanel from '../components/HubsOrphansPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -38,6 +39,11 @@ export default function GraphRoute() {
     pins, pinNode, clearPins, prunePins,
   } = useGraphPrefs()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Path endpoints are deliberately NOT persisted in useGraphPrefs: a stored path
+  // would resurrect a stale highlight on a later visit, pointing at pages that may
+  // since have been deleted.
+  const [fromId, setFromId] = useState<string | null>(null)
+  const [toId, setToId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [exportMsg, setExportMsg] = useState<string | null>(null)
   const lore = useLiveQuery(() => getLore(currentLoreId()), [])
@@ -86,6 +92,19 @@ export default function GraphRoute() {
       links: links.map((l) => ({ ...l })),
     }
   }, [full, hidden, hiddenStatuses, tag, showGhosts, minDegree, depth, depthFocus, colorBy])
+
+  // A page can be deleted while its id still sits in an endpoint; drop it by
+  // derivation rather than by writing state from an effect.
+  const liveIds = useMemo(() => new Set(full.nodes.map((n) => n.id)), [full])
+  const fromValid = fromId && liveIds.has(fromId) ? fromId : null
+  const toValid = toId && liveIds.has(toId) ? toId : null
+
+  const pathResult = useMemo(() => {
+    if (!fromValid || !toValid || fromValid === toValid) return null
+    return findPath(filtered.links, full.links, fromValid, toValid)
+  }, [filtered.links, full.links, fromValid, toValid])
+
+  const path = pathResult?.kind === 'path' ? pathResult.nodes : null
 
   // Seed pinned positions imperatively rather than through the `filtered` memo,
   // so a live drag (which updates `pins`) doesn't recreate the graph data and
@@ -354,6 +373,16 @@ export default function GraphRoute() {
           {panelOpen ? '☰ Hide lists' : '☰ Hubs & isolated'}
         </button>
 
+        {!threeD && (
+          <GraphPathControls
+            fromId={fromValid}
+            toId={toValid}
+            onFrom={setFromId}
+            onTo={setToId}
+            result={pathResult}
+          />
+        )}
+
         <span className="graph-hint">
           {filtered.nodes.length} pages · {filtered.links.length} links
           {depth > 0 && !selectedId && ' — select a node to apply depth'}
@@ -389,6 +418,7 @@ export default function GraphRoute() {
               onPinNode={pinNode}
               initialCam={cam}
               onCamChange={setCam}
+              path={path}
             />
           )}
         </div>
