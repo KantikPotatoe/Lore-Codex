@@ -39,6 +39,14 @@ import { getAppSettings } from './appSettings'
 // filesystem write) would never resolve and would trap the user in an unclosable
 // app. Racing against a timeout guarantees the window always closes; losing an
 // exit-backup is acceptable, an app you cannot quit is not.
+//
+// Accepted trade-off: if the timeout wins, win.destroy() can fire while
+// writeAppData's writeTextFile is mid-write, leaving a truncated exit-<Day>.json
+// that looks valid by its name. This is deliberately not guarded against — it
+// fails loudly at restore (parseBackup throws on the truncated JSON) rather
+// than corrupting anything silently, and a write-to-temp-then-rename fix would
+// need an fs permission (temp-file write/rename outside the final path) this
+// branch refuses to add for a backup that's already a secondary safety net.
 function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
   return Promise.race([promise, new Promise<void>((resolve) => setTimeout(resolve, ms))])
 }
