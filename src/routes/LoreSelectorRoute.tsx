@@ -323,7 +323,7 @@ export default function LoreSelectorRoute() {
               {pendingWizard.counts.books} books. It becomes a brand-new world — nothing
               existing is touched.
             </p>
-            <label className="settings-field">
+            <label className="dialog-field">
               <span>World name</span>
               <input
                 value={pendingWizard.name}

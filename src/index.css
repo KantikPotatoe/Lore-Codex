@@ -2418,6 +2418,29 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   max-width: 60ch;
 }
 .settings-field.is-disabled { opacity: 0.55; }
+
+/* A form field inside a ConfirmDialog (e.g. the import-world wizard's name
+   field) — simple stacked layout, label above a full-width input. Deliberately
+   separate from .settings-field: that one is a *row* (label left, control hard
+   right) for the Settings page's 1fr-auto grid, and reusing it here made the
+   input right-align at its intrinsic width instead of sitting under its label
+   (#173 fix-wave finding 5). Do not merge these back together. */
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.dialog-field input {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 6px 8px;
+  width: 100%;
+}
 .danger-zone .danger-btn { background: #3a1714; border: 1px solid #7c2d24; color: #f3b9b1; border-radius: 7px; padding: 8px 14px; cursor: pointer; }
 .danger-zone .danger-btn:hover { background: #4a1d18; }
 
