@@ -46,6 +46,13 @@ function endId(end: LinkEnd): string {
   return typeof end === 'object' ? end.id : end
 }
 
+/** Canonical key for an undirected edge: the same pair of ids always produces
+ *  the same key regardless of which end is the source. Lets a drawn link be
+ *  matched against a path whose hops may run the other way. */
+export function edgeKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`
+}
+
 // Category sentinel for ghost nodes — they branch on the `ghost` flag, not this,
 // so it stays internal and is excluded from the toolbar's category list.
 const GHOST_CATEGORY = '__ghost__'
@@ -98,7 +105,7 @@ export function buildGraphData(pages: LorePage[]): GraphData {
         continue
       }
       directed.add(`${page.id}>${targetId}`)
-      const key = page.id < targetId ? `${page.id}|${targetId}` : `${targetId}|${page.id}`
+      const key = edgeKey(page.id, targetId)
       if (!byKey.has(key)) {
         const edge: GraphLink = { source: page.id, target: targetId, mutual: false }
         byKey.set(key, edge)
@@ -231,4 +238,87 @@ export function connectedComponents(
     for (const id of g) componentOf.set(id, rank)
   })
   return { componentOf, sizes }
+}
+
+/** The shortest chain of node ids from `fromId` to `toId` (inclusive of both),
+ *  treating links as undirected like the rest of the graph, or null when no
+ *  chain exists.
+ *
+ *  Neighbours are expanded in id order, so the same pair always yields the same
+ *  chain even when unrelated edits reshuffle the link array — the same kind of
+ *  stable tie-break `connectedComponents` makes. When several chains tie on
+ *  length, one is returned rather than all: a hub in the middle can produce
+ *  dozens of equal-length chains, and their union is the hairball the highlight
+ *  exists to cut through.
+ *
+ *  A page with no links never enters the adjacency map, so an isolated page
+ *  simply has no path — no special case needed. */
+export function shortestPath(
+  links: Pick<GraphLink, 'source' | 'target'>[],
+  fromId: string,
+  toId: string,
+): string[] | null {
+  if (fromId === toId) return [fromId]
+
+  const adj = new Map<string, string[]>()
+  const link = (a: string, b: string) => {
+    let list = adj.get(a)
+    if (!list) adj.set(a, (list = []))
+    list.push(b)
+  }
+  for (const l of links) {
+    link(l.source, l.target)
+    link(l.target, l.source)
+  }
+  for (const list of adj.values()) list.sort()
+
+  // BFS, remembering the node each node was first reached from, so the chain can
+  // be walked back once the target is hit.
+  const cameFrom = new Map<string, string>()
+  const seen = new Set<string>([fromId])
+  let frontier = [fromId]
+  while (frontier.length > 0) {
+    const next: string[] = []
+    for (const id of frontier) {
+      for (const nb of adj.get(id) ?? []) {
+        if (seen.has(nb)) continue
+        seen.add(nb)
+        cameFrom.set(nb, id)
+        if (nb === toId) {
+          const chain = [toId]
+          for (let cur = toId; ; ) {
+            const prev = cameFrom.get(cur)
+            if (prev === undefined) break
+            chain.push(prev)
+            cur = prev
+          }
+          return chain.reverse()
+        }
+        next.push(nb)
+      }
+    }
+    frontier = next
+  }
+  return null
+}
+
+/** The outcome of a path query. `hidden` means the drawn graph has no chain but
+ *  the unfiltered one does — the user's filters are hiding the answer, which is
+ *  a different thing from the pages being unconnected. */
+export type PathResult =
+  | { kind: 'path'; nodes: string[] }
+  | { kind: 'hidden' }
+  | { kind: 'none' }
+
+/** Search the *drawn* graph, so every highlighted hop is a link actually on
+ *  screen, and consult the full graph only to choose the message. */
+export function findPath(
+  drawnLinks: Pick<GraphLink, 'source' | 'target'>[],
+  fullLinks: Pick<GraphLink, 'source' | 'target'>[],
+  fromId: string,
+  toId: string,
+): PathResult {
+  const drawn = shortestPath(drawnLinks, fromId, toId)
+  if (drawn) return { kind: 'path', nodes: drawn }
+  return shortestPath(fullLinks, fromId, toId) ? { kind: 'hidden' } : { kind: 'none' }
 }
