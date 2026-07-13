@@ -67,8 +67,14 @@ export default function LoreSelectorRoute() {
   useEffect(() => {
     // Set in an effect, never during render — mutating module state while
     // rendering violates react-hooks/purity (and would misfire under StrictMode).
+    // Gated on both queries having resolved: an empty-deps effect fires in the
+    // first passive-effect pass, before either useLiveQuery result can arrive
+    // (Dexie resolves on a later microtask) — so by the time the data landed,
+    // startupHandled was already true and the redirect could never fire on a
+    // real cold launch. Only mark it handled once the decision was actually made.
+    if (loresRaw === undefined || appSettings === undefined) return
     startupHandled = true
-  }, [])
+  }, [loresRaw, appSettings])
 
   async function handleCreate() {
     setCreating(true)
