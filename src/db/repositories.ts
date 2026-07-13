@@ -14,8 +14,9 @@
 // the call stack it happens, so wrapping it in a method changes nothing.
 //
 // Scope: pages + maps (the heaviest leak sites) + templates (page types) +
-// calendars & timeline events. Other tables (manuscript, images, meta,
-// snapshots) still use their module functions directly and are a follow-up sweep.
+// calendars & timeline events + manuscript (books/chapters/scenes/plotlines/beats).
+// Other tables (images, meta, snapshots) still use their module functions
+// directly and are a follow-up sweep.
 
 import { db } from './schema'
 import {
