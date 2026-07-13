@@ -22,7 +22,8 @@ import {
 import { exportAsHtml } from '../htmlExport'
 import { getSettings, updateSettings, DEFAULT_SETTINGS, type LoreSettings } from '../settings'
 import { deleteLore, currentLoreId } from '../lores'
-import { openTextFile, isTauri } from '../platform'
+import { openTextFile, isTauri, pickDirectory } from '../platform'
+import { getAppSettings, updateAppSettings, DEFAULT_APP_SETTINGS, SPELLCHECK_LANGS, type AppSettings } from '../appSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function SettingsRoute() {
@@ -68,6 +69,15 @@ export default function SettingsRoute() {
   useEffect(() => {
     if (draft) updateSettings(draft)
   }, [draft])
+
+  // App-level (device) prefs live in the registry DB, not this world's meta —
+  // they are not properties of a world and must not travel in its backups.
+  const app = useLiveQuery(() => getAppSettings(), [])
+  const a = app ?? DEFAULT_APP_SETTINGS
+  const desktop = isTauri()
+  function setApp(patch: Partial<AppSettings>) {
+    updateAppSettings(patch) // useLiveQuery re-reads; no local mirror to drift
+  }
 
   useEffect(() => {
     isStoragePersisted().then(setPersisted)
@@ -147,32 +157,92 @@ export default function SettingsRoute() {
     <div className="settings-page">
       <h1 className="settings-title">Settings</h1>
 
+      {/* General */}
+      <section className="settings-section">
+        <h2>General</h2>
+        <label className="settings-field">
+          <span className="settings-label">Open the last world on launch</span>
+          <input
+            type="checkbox"
+            checked={a.openLastWorld}
+            onChange={(e) => setApp({ openLastWorld: e.target.checked })}
+          />
+          <span className="settings-hint">
+            Skip the world picker and go straight back to whichever world you were last in.
+          </span>
+        </label>
+      </section>
+
+      {/* Editor */}
+      <section className="settings-section">
+        <h2>Editor</h2>
+        <label className="settings-field">
+          <span className="settings-label">Check spelling as I write</span>
+          <input
+            type="checkbox"
+            checked={a.spellcheck}
+            onChange={(e) => setApp({ spellcheck: e.target.checked })}
+          />
+          <span className="settings-hint">
+            Underlines misspelled words in the page and manuscript editors.
+          </span>
+        </label>
+        <label className="settings-field">
+          <span className="settings-label">Spellcheck language</span>
+          <select
+            value={a.spellcheckLang}
+            onChange={(e) => setApp({ spellcheckLang: e.target.value })}
+          >
+            {SPELLCHECK_LANGS.map((l) => (
+              <option key={l.id || 'system'} value={l.id}>{l.label}</option>
+            ))}
+          </select>
+          <span className="settings-hint">
+            The dictionary comes from your browser or operating system — a language you
+            haven't installed there quietly falls back to the system default.
+          </span>
+        </label>
+        <label className="settings-field">
+          <span className="settings-label">Auto-link page titles in body text</span>
+          <input
+            type="checkbox"
+            checked={s.autolinkEnabled}
+            onChange={(e) => setField({ autolinkEnabled: e.target.checked })}
+          />
+          <span className="settings-hint">
+            Links the first mention of another page's title in each page's body. Your own
+            [[links]] always take precedence.
+          </span>
+        </label>
+      </section>
+
       {/* Auto-snapshots */}
       <section className="settings-section">
         <h2>Auto-snapshots</h2>
-        <div className="settings-controls">
-          <label className="settings-field">
-            <span>Snapshot after this many changes</span>
-            <input
-              type="number" min={1} max={100} value={s.snapshotChangeThreshold}
-              onChange={setNumField('snapshotChangeThreshold')}
-            />
-          </label>
-          <label className="settings-field">
-            <span>…or after this many hours of activity</span>
-            <input
-              type="number" min={1} max={100} value={s.snapshotTimeHours}
-              onChange={setNumField('snapshotTimeHours')}
-            />
-          </label>
-          <label className="settings-field">
-            <span>Keep newest snapshots</span>
-            <input
-              type="number" min={1} max={100} value={s.snapshotRetention}
-              onChange={setNumField('snapshotRetention')}
-            />
-          </label>
-        </div>
+        <label className="settings-field">
+          <span className="settings-label">Snapshot after this many changes</span>
+          <input
+            type="number" min={1} max={100} value={s.snapshotChangeThreshold}
+            onChange={setNumField('snapshotChangeThreshold')}
+          />
+          <span className="settings-hint">A snapshot is taken once this many pages have changed.</span>
+        </label>
+        <label className="settings-field">
+          <span className="settings-label">…or after this many hours of activity</span>
+          <input
+            type="number" min={1} max={100} value={s.snapshotTimeHours}
+            onChange={setNumField('snapshotTimeHours')}
+          />
+          <span className="settings-hint">…or once this long has passed with at least one change.</span>
+        </label>
+        <label className="settings-field">
+          <span className="settings-label">Keep newest snapshots</span>
+          <input
+            type="number" min={1} max={100} value={s.snapshotRetention}
+            onChange={setNumField('snapshotRetention')}
+          />
+          <span className="settings-hint">Older snapshots are pruned beyond this count.</span>
+        </label>
 
         {snapshots.length === 0 ? (
           <p className="empty-hint">No snapshots yet. They're taken automatically as you edit.</p>
@@ -200,23 +270,6 @@ export default function SettingsRoute() {
         )}
       </section>
 
-      {/* Linking */}
-      <section className="settings-section">
-        <h2>Linking</h2>
-        <label className="settings-field settings-field-check">
-          <input
-            type="checkbox"
-            checked={s.autolinkEnabled}
-            onChange={(e) => setField({ autolinkEnabled: e.target.checked })}
-          />
-          <span>Auto-link page titles in body text</span>
-        </label>
-        <p className="empty-hint">
-          Links the first mention of another page's title in each page's body. Your own
-          [[links]] always take precedence.
-        </p>
-      </section>
-
       {/* Backup & data */}
       <section className="settings-section backup">
         <h2>Backup &amp; data</h2>
@@ -241,14 +294,15 @@ export default function SettingsRoute() {
         </div>
 
         <label className="settings-field">
-          <span>Warn me to back up after this many days</span>
+          <span className="settings-label">Warn me to back up after this many days</span>
           <input
             type="number" min={1} max={100} value={s.backupOverdueDays}
             onChange={setNumField('backupOverdueDays')}
           />
+          <span className="settings-hint">A banner nags you once this many days pass without a backup.</span>
         </label>
 
-        <div className="home-cta">
+        <div className="settings-cta">
           <button className="primary-btn" disabled={busy} onClick={handleBackup}>
             {busy ? 'Backing up…' : '⭳ Back up now'}
           </button>
@@ -256,6 +310,43 @@ export default function SettingsRoute() {
           <button className="ghost-btn" disabled={exporting} onClick={handleExportHtml}>
             {exporting ? 'Exporting…' : 'Export as HTML'}
           </button>
+        </div>
+
+        <label className={`settings-field${desktop ? '' : ' is-disabled'}`}>
+          <span className="settings-label">Back up when I close the app</span>
+          <input
+            type="checkbox"
+            disabled={!desktop}
+            checked={a.backupOnExit}
+            onChange={(e) => setApp({ backupOnExit: e.target.checked })}
+          />
+          <span className="settings-hint">
+            {desktop
+              ? 'Writes a copy into the app’s data folder on exit, if anything changed. It’s a safety net, not an off-machine backup — it doesn’t clear the reminder above.'
+              : 'Desktop app only. A browser can’t finish saving a file while the tab is closing.'}
+          </span>
+        </label>
+
+        <div className={`settings-field${desktop ? '' : ' is-disabled'}`}>
+          <span className="settings-label">Default backup folder</span>
+          <button
+            className="mini-btn"
+            disabled={!desktop}
+            aria-label="Default backup folder"
+            onClick={async () => {
+              const dir = await pickDirectory()
+              if (dir) setApp({ defaultBackupDir: dir })
+            }}
+          >
+            {a.defaultBackupDir ? 'Change…' : 'Choose…'}
+          </button>
+          <span className="settings-hint">
+            {desktop
+              ? a.defaultBackupDir
+                ? `“Back up now” opens here: ${a.defaultBackupDir}`
+                : 'Pick a cloud-synced folder and “Back up now” will open there — one click instead of navigating every time.'
+              : 'Desktop app only. Browsers always save to their own downloads folder.'}
+          </span>
         </div>
 
         {isTauri() ? (
