@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, pageRepo, applyTemplate, type InfoboxTemplate, type LorePage } from './db'
+import { templateRepo, pageRepo, applyTemplate, type InfoboxTemplate, type LorePage } from './db'
 
 // Stable empty identity so consumers' deps don't bust every render while the
 // templates query is still loading.
@@ -26,7 +26,7 @@ export interface UsePage {
  *  useLiveQuery; mutations go through the pageRepo seam. */
 export function usePage(id: string): UsePage {
   const page = useLiveQuery(() => pageRepo.get(id), [id])
-  const templates = useLiveQuery(() => db.templates.orderBy('name').toArray(), []) ?? NO_TEMPLATES
+  const templates = useLiveQuery(() => templateRepo.listByName(), []) ?? NO_TEMPLATES
 
   const update = useCallback((changes: Partial<LorePage>) => pageRepo.update(id, changes), [id])
   const rename = useCallback((title: string) => pageRepo.rename(id, title), [id])

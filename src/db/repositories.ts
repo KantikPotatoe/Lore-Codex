@@ -13,9 +13,9 @@
 // Dexie tracks the read globally on the `db` instance regardless of how deep in
 // the call stack it happens, so wrapping it in a method changes nothing.
 //
-// Scope: pages + maps (the heaviest leak sites). Other tables (manuscript,
-// calendar, templates, images, meta, snapshots) still use their module
-// functions directly and are a follow-up sweep.
+// Scope: pages + maps (the heaviest leak sites) + templates (page types).
+// Other tables (manuscript, calendar, images, meta, snapshots) still use their
+// module functions directly and are a follow-up sweep.
 
 import { db } from './schema'
 import {
@@ -28,7 +28,8 @@ import {
   getBacklinks,
 } from './pages'
 import { addMap, deleteMap, addPin, addRegion } from './maps'
-import type { LorePage, MapPin, MapRegion, WorldMap } from './types'
+import { createTemplate, updateTemplate, deleteTemplate, resetTemplate } from './templates'
+import type { LorePage, MapPin, MapRegion, WorldMap, InfoboxTemplate } from './types'
 
 /** A change to a stored record: either a partial patch or a mutator run against
  *  a draft. Mirrors Dexie's two `update()` forms, but named without leaking a
@@ -154,4 +155,31 @@ export const mapRepo: MapRepository = {
   removeRegion: async (id) => {
     await db.regions.delete(id)
   },
+}
+
+// ---------------------------------------------------------------------------
+// Page types (templates)
+// ---------------------------------------------------------------------------
+
+export interface TemplateRepository {
+  /** Every page type, unordered — for callers that group by something else. */
+  list(): Promise<InfoboxTemplate[]>
+  /** Every page type, ordered by name — for pickers and the /templates list.
+   *  Deliberately NOT `getTemplates()`: that falls back to BUILTIN_TEMPLATES on
+   *  an empty table, which is seeding behaviour, not a UI read. */
+  listByName(): Promise<InfoboxTemplate[]>
+  create(name: string, color?: string): Promise<string>
+  update(id: string, changes: Partial<InfoboxTemplate>): Promise<void>
+  remove(id: string): Promise<void>
+  /** Restore a built-in type to its shipped definition. */
+  reset(id: string): Promise<void>
+}
+
+export const templateRepo: TemplateRepository = {
+  list: () => db.templates.toArray(),
+  listByName: () => db.templates.orderBy('name').toArray(),
+  create: createTemplate,
+  update: updateTemplate,
+  remove: deleteTemplate,
+  reset: resetTemplate,
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db, pageRepo, mapRepo, pinType, regionStyle,
+  templateRepo, pageRepo, mapRepo, pinType, regionStyle,
   mapBreadcrumb, ancestorMapIds,
   TYPE_COLORS, type InfoboxTemplate,
 } from '../db'
@@ -72,7 +72,7 @@ export default function MapRoute() {
     [mapId],
   )
   const allPagesData = useLiveQuery(() => pageRepo.listByTitle(), [])
-  const templatesData = useLiveQuery(() => db.templates.toArray(), [])
+  const templatesData = useLiveQuery(() => templateRepo.list(), [])
   // Stable empty-array fallbacks so downstream useMemo deps don't change every render.
   const regionsData = useLiveQuery(
     () => mapRepo.listRegionsForMap(mapId),

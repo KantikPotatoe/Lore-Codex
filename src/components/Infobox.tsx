@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db,
+  templateRepo,
   type Infobox,
   type InfoboxField,
   applyTemplate,
@@ -31,7 +31,7 @@ interface Props {
 
 export default function Infobox({ box, editable, onChange, onRemove, title, accent, onWikiClick, knownTitles }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const templates = useLiveQuery(() => db.templates.orderBy('name').toArray(), []) ?? []
+  const templates = useLiveQuery(() => templateRepo.listByName(), []) ?? []
 
   // Field labels defined by this box's page type. Those are managed in /templates,
   // so in edit mode we show them as read-only text (you fill in the value, not the

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db,
+  templateRepo,
   pageRepo,
   createTemplate,
   updateTemplate,
@@ -15,7 +15,7 @@ import {
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function TemplatesRoute() {
-  const templates = useLiveQuery(() => db.templates.orderBy('name').toArray(), [])
+  const templates = useLiveQuery(() => templateRepo.listByName(), [])
   const pages = useLiveQuery(() => pageRepo.list(), []) ?? []
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [note, setNote] = useState('')

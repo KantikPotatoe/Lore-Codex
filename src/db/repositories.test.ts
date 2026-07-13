@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { db, pageRepo, mapRepo } from '../db'
+import { db, pageRepo, mapRepo, templateRepo } from '../db'
 
 // The repositories are the storage-agnostic seam the UI now goes through instead
 // of touching Dexie directly (#140). These tests pin that each method reads/writes
@@ -149,5 +149,37 @@ describe('mapRepo', () => {
 
     await mapRepo.removeRegion(regionId)
     expect((await mapRepo.listRegions()).length).toBe(0)
+  })
+})
+
+describe('templateRepo', () => {
+  beforeEach(async () => {
+    await db.templates.clear()
+    await db.templates.bulkAdd([
+      { id: 't2', name: 'Zebra', color: '#111', items: [] },
+      { id: 't1', name: 'Aardvark', color: '#222', items: [] },
+    ] as never)
+  })
+
+  it('list() returns every template', async () => {
+    const all = await templateRepo.list()
+    expect(all.map((t) => t.id).sort()).toEqual(['t1', 't2'])
+  })
+
+  it('listByName() orders by name', async () => {
+    const all = await templateRepo.listByName()
+    expect(all.map((t) => t.name)).toEqual(['Aardvark', 'Zebra'])
+  })
+
+  // The BUILTIN_TEMPLATES fallback in getTemplates() must NOT leak into the
+  // repo: UI reads show what the table holds, nothing more.
+  it('list() returns empty on an empty table (no builtin fallback)', async () => {
+    await db.templates.clear()
+    expect(await templateRepo.list()).toEqual([])
+  })
+
+  it('update() writes through', async () => {
+    await templateRepo.update('t1', { color: '#abc' })
+    expect((await db.templates.get('t1'))?.color).toBe('#abc')
   })
 })

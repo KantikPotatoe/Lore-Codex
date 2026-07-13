@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, pageRepo, categoryColor } from '../db'
+import { templateRepo, pageRepo, categoryColor } from '../db'
 import BrowseGrid from '../components/BrowseGrid'
 
 const NO_PAGES: import('../db').LorePage[] = []
@@ -11,7 +11,7 @@ export default function CategoryRoute() {
 
   const pages =
     useLiveQuery(() => pageRepo.listByCategory(category), [category]) ?? NO_PAGES
-  const templates = useLiveQuery(() => db.templates.toArray(), []) ?? []
+  const templates = useLiveQuery(() => templateRepo.list(), []) ?? []
   const glyph = templates.find((t) => t.name === category)?.icon
 
   async function handleNew() {
