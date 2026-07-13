@@ -46,10 +46,11 @@ export const SPELLCHECK_LANGS: { id: string; label: string }[] = [
 
 /** Validate on read, not just on write: a hand-edited DB (or a future bug)
  *  must not propagate a wrong-typed value into the app. Anything unexpected
- *  falls back to its default — the same discipline as `settings.ts`. */
-export async function getAppSettings(): Promise<AppSettings> {
-  const row = await registry.appMeta.get(APP_SETTINGS_KEY)
-  const stored = (row?.value ?? {}) as Partial<Record<keyof AppSettings, unknown>>
+ *  falls back to its default — the same discipline as `settings.ts`. Pure, so
+ *  both `getAppSettings()` and the transactional read inside
+ *  `updateAppSettings()` share one coercion path instead of drifting apart. */
+function coerceSettings(value: unknown): AppSettings {
+  const stored = (value ?? {}) as Partial<Record<keyof AppSettings, unknown>>
   const out: AppSettings = { ...DEFAULT_APP_SETTINGS }
 
   if (typeof stored.openLastWorld === 'boolean') out.openLastWorld = stored.openLastWorld
@@ -65,11 +66,28 @@ export async function getAppSettings(): Promise<AppSettings> {
   return out
 }
 
-/** Read-modify-write the single settings row. One row, one write — no
- *  partial-field races between rapid toggles. */
+export async function getAppSettings(): Promise<AppSettings> {
+  const row = await registry.appMeta.get(APP_SETTINGS_KEY)
+  return coerceSettings(row?.value)
+}
+
+/** Read-modify-write the single settings row, atomically. Two overlapping
+ *  calls used to both read the old row before either wrote, so the first
+ *  patch was silently clobbered by the second (#173 fix-wave finding 1).
+ *  Dexie serialises readwrite transactions on the same table, so doing the
+ *  read and the write inside one `transaction('rw', ...)` makes concurrent
+ *  calls queue instead of interleave — the read must go through the
+ *  transaction's own table handle, not a fresh `registry.appMeta.get()`,
+ *  or it would race outside the lock and deadlock/re-introduce the bug. */
 export async function updateAppSettings(patch: Partial<AppSettings>): Promise<void> {
-  const next = { ...(await getAppSettings()), ...patch }
-  await registry.appMeta.put({ key: APP_SETTINGS_KEY, value: next })
+  await registry.transaction('rw', registry.appMeta, async () => {
+    // Dexie joins this read to the enclosing transaction automatically (the
+    // same table handle, inside the transaction's promise context), so it
+    // observes any write already queued ahead of it instead of racing it.
+    const row = await registry.appMeta.get(APP_SETTINGS_KEY)
+    const next = { ...coerceSettings(row?.value), ...patch }
+    await registry.appMeta.put({ key: APP_SETTINGS_KEY, value: next })
+  })
 }
 
 /** Decide whether launching should skip the picker and reopen the last world.

@@ -65,6 +65,19 @@ describe('appSettings', () => {
     await registry.appMeta.put({ key: APP_SETTINGS_KEY, value: { spellcheckLang: 'klingon' } })
     expect((await getAppSettings()).spellcheckLang).toBe('')
   })
+
+  it('does not lose a concurrent patch to a different field (race)', async () => {
+    // Regression for a real data-loss bug: two overlapping read-modify-write
+    // calls on DIFFERENT fields must both survive. Before the fix, the second
+    // call's read raced ahead of the first call's write and clobbered it.
+    await Promise.all([
+      updateAppSettings({ spellcheck: false }),
+      updateAppSettings({ spellcheckLang: 'fr' }),
+    ])
+    const a = await getAppSettings()
+    expect(a.spellcheck).toBe(false)
+    expect(a.spellcheckLang).toBe('fr')
+  })
 })
 
 describe('shouldOpenLastWorld', () => {
