@@ -15,8 +15,11 @@
 //
 // Scope: pages + maps (the heaviest leak sites) + templates (page types) +
 // calendars & timeline events + manuscript (books/chapters/scenes/plotlines/beats).
-// Other tables (images, meta, snapshots) still use their module functions
-// directly and are a follow-up sweep.
+// Images and snapshots still use their module functions directly (no dedicated
+// repo — not enough call sites to warrant one). Meta reads go through the
+// existing getMeta()/setMeta() helpers in schema.ts rather than a metaRepo,
+// by design (#186 task 4): a single key/value getter doesn't fit the
+// per-domain repository shape either.
 
 import { db } from './schema'
 import {
