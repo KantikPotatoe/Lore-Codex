@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, pageRepo, type TimelineEvent } from '../db'
+import { pageRepo, calendarRepo, type TimelineEvent } from '../db'
 import { resolveDisplayCalendar } from '../timelineDisplay'
 import CalendarEditor from '../components/CalendarEditor'
 import EmptyState from '../components/EmptyState'
@@ -11,8 +11,8 @@ import TimelineVertical from '../components/TimelineVertical'
 import TimelineHorizontal from '../components/TimelineHorizontal'
 
 export default function TimelineRoute() {
-  const calendars = useLiveQuery(() => db.calendars.orderBy('createdAt').toArray(), []) ?? []
-  const events    = useLiveQuery(() => db.events.orderBy('startAbsolute').toArray(), []) ?? []
+  const calendars = useLiveQuery(() => calendarRepo.listCalendars(), []) ?? []
+  const events    = useLiveQuery(() => calendarRepo.listEventsByDate(), []) ?? []
   const allPages  = useLiveQuery(() => pageRepo.listByTitle(), []) ?? []
 
   const [displayCalId, setDisplayCalId]     = useState<string | null>(null)

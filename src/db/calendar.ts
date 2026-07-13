@@ -99,7 +99,7 @@ export async function deleteCalendar(calendarId: string): Promise<void> {
 // Timeline events — CRUD
 // ---------------------------------------------------------------------------
 
-type NewEventData = Omit<TimelineEvent, 'id' | 'startAbsolute' | 'endAbsolute' | 'createdAt' | 'updatedAt'>
+export type NewEventData = Omit<TimelineEvent, 'id' | 'startAbsolute' | 'endAbsolute' | 'createdAt' | 'updatedAt'>
 
 /** Add a timeline event. Computes startAbsolute / endAbsolute automatically. */
 export async function addEvent(data: NewEventData): Promise<string> {

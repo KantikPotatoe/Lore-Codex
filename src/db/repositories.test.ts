@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { db, pageRepo, mapRepo, templateRepo } from '../db'
+import { db, pageRepo, mapRepo, templateRepo, calendarRepo } from '../db'
 
 // The repositories are the storage-agnostic seam the UI now goes through instead
 // of touching Dexie directly (#140). These tests pin that each method reads/writes
@@ -181,5 +181,39 @@ describe('templateRepo', () => {
   it('update() writes through', async () => {
     await templateRepo.update('t1', { color: '#abc' })
     expect((await db.templates.get('t1'))?.color).toBe('#abc')
+  })
+})
+
+describe('calendarRepo', () => {
+  beforeEach(async () => {
+    await Promise.all([db.calendars.clear(), db.events.clear()])
+    await db.calendars.bulkAdd([
+      { id: 'c2', name: 'Second', createdAt: 200 },
+      { id: 'c1', name: 'First', createdAt: 100 },
+    ] as never)
+    await db.events.bulkAdd([
+      { id: 'e2', calendarId: 'c1', title: 'Late', startAbsolute: 900 },
+      { id: 'e1', calendarId: 'c1', title: 'Early', startAbsolute: 100 },
+    ] as never)
+  })
+
+  it('listCalendars() orders by createdAt', async () => {
+    expect((await calendarRepo.listCalendars()).map((c) => c.id)).toEqual(['c1', 'c2'])
+  })
+
+  it('getCalendar() fetches one', async () => {
+    expect((await calendarRepo.getCalendar('c2'))?.name).toBe('Second')
+  })
+
+  it('getCalendar() returns undefined for an unknown id', async () => {
+    expect(await calendarRepo.getCalendar('nope')).toBeUndefined()
+  })
+
+  it('listEventsByDate() orders by startAbsolute', async () => {
+    expect((await calendarRepo.listEventsByDate()).map((e) => e.id)).toEqual(['e1', 'e2'])
+  })
+
+  it('listEvents() returns every event', async () => {
+    expect((await calendarRepo.listEvents()).map((e) => e.id).sort()).toEqual(['e1', 'e2'])
   })
 })

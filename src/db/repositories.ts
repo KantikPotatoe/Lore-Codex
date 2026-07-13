@@ -13,9 +13,9 @@
 // Dexie tracks the read globally on the `db` instance regardless of how deep in
 // the call stack it happens, so wrapping it in a method changes nothing.
 //
-// Scope: pages + maps (the heaviest leak sites) + templates (page types).
-// Other tables (manuscript, calendar, images, meta, snapshots) still use their
-// module functions directly and are a follow-up sweep.
+// Scope: pages + maps (the heaviest leak sites) + templates (page types) +
+// calendars & timeline events. Other tables (manuscript, images, meta,
+// snapshots) still use their module functions directly and are a follow-up sweep.
 
 import { db } from './schema'
 import {
@@ -29,7 +29,16 @@ import {
 } from './pages'
 import { addMap, deleteMap, addPin, addRegion } from './maps'
 import { createTemplate, updateTemplate, deleteTemplate, resetTemplate } from './templates'
-import type { LorePage, MapPin, MapRegion, WorldMap, InfoboxTemplate } from './types'
+import {
+  createCalendar,
+  updateCalendar,
+  deleteCalendar,
+  addEvent,
+  updateEvent,
+  deleteEvent,
+  type NewEventData,
+} from './calendar'
+import type { LorePage, MapPin, MapRegion, WorldMap, InfoboxTemplate, Calendar, TimelineEvent } from './types'
 
 /** A change to a stored record: either a partial patch or a mutator run against
  *  a draft. Mirrors Dexie's two `update()` forms, but named without leaking a
@@ -182,4 +191,44 @@ export const templateRepo: TemplateRepository = {
   update: updateTemplate,
   remove: deleteTemplate,
   reset: resetTemplate,
+}
+
+// ---------------------------------------------------------------------------
+// Calendars & timeline events
+// ---------------------------------------------------------------------------
+
+export interface CalendarRepository {
+  /** Every calendar, ordered by creation. */
+  listCalendars(): Promise<Calendar[]>
+  getCalendar(id: string): Promise<Calendar | undefined>
+  createCalendar(name: string): Promise<string>
+  /** Rewrites every event's cached absolute days in one transaction — see
+   *  `updateCalendar` in `calendar.ts`. */
+  updateCalendar(id: string, changes: Partial<Calendar>): Promise<void>
+  /** Cascade-deletes the calendar's events. */
+  removeCalendar(id: string): Promise<void>
+
+  /** Every event, unordered. */
+  listEvents(): Promise<TimelineEvent[]>
+  /** Every event on the shared absolute-day axis, earliest first. */
+  listEventsByDate(): Promise<TimelineEvent[]>
+  addEvent(data: NewEventData): Promise<string>
+  /** Always recomputes the cached absolute days — see `updateEvent` in
+   *  `calendar.ts`. `id`/`createdAt` are not patchable. */
+  updateEvent(id: string, changes: Partial<Omit<TimelineEvent, 'id' | 'createdAt'>>): Promise<void>
+  removeEvent(id: string): Promise<void>
+}
+
+export const calendarRepo: CalendarRepository = {
+  listCalendars: () => db.calendars.orderBy('createdAt').toArray(),
+  getCalendar: (id) => db.calendars.get(id),
+  createCalendar,
+  updateCalendar,
+  removeCalendar: deleteCalendar,
+
+  listEvents: () => db.events.toArray(),
+  listEventsByDate: () => db.events.orderBy('startAbsolute').toArray(),
+  addEvent,
+  updateEvent,
+  removeEvent: deleteEvent,
 }

@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db,
   pageRepo,
   mapRepo,
+  calendarRepo,
   getMeta,
   setMeta,
   categoryColor,
@@ -86,10 +86,10 @@ export default function HomeRoute() {
   const dusty = useMemo(() => selectStalePages(pages), [pages])
   const health = useMemo(() => computeWorldHealth(pages), [pages])
   const healthTotal = health.brokenLinks.length + health.orphans.length + health.stubs.length
-  const events = useLiveQuery(() => db.events.toArray(), []) ?? NO_EVENTS
+  const events = useLiveQuery(() => calendarRepo.listEvents(), []) ?? NO_EVENTS
   const featured = useMemo(() => pickFeaturedEvent(events, todayIndex()), [events])
   const featuredCal = useLiveQuery(
-    () => (featured ? db.calendars.get(featured.calendarId) : undefined),
+    () => (featured ? calendarRepo.getCalendar(featured.calendarId) : undefined),
     [featured?.calendarId],
   )
 

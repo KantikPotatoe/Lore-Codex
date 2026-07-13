@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db,
+  calendarRepo,
   createCalendar, updateCalendar, deleteCalendar,
   type Calendar, type CalendarMonth, type CalendarEra,
 } from '../db'
@@ -14,7 +14,7 @@ interface Props {
 }
 
 export default function CalendarEditor({ onClose }: Props) {
-  const calendars = useLiveQuery(() => db.calendars.orderBy('createdAt').toArray(), []) ?? []
+  const calendars = useLiveQuery(() => calendarRepo.listCalendars(), []) ?? []
   const [editId, setEditId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Calendar | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Calendar | null>(null)
@@ -34,7 +34,7 @@ export default function CalendarEditor({ onClose }: Props) {
 
   async function handleNew() {
     const id = await createCalendar('New Calendar')
-    const cal = await db.calendars.get(id)
+    const cal = await calendarRepo.getCalendar(id)
     if (cal) startEdit(cal)
   }
 
