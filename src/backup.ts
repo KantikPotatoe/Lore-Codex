@@ -133,8 +133,21 @@ export function shouldBackupOnExit(
   return enabled && hasUnbackedUpChanges(lastBackup, latestChange)
 }
 
+// Mon..Sun slot names for backupOnExit's rotating filename — see there for why.
+const WEEKDAY_SLOTS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
 /**
  * Write a backup to the app's data folder as the desktop app closes.
+ *
+ * The filename is a rotating weekday slot (`exit-Mon.json` .. `exit-Sun.json`),
+ * NOT a timestamp: with backupOnExit on, closing the app once a day with edits
+ * would otherwise write a fresh full export — including every gallery image as
+ * a data URL, plausibly tens of MB — on every close, forever, silently filling
+ * $APPDATA (unlike auto-snapshots, which keep only 10). Seven slots give a
+ * week of rolling history with a bounded footprint, and reusing a filename
+ * needs only a write, not a directory listing + delete — so this stays inside
+ * the `fs:allow-write` scope already granted, with no new permissions
+ * (`fs:allow-read-dir` / `fs:allow-remove`) added to prune old files.
  *
  * Deliberately does NOT stamp LAST_BACKUP_KEY. An $APPDATA copy is a safety net,
  * not a backup that has left the machine — silencing the "back up your world"
@@ -146,7 +159,8 @@ export function shouldBackupOnExit(
  */
 export async function backupOnExit(): Promise<boolean> {
   const json = await exportAll()
-  return writeAppData(`backups/exit-${backupStamp()}.json`, json)
+  const slot = WEEKDAY_SLOTS[new Date().getDay()]
+  return writeAppData(`backups/exit-${slot}.json`, json)
 }
 
 // ---------------------------------------------------------------------------
