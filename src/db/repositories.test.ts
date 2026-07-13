@@ -89,6 +89,13 @@ describe('pageRepo', () => {
     const back = await pageRepo.backlinks(target)
     expect(back.map((p) => p.title)).toEqual(['Sauron'])
   })
+
+  it('getMany() hydrates ids in order, undefined for the missing', async () => {
+    const a = await pageRepo.create({ title: 'Alpha' })
+    const b = await pageRepo.create({ title: 'Beta' })
+    const got = await pageRepo.getMany([b, 'no-such-id', a])
+    expect(got.map((p) => p?.title)).toEqual(['Beta', undefined, 'Alpha'])
+  })
 })
 
 describe('mapRepo', () => {

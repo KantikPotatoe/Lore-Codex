@@ -67,6 +67,10 @@ export type Change<T> = Partial<T> | ((draft: T) => void)
 export interface PageRepository {
   /** One page by id (`undefined` if it doesn't exist). */
   get(id: string): Promise<LorePage | undefined>
+  /** Several pages by id, in the order given. Ids with no page come back
+   *  `undefined` — callers drop them (a recently-viewed list can name a page
+   *  that has since been deleted). */
+  getMany(ids: string[]): Promise<(LorePage | undefined)[]>
   /** Every page, unordered. */
   list(): Promise<LorePage[]>
   /** Every page, ordered by title. */
@@ -98,6 +102,7 @@ export interface PageRepository {
 
 export const pageRepo: PageRepository = {
   get: (id) => db.pages.get(id),
+  getMany: (ids) => db.pages.bulkGet(ids),
   list: () => db.pages.toArray(),
   listByTitle: () => db.pages.orderBy('title').toArray(),
   titles: () => db.pages.orderBy('title').keys() as Promise<string[]>,
