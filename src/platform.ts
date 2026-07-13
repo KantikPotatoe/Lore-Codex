@@ -208,8 +208,18 @@ export async function onCloseRequested(handler: () => Promise<void>): Promise<()
   if (!isTauri()) return () => {}
   const { getCurrentWindow } = await import('@tauri-apps/api/window')
   const win = getCurrentWindow()
+  // Guards against re-entry while the handler is still running: `unlisten()`
+  // only happens AFTER the awaited handler resolves, so the listener stays
+  // registered for the whole backup. An impatient second click on the X (or
+  // Alt+F4) during that window — up to 5s, per App.tsx's timeout — would
+  // otherwise re-enter this callback: a second exportAll() running
+  // concurrently with the first, and a second win.destroy() racing the first
+  // (the loser rejecting outside any try/catch, an unhandled rejection).
+  let closing = false
   const unlisten = await win.onCloseRequested(async (event) => {
     event.preventDefault() // we need to await the handler before the window goes
+    if (closing) return
+    closing = true
     try {
       await handler()
     } catch {
