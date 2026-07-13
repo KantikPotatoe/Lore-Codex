@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db, pageRepo, mapRepo, templateRepo, calendarRepo, manuscriptRepo } from '../db'
 
-// The repositories are the storage-agnostic seam the UI now goes through instead
-// of touching Dexie directly (#140). These tests pin that each method reads/writes
+// The repositories are the UI's one lint-enforced idiom for reaching data,
+// used instead of touching Dexie directly (#140). These tests pin that each method reads/writes
 // the same rows the old direct `db.*` calls did — including the two edge cases the
 // interface has to honour: `update` accepting a mutator function, and the
 // list-by-map queries returning [] for a falsy map id.

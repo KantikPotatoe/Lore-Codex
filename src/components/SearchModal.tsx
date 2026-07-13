@@ -34,7 +34,7 @@ export default function SearchModal({ onClose }: Props) {
   const q = query.trim()
   const results = useMemo(() => searchAll(query), [query])
 
-  // Recently-viewed pages for the empty-query state. bulkGet keeps the stored
+  // Recently-viewed pages for the empty-query state. getMany keeps the stored
   // order; ids of since-deleted pages come back undefined and are dropped.
   const recent =
     useLiveQuery(async () => {
