@@ -90,6 +90,25 @@ export interface BackupCounts {
   beats: number
 }
 
+/** Live row counts for every table, in `BackupCounts` shape. Settings shows
+ *  these beside an incoming backup's counts so the user can see exactly what a
+ *  restore would replace. Lives here, not in the route, because the table list
+ *  belongs to the backup format — add a table to the format and this must
+ *  follow. */
+export async function countAll(): Promise<BackupCounts> {
+  const [pages, maps, pins, regions, templates, calendars, events, images, docLinks,
+    books, chapters, scenes, plotlines, beats] = await Promise.all([
+    db.pages.count(), db.maps.count(), db.pins.count(), db.regions.count(),
+    db.templates.count(), db.calendars.count(), db.events.count(), db.images.count(),
+    db.docLinks.count(), db.books.count(), db.chapters.count(), db.scenes.count(),
+    db.plotlines.count(), db.beats.count(),
+  ])
+  return {
+    pages, maps, pins, regions, templates, calendars, events, images, docLinks,
+    books, chapters, scenes, plotlines, beats,
+  }
+}
+
 /** A defensive "treat anything that isn't an array as empty" helper, so a
  *  malformed or older backup never crashes a bulkAdd / count. */
 function asArray<T>(value: T[] | undefined): T[] {

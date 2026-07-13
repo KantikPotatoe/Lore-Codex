@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, updateBook } from '../db'
+import { manuscriptRepo, updateBook } from '../db'
 import BookWriteView from '../components/manuscript/BookWriteView'
 import BookGridView from '../components/manuscript/BookGridView'
 import { exportBookEpub, printBook } from '../manuscriptExport'
@@ -10,7 +10,7 @@ export default function BookRoute() {
   const { bookId } = useParams<{ bookId: string }>()
   const [view, setView] = useState<'write' | 'grid'>('write')
   const [searchParams, setSearchParams] = useSearchParams()
-  const book = useLiveQuery(() => (bookId ? db.books.get(bookId) : undefined), [bookId])
+  const book = useLiveQuery(() => (bookId ? manuscriptRepo.getBook(bookId) : undefined), [bookId])
 
   const selectedSceneId = searchParams.get('scene')
   function selectScene(id: string | null) {

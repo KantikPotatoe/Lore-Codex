@@ -34,9 +34,11 @@ const EXPECTED_FUNCTIONS = [
   'seedDefaultCalendar', 'createCalendar', 'updateCalendar', 'deleteCalendar',
   'addEvent', 'updateEvent', 'deleteEvent',
   // backup.ts
-  'parseBackup', 'exportAll', 'importAll', 'migrateBackup',
+  'parseBackup', 'exportAll', 'importAll', 'migrateBackup', 'countAll',
   // snapshots.ts
   'saveSnapshot', 'getSnapshots', 'deleteSnapshot',
+  // manuscript.ts
+  'listScenesForBook',
 ] as const
 
 describe('db barrel', () => {
@@ -55,11 +57,15 @@ describe('db barrel', () => {
     expect(db.db).toBeInstanceOf(db.LoreDB)
   })
 
-  it('re-exports the pageRepo / mapRepo seam', () => {
+  it('re-exports the pageRepo / mapRepo / templateRepo / calendarRepo / manuscriptRepo seam', () => {
     expect(typeof db.pageRepo.get).toBe('function')
     expect(typeof db.pageRepo.create).toBe('function')
+    expect(typeof db.pageRepo.getMany).toBe('function')
     expect(typeof db.mapRepo.listMaps).toBe('function')
     expect(typeof db.mapRepo.updatePin).toBe('function')
+    expect(typeof db.templateRepo.listByName).toBe('function')
+    expect(typeof db.calendarRepo.listCalendars).toBe('function')
+    expect(typeof db.manuscriptRepo.listBooks).toBe('function')
   })
 
   it('re-exports the category/status/template constants', () => {

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { db, pageRepo, mapRepo } from '../db'
+import { db, pageRepo, mapRepo, templateRepo, calendarRepo, manuscriptRepo } from '../db'
 
-// The repositories are the storage-agnostic seam the UI now goes through instead
-// of touching Dexie directly (#140). These tests pin that each method reads/writes
+// The repositories are the UI's one lint-enforced idiom for reaching data,
+// used instead of touching Dexie directly (#140). These tests pin that each method reads/writes
 // the same rows the old direct `db.*` calls did — including the two edge cases the
 // interface has to honour: `update` accepting a mutator function, and the
 // list-by-map queries returning [] for a falsy map id.
@@ -89,6 +89,13 @@ describe('pageRepo', () => {
     const back = await pageRepo.backlinks(target)
     expect(back.map((p) => p.title)).toEqual(['Sauron'])
   })
+
+  it('getMany() hydrates ids in order, undefined for the missing', async () => {
+    const a = await pageRepo.create({ title: 'Alpha' })
+    const b = await pageRepo.create({ title: 'Beta' })
+    const got = await pageRepo.getMany([b, 'no-such-id', a])
+    expect(got.map((p) => p?.title)).toEqual(['Beta', undefined, 'Alpha'])
+  })
 })
 
 describe('mapRepo', () => {
@@ -149,5 +156,119 @@ describe('mapRepo', () => {
 
     await mapRepo.removeRegion(regionId)
     expect((await mapRepo.listRegions()).length).toBe(0)
+  })
+})
+
+describe('templateRepo', () => {
+  beforeEach(async () => {
+    await db.templates.clear()
+    await db.templates.bulkAdd([
+      { id: 't2', name: 'Zebra', color: '#111', items: [] },
+      { id: 't1', name: 'Aardvark', color: '#222', items: [] },
+    ] as never)
+  })
+
+  it('list() returns every template', async () => {
+    const all = await templateRepo.list()
+    expect(all.map((t) => t.id).sort()).toEqual(['t1', 't2'])
+  })
+
+  it('listByName() orders by name', async () => {
+    const all = await templateRepo.listByName()
+    expect(all.map((t) => t.name)).toEqual(['Aardvark', 'Zebra'])
+  })
+
+  // The BUILTIN_TEMPLATES fallback in getTemplates() must NOT leak into the
+  // repo: UI reads show what the table holds, nothing more.
+  it('list() returns empty on an empty table (no builtin fallback)', async () => {
+    await db.templates.clear()
+    expect(await templateRepo.list()).toEqual([])
+  })
+
+  it('update() writes through', async () => {
+    await templateRepo.update('t1', { color: '#abc' })
+    expect((await db.templates.get('t1'))?.color).toBe('#abc')
+  })
+})
+
+describe('calendarRepo', () => {
+  beforeEach(async () => {
+    await Promise.all([db.calendars.clear(), db.events.clear()])
+    await db.calendars.bulkAdd([
+      { id: 'c2', name: 'Second', createdAt: 200 },
+      { id: 'c1', name: 'First', createdAt: 100 },
+    ] as never)
+    await db.events.bulkAdd([
+      { id: 'e2', calendarId: 'c1', title: 'Late', startAbsolute: 900 },
+      { id: 'e1', calendarId: 'c1', title: 'Early', startAbsolute: 100 },
+    ] as never)
+  })
+
+  it('listCalendars() orders by createdAt', async () => {
+    expect((await calendarRepo.listCalendars()).map((c) => c.id)).toEqual(['c1', 'c2'])
+  })
+
+  it('getCalendar() fetches one', async () => {
+    expect((await calendarRepo.getCalendar('c2'))?.name).toBe('Second')
+  })
+
+  it('getCalendar() returns undefined for an unknown id', async () => {
+    expect(await calendarRepo.getCalendar('nope')).toBeUndefined()
+  })
+
+  it('listEventsByDate() orders by startAbsolute', async () => {
+    expect((await calendarRepo.listEventsByDate()).map((e) => e.id)).toEqual(['e1', 'e2'])
+  })
+
+  it('listEvents() returns every event', async () => {
+    expect((await calendarRepo.listEvents()).map((e) => e.id).sort()).toEqual(['e1', 'e2'])
+  })
+})
+
+describe('manuscriptRepo', () => {
+  beforeEach(async () => {
+    await Promise.all([
+      db.books.clear(), db.chapters.clear(), db.scenes.clear(),
+      db.plotlines.clear(), db.beats.clear(),
+    ])
+    await db.books.bulkAdd([
+      { id: 'b2', title: 'Second', synopsis: '', order: 1, createdAt: 1, updatedAt: 1 },
+      { id: 'b1', title: 'First', synopsis: '', order: 0, createdAt: 1, updatedAt: 1 },
+    ] as never)
+    await db.chapters.bulkAdd([
+      { id: 'ch2', bookId: 'b1', title: 'Two', order: 1 },
+      { id: 'ch1', bookId: 'b1', title: 'One', order: 0 },
+    ] as never)
+    await db.scenes.bulkAdd([
+      { id: 's2', bookId: 'b1', chapterId: 'ch1', title: 'Later', order: 1, wordCount: 5 },
+      { id: 's1', bookId: 'b1', chapterId: 'ch1', title: 'Sooner', order: 0, wordCount: 3 },
+      { id: 's3', bookId: 'b2', chapterId: 'ch9', title: 'Other book', order: 0, wordCount: 1 },
+    ] as never)
+  })
+
+  it('listBooks() orders by order', async () => {
+    expect((await manuscriptRepo.listBooks()).map((b) => b.id)).toEqual(['b1', 'b2'])
+  })
+
+  it('getBook() fetches one', async () => {
+    expect((await manuscriptRepo.getBook('b2'))?.title).toBe('Second')
+  })
+
+  it('listChaptersForBook() is scoped to the book and ordered', async () => {
+    expect((await manuscriptRepo.listChaptersForBook('b1')).map((c) => c.id)).toEqual(['ch1', 'ch2'])
+  })
+
+  // The read the UI needed and the module never had: book-scoped, not
+  // chapter-scoped. Must not leak scenes from other books.
+  it('listScenesForBook() is scoped to the book and ordered', async () => {
+    expect((await manuscriptRepo.listScenesForBook('b1')).map((s) => s.id)).toEqual(['s1', 's2'])
+  })
+
+  it('listAllScenes() spans every book', async () => {
+    expect((await manuscriptRepo.listAllScenes()).map((s) => s.id).sort()).toEqual(['s1', 's2', 's3'])
+  })
+
+  it('getScene() fetches one', async () => {
+    expect((await manuscriptRepo.getScene('s1'))?.title).toBe('Sooner')
   })
 })

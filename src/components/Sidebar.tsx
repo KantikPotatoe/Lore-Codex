@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, pageRepo, categoryColor, statusColor, pageStatus, type LorePage } from '../db'
+import { templateRepo, pageRepo, categoryColor, statusColor, pageStatus, type LorePage } from '../db'
 import { getLore, currentLoreId } from '../lores'
 import { pickRandomId } from '../rediscovery'
 import { showPageHover, scheduleWikiHoverClose } from '../wikiLinkHover'
@@ -33,7 +33,7 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
   const location = useLocation()
 
   const pages = useLiveQuery(() => pageRepo.listByTitle(), []) ?? NO_PAGES
-  const templates = useLiveQuery(() => db.templates.toArray(), []) ?? []
+  const templates = useLiveQuery(() => templateRepo.list(), []) ?? []
   const activeLore = useLiveQuery(() => getLore(currentLoreId()), [])
   const loreName = activeLore?.name ?? 'Lore Codex'
 

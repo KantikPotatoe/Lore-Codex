@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db,
+  getMeta,
   importAll,
   restoreSnapshot,
   parseBackup,
   getSnapshots,
+  countAll,
   type BackupCounts,
 } from '../db'
 import {
@@ -43,7 +44,7 @@ export default function SettingsRoute() {
   const [notice, setNotice] = useState<{ title: string; body: string } | null>(null)
 
   const snapshots = useLiveQuery(() => getSnapshots(), []) ?? []
-  const lastBackup = useLiveQuery(async () => (await db.meta.get(LAST_BACKUP_KEY))?.value as number | undefined, [])
+  const lastBackup = useLiveQuery(() => getMeta<number>(LAST_BACKUP_KEY), [])
   const latestChange = useLiveQuery(() => latestChangeTime(), []) ?? 0
   const needsBackup = hasUnbackedUpChanges(lastBackup ?? null, latestChange)
   const unbacked = useLiveQuery(() => unbackedChangeCount(lastBackup ?? null), [lastBackup, latestChange]) ?? 0
@@ -95,20 +96,6 @@ export default function SettingsRoute() {
     setPersisted(await requestPersistentStorage())
   }
 
-  async function loadCounts(): Promise<BackupCounts> {
-    const [pages, maps, pins, regions, templates, calendars, events, images, docLinks,
-      books, chapters, scenes, plotlines, beats] = await Promise.all([
-      db.pages.count(), db.maps.count(), db.pins.count(), db.regions.count(),
-      db.templates.count(), db.calendars.count(), db.events.count(), db.images.count(),
-      db.docLinks.count(), db.books.count(), db.chapters.count(), db.scenes.count(),
-      db.plotlines.count(), db.beats.count(),
-    ])
-    return {
-      pages, maps, pins, regions, templates, calendars, events, images, docLinks,
-      books, chapters, scenes, plotlines, beats,
-    }
-  }
-
   async function handleRestore() {
     const opened = await openTextFile() // native Open dialog in the shell, file input in the browser
     if (!opened) return
@@ -122,7 +109,7 @@ export default function SettingsRoute() {
       })
       return
     }
-    setPendingImport({ json: opened.text, current: await loadCounts(), incoming, kind: 'backup' })
+    setPendingImport({ json: opened.text, current: await countAll(), incoming, kind: 'backup' })
   }
 
   async function confirmImport() {
@@ -259,7 +246,7 @@ export default function SettingsRoute() {
                   disabled={busy}
                   onClick={async () => {
                     const { counts: incoming } = parseBackup(snap.data)
-                    setPendingImport({ json: snap.data, current: await loadCounts(), incoming, kind: 'snapshot' })
+                    setPendingImport({ json: snap.data, current: await countAll(), incoming, kind: 'snapshot' })
                   }}
                 >
                   Restore

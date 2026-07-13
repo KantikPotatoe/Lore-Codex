@@ -1,21 +1,31 @@
 // Repository seam over the data layer.
 //
-// Routes and components used to reach straight into the Dexie singleton
-// (`db.pages.get(id)`, `db.pins.update(...)`) — which welds the whole UI to
-// Dexie/IndexedDB and blocks the planned Electron / on-disk-JSON move (#142).
-// These repositories are the seam: a small, storage-agnostic interface plus a
-// Dexie-backed implementation bound in one place. To swap the backend later,
-// provide an alternate implementation of the same interface here — call sites
-// stay untouched.
+// The seam exists so the UI has exactly ONE idiom for reaching data: routes and
+// components call a repository, never the Dexie singleton. That is enforced by
+// lint (`no-restricted-imports` in eslint.config.js), because the honour system
+// did not hold — this file's header used to say "follow-up sweep" and the sweep
+// did not happen, so new code kept copying the wrong idiom.
+//
+// What this seam is NOT: a portability layer. An earlier header claimed it
+// unblocked the storage swap (#142). It does not. Phase 2 of the desktop move
+// (#174) mirrors worlds to disk via exportAll() and needs nothing from here, and
+// any non-Dexie backend must bring its own invalidation story for the ~77
+// `useLiveQuery` sites — which no repository interface reduces. See
+// docs/desktop-transition-investigation.md §4.1. Do not justify work here on
+// portability grounds without re-reading that section.
 //
 // Reactivity note: the read methods just return the promise from a `db.*`
 // query, so `useLiveQuery(() => pageRepo.get(id), [id])` stays reactive —
 // Dexie tracks the read globally on the `db` instance regardless of how deep in
 // the call stack it happens, so wrapping it in a method changes nothing.
 //
-// Scope: pages + maps (the heaviest leak sites). Other tables (manuscript,
-// calendar, templates, images, meta, snapshots) still use their module
-// functions directly and are a follow-up sweep.
+// Tiers:
+//   UI (components, routes, hooks) — repositories only. Lint-enforced.
+//   Infra (src/backup.ts, searchSync.ts, snapshots.ts, htmlExport.ts,
+//          manuscriptExport.ts) — keeps raw `db`, permanently and on purpose:
+//          it does whole-DB, cross-table, transactional work that a per-table
+//          repository would serve worse, not better.
+//   Data layer (src/db/**) — owns `db`.
 
 import { db } from './schema'
 import {
@@ -28,7 +38,31 @@ import {
   getBacklinks,
 } from './pages'
 import { addMap, deleteMap, addPin, addRegion } from './maps'
-import type { LorePage, MapPin, MapRegion, WorldMap } from './types'
+import { createTemplate, updateTemplate, deleteTemplate, resetTemplate } from './templates'
+import {
+  createCalendar,
+  updateCalendar,
+  deleteCalendar,
+  addEvent,
+  updateEvent,
+  deleteEvent,
+  type NewEventData,
+} from './calendar'
+import { listBooks, listChapters, listScenesForBook, listPlotlines, listBeats } from './manuscript'
+import type {
+  LorePage,
+  MapPin,
+  MapRegion,
+  WorldMap,
+  InfoboxTemplate,
+  Calendar,
+  TimelineEvent,
+  Book,
+  Chapter,
+  Scene,
+  Plotline,
+  Beat,
+} from './types'
 
 /** A change to a stored record: either a partial patch or a mutator run against
  *  a draft. Mirrors Dexie's two `update()` forms, but named without leaking a
@@ -42,6 +76,10 @@ export type Change<T> = Partial<T> | ((draft: T) => void)
 export interface PageRepository {
   /** One page by id (`undefined` if it doesn't exist). */
   get(id: string): Promise<LorePage | undefined>
+  /** Several pages by id, in the order given. Ids with no page come back
+   *  `undefined` — callers drop them (a recently-viewed list can name a page
+   *  that has since been deleted). */
+  getMany(ids: string[]): Promise<(LorePage | undefined)[]>
   /** Every page, unordered. */
   list(): Promise<LorePage[]>
   /** Every page, ordered by title. */
@@ -73,6 +111,7 @@ export interface PageRepository {
 
 export const pageRepo: PageRepository = {
   get: (id) => db.pages.get(id),
+  getMany: (ids) => db.pages.bulkGet(ids),
   list: () => db.pages.toArray(),
   listByTitle: () => db.pages.orderBy('title').toArray(),
   titles: () => db.pages.orderBy('title').keys() as Promise<string[]>,
@@ -154,4 +193,108 @@ export const mapRepo: MapRepository = {
   removeRegion: async (id) => {
     await db.regions.delete(id)
   },
+}
+
+// ---------------------------------------------------------------------------
+// Page types (templates)
+// ---------------------------------------------------------------------------
+
+export interface TemplateRepository {
+  /** Every page type, unordered — for callers that group by something else. */
+  list(): Promise<InfoboxTemplate[]>
+  /** Every page type, ordered by name — for pickers and the /templates list.
+   *  Deliberately NOT `getTemplates()`: that falls back to BUILTIN_TEMPLATES on
+   *  an empty table, which is seeding behaviour, not a UI read. */
+  listByName(): Promise<InfoboxTemplate[]>
+  create(name: string, color?: string): Promise<string>
+  update(id: string, changes: Partial<InfoboxTemplate>): Promise<void>
+  remove(id: string): Promise<void>
+  /** Restore a built-in type to its shipped definition. */
+  reset(id: string): Promise<void>
+}
+
+export const templateRepo: TemplateRepository = {
+  list: () => db.templates.toArray(),
+  listByName: () => db.templates.orderBy('name').toArray(),
+  create: createTemplate,
+  update: updateTemplate,
+  remove: deleteTemplate,
+  reset: resetTemplate,
+}
+
+// ---------------------------------------------------------------------------
+// Calendars & timeline events
+// ---------------------------------------------------------------------------
+
+export interface CalendarRepository {
+  /** Every calendar, ordered by creation. */
+  listCalendars(): Promise<Calendar[]>
+  getCalendar(id: string): Promise<Calendar | undefined>
+  createCalendar(name: string): Promise<string>
+  /** Rewrites every event's cached absolute days in one transaction — see
+   *  `updateCalendar` in `calendar.ts`. */
+  updateCalendar(id: string, changes: Partial<Calendar>): Promise<void>
+  /** Cascade-deletes the calendar's events. */
+  removeCalendar(id: string): Promise<void>
+
+  /** Every event, unordered. */
+  listEvents(): Promise<TimelineEvent[]>
+  /** Every event on the shared absolute-day axis, earliest first. */
+  listEventsByDate(): Promise<TimelineEvent[]>
+  addEvent(data: NewEventData): Promise<string>
+  /** Always recomputes the cached absolute days — see `updateEvent` in
+   *  `calendar.ts`. `id`/`createdAt` are not patchable. */
+  updateEvent(id: string, changes: Partial<Omit<TimelineEvent, 'id' | 'createdAt'>>): Promise<void>
+  removeEvent(id: string): Promise<void>
+}
+
+export const calendarRepo: CalendarRepository = {
+  listCalendars: () => db.calendars.orderBy('createdAt').toArray(),
+  getCalendar: (id) => db.calendars.get(id),
+  createCalendar,
+  updateCalendar,
+  removeCalendar: deleteCalendar,
+
+  listEvents: () => db.events.toArray(),
+  listEventsByDate: () => db.events.orderBy('startAbsolute').toArray(),
+  addEvent,
+  updateEvent,
+  removeEvent: deleteEvent,
+}
+
+// ---------------------------------------------------------------------------
+// Manuscript: books → chapters → scenes, plus the plotline/beat grid
+// ---------------------------------------------------------------------------
+
+export interface ManuscriptRepository {
+  listBooks(): Promise<Book[]>
+  getBook(id: string): Promise<Book | undefined>
+
+  /** Chapters of one book, in reading order. */
+  listChaptersForBook(bookId: string): Promise<Chapter[]>
+
+  getScene(id: string): Promise<Scene | undefined>
+  /** Scenes of one book, in reading order. */
+  listScenesForBook(bookId: string): Promise<Scene[]>
+  /** Every scene across every book — for library-wide word-count stats. */
+  listAllScenes(): Promise<Scene[]>
+
+  /** Plotline lanes of one book, in lane order (includes the structure lane). */
+  listPlotlinesForBook(bookId: string): Promise<Plotline[]>
+  /** Every beat in one book, unordered (the grid places them by cell). */
+  listBeatsForBook(bookId: string): Promise<Beat[]>
+}
+
+export const manuscriptRepo: ManuscriptRepository = {
+  listBooks,
+  getBook: (id) => db.books.get(id),
+
+  listChaptersForBook: listChapters,
+
+  getScene: (id) => db.scenes.get(id),
+  listScenesForBook,
+  listAllScenes: () => db.scenes.toArray(),
+
+  listPlotlinesForBook: listPlotlines,
+  listBeatsForBook: listBeats,
 }

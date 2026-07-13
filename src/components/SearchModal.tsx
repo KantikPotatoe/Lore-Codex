@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { searchAll, highlightSnippet, type SearchResult } from '../search'
 import { resultHref } from '../searchEntries'
-import { db, pageRepo, categoryColor, type LorePage } from '../db'
+import { pageRepo, categoryColor, type LorePage } from '../db'
 import { getRecent } from '../recents'
 import { showPageHover, scheduleWikiHoverClose } from '../wikiLinkHover'
 
@@ -34,13 +34,13 @@ export default function SearchModal({ onClose }: Props) {
   const q = query.trim()
   const results = useMemo(() => searchAll(query), [query])
 
-  // Recently-viewed pages for the empty-query state. bulkGet keeps the stored
+  // Recently-viewed pages for the empty-query state. getMany keeps the stored
   // order; ids of since-deleted pages come back undefined and are dropped.
   const recent =
     useLiveQuery(async () => {
       const ids = getRecent()
       if (ids.length === 0) return NO_PAGES
-      const pages = await db.pages.bulkGet(ids)
+      const pages = await pageRepo.getMany(ids)
       return pages.filter((p): p is LorePage => p != null)
     }, []) ?? NO_PAGES
 

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Calendar } from '../db'
+import { calendarRepo, type Calendar } from '../db'
 import { absoluteToDate, formatDate } from '../calendar'
 import { pageChronology, type ChronologyRole } from '../pageChronology'
 
@@ -22,8 +22,8 @@ function dateLabel(cal: Calendar, absolute: number): string {
 /** "History": timeline events that reference this page — the entity-scoped
  *  chronology, as opposed to the global /timeline. Quiet when empty. */
 export default function PageHistory({ pageId, title }: { pageId: string; title: string }) {
-  const events = useLiveQuery(() => db.events.orderBy('startAbsolute').toArray(), [])
-  const calendars = useLiveQuery(() => db.calendars.toArray(), [])
+  const events = useLiveQuery(() => calendarRepo.listEventsByDate(), [])
+  const calendars = useLiveQuery(() => calendarRepo.listCalendars(), [])
   const [expanded, setExpanded] = useState(false)
 
   const entries = useMemo(

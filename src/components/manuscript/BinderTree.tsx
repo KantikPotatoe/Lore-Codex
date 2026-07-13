@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db, createChapter, createScene, updateChapter, sceneStatusColor,
+  manuscriptRepo, createChapter, createScene, updateChapter, sceneStatusColor,
   type Chapter, type Scene,
 } from '../../db'
 
@@ -16,11 +16,11 @@ const NO_SCENES: Scene[] = []
 
 export default function BinderTree({ bookId, selectedSceneId, onSelectScene }: BinderTreeProps) {
   const chapters = useLiveQuery(
-    () => db.chapters.where('bookId').equals(bookId).sortBy('order'),
+    () => manuscriptRepo.listChaptersForBook(bookId),
     [bookId],
   ) ?? NO_CHAPTERS
   const scenes = useLiveQuery(
-    () => db.scenes.where('bookId').equals(bookId).sortBy('order'),
+    () => manuscriptRepo.listScenesForBook(bookId),
     [bookId],
   ) ?? NO_SCENES
 

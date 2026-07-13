@@ -7,6 +7,7 @@ import {
   exportAll,
   importAll,
   importBackupInto,
+  countAll,
   createPage,
   attachDocument,
   CURRENT_SCHEMA_VERSION,
@@ -471,4 +472,23 @@ describe('importBackupInto — parameterized target', () => {
   // Sanitization-on-import for importBackupInto is covered in
   // import-sanitize.test.ts — DOMPurify needs the jsdom environment
   // (happy-dom's parser lets <script> survive).
+})
+
+describe('countAll', () => {
+  it('countAll() reports what each table holds', async () => {
+    await db.pages.clear()
+    await db.templates.clear()
+    await db.pages.bulkAdd([
+      { id: 'p1', title: 'A', content: '', summary: '', tags: [], category: 'x', createdAt: 1, updatedAt: 1 },
+      { id: 'p2', title: 'B', content: '', summary: '', tags: [], category: 'x', createdAt: 1, updatedAt: 1 },
+    ] as never)
+
+    const counts = await countAll()
+
+    expect(counts.pages).toBe(2)
+    expect(counts.templates).toBe(0)
+    // Every BackupCounts key must be populated — a missing table would silently
+    // read as `undefined` in the Settings import summary.
+    for (const value of Object.values(counts)) expect(typeof value).toBe('number')
+  })
 })

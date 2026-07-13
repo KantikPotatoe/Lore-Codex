@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db'
+import { getMeta } from '../db'
 import {
   LAST_BACKUP_KEY,
   latestChangeTime,
@@ -18,7 +18,7 @@ export default function BackupBanner() {
   const [dismissed, setDismissed] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const lastBackup = useLiveQuery(async () => (await db.meta.get(LAST_BACKUP_KEY))?.value as number | undefined, [])
+  const lastBackup = useLiveQuery(() => getMeta<number>(LAST_BACKUP_KEY), [])
   const latestChange = useLiveQuery(() => latestChangeTime(), []) ?? 0
   const count = useLiveQuery(() => unbackedChangeCount(lastBackup ?? null), [lastBackup, latestChange]) ?? 0
   const overdueDays = useLiveQuery(async () => (await getSettings()).backupOverdueDays, []) ?? 7
