@@ -2398,7 +2398,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .settings-field select,
 .settings-field .mini-btn { grid-column: 2; grid-row: 1; justify-self: end; }
 .settings-field input[type='number'] { width: 96px; }
-.settings-field input[type='checkbox'] { width: auto; }
+.settings-field input[type='checkbox'] { width: auto; margin: 0; }
 .settings-field select { min-width: 180px; }
 .settings-field input,
 .settings-field select {
