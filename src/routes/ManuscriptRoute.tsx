@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { CSSProperties } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link, useNavigate } from 'react-router-dom'
-import { db, createBook, TYPE_COLORS, type Book, type Scene } from '../db'
+import { manuscriptRepo, createBook, TYPE_COLORS, type Book, type Scene } from '../db'
 import EmptyState from '../components/EmptyState'
 import { coverHue } from '../bookCover'
 
@@ -11,8 +11,8 @@ const NO_SCENES: Scene[] = []
 
 export default function ManuscriptRoute() {
   const navigate = useNavigate()
-  const books = useLiveQuery(() => db.books.orderBy('order').toArray(), []) ?? NO_BOOKS
-  const scenes = useLiveQuery(() => db.scenes.toArray(), []) ?? NO_SCENES
+  const books = useLiveQuery(() => manuscriptRepo.listBooks(), []) ?? NO_BOOKS
+  const scenes = useLiveQuery(() => manuscriptRepo.listAllScenes(), []) ?? NO_SCENES
 
   const stats = useMemo(() => {
     const m = new Map<string, { count: number; words: number }>()

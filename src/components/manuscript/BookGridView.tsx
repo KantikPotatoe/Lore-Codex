@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db, createPlotline, updatePlotline, deletePlotline, reorderPlotlines,
+  manuscriptRepo, createPlotline, updatePlotline, deletePlotline, reorderPlotlines,
   createBeat, updateBeat, deleteBeat, sceneStatusColor, TYPE_COLORS,
   type Scene, type Chapter, type Plotline, type Beat,
 } from '../../db'
@@ -14,10 +14,10 @@ const NO_PLOTLINES: Plotline[] = []
 const NO_BEATS: Beat[] = []
 
 export default function BookGridView({ bookId }: { bookId: string }) {
-  const scenes = useLiveQuery(() => db.scenes.where('bookId').equals(bookId).sortBy('order'), [bookId]) ?? NO_SCENES
-  const chapters = useLiveQuery(() => db.chapters.where('bookId').equals(bookId).sortBy('order'), [bookId]) ?? NO_CHAPTERS
-  const plotlines = useLiveQuery(() => db.plotlines.where('bookId').equals(bookId).sortBy('order'), [bookId]) ?? NO_PLOTLINES
-  const beats = useLiveQuery(() => db.beats.where('bookId').equals(bookId).toArray(), [bookId]) ?? NO_BEATS
+  const scenes = useLiveQuery(() => manuscriptRepo.listScenesForBook(bookId), [bookId]) ?? NO_SCENES
+  const chapters = useLiveQuery(() => manuscriptRepo.listChaptersForBook(bookId), [bookId]) ?? NO_CHAPTERS
+  const plotlines = useLiveQuery(() => manuscriptRepo.listPlotlinesForBook(bookId), [bookId]) ?? NO_PLOTLINES
+  const beats = useLiveQuery(() => manuscriptRepo.listBeatsForBook(bookId), [bookId]) ?? NO_BEATS
 
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [draft, setDraft] = useState('')

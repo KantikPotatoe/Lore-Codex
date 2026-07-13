@@ -38,7 +38,21 @@ import {
   deleteEvent,
   type NewEventData,
 } from './calendar'
-import type { LorePage, MapPin, MapRegion, WorldMap, InfoboxTemplate, Calendar, TimelineEvent } from './types'
+import { listBooks, listChapters, listScenesForBook, listPlotlines, listBeats } from './manuscript'
+import type {
+  LorePage,
+  MapPin,
+  MapRegion,
+  WorldMap,
+  InfoboxTemplate,
+  Calendar,
+  TimelineEvent,
+  Book,
+  Chapter,
+  Scene,
+  Plotline,
+  Beat,
+} from './types'
 
 /** A change to a stored record: either a partial patch or a mutator run against
  *  a draft. Mirrors Dexie's two `update()` forms, but named without leaking a
@@ -231,4 +245,41 @@ export const calendarRepo: CalendarRepository = {
   addEvent,
   updateEvent,
   removeEvent: deleteEvent,
+}
+
+// ---------------------------------------------------------------------------
+// Manuscript: books → chapters → scenes, plus the plotline/beat grid
+// ---------------------------------------------------------------------------
+
+export interface ManuscriptRepository {
+  listBooks(): Promise<Book[]>
+  getBook(id: string): Promise<Book | undefined>
+
+  /** Chapters of one book, in reading order. */
+  listChaptersForBook(bookId: string): Promise<Chapter[]>
+
+  getScene(id: string): Promise<Scene | undefined>
+  /** Scenes of one book, in reading order. */
+  listScenesForBook(bookId: string): Promise<Scene[]>
+  /** Every scene across every book — for library-wide word-count stats. */
+  listAllScenes(): Promise<Scene[]>
+
+  /** Plotline lanes of one book, in lane order (includes the structure lane). */
+  listPlotlinesForBook(bookId: string): Promise<Plotline[]>
+  /** Every beat in one book, unordered (the grid places them by cell). */
+  listBeatsForBook(bookId: string): Promise<Beat[]>
+}
+
+export const manuscriptRepo: ManuscriptRepository = {
+  listBooks,
+  getBook: (id) => db.books.get(id),
+
+  listChaptersForBook: listChapters,
+
+  getScene: (id) => db.scenes.get(id),
+  listScenesForBook,
+  listAllScenes: () => db.scenes.toArray(),
+
+  listPlotlinesForBook: listPlotlines,
+  listBeatsForBook: listBeats,
 }

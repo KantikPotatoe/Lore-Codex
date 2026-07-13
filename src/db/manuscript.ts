@@ -171,6 +171,13 @@ export async function listScenes(chapterId: string): Promise<Scene[]> {
   return db.scenes.where('chapterId').equals(chapterId).sortBy('order')
 }
 
+/** Every scene in a book, in reading order. The binder, the grid and the
+ *  structure lane all work book-at-a-time; `listScenes` above is the
+ *  chapter-scoped sibling. */
+export async function listScenesForBook(bookId: string): Promise<Scene[]> {
+  return db.scenes.where('bookId').equals(bookId).sortBy('order')
+}
+
 export async function reorderScenes(chapterId: string, orderedIds: string[]): Promise<void> {
   await db.transaction('rw', db.scenes, async () => {
     const byId = new Map((await db.scenes.where('chapterId').equals(chapterId).toArray()).map((s) => [s.id, s]))

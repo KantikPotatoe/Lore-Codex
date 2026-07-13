@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../../db'
+import { manuscriptRepo } from '../../db'
 import EmptyState from '../EmptyState'
 import BinderTree from './BinderTree'
 import SceneEditor from './SceneEditor'
@@ -12,7 +12,7 @@ interface Props {
 
 export default function BookWriteView({ bookId, selectedSceneId, onSelectScene }: Props) {
   const scene = useLiveQuery(
-    () => (selectedSceneId ? db.scenes.get(selectedSceneId) : undefined),
+    () => (selectedSceneId ? manuscriptRepo.getScene(selectedSceneId) : undefined),
     [selectedSceneId],
   )
 

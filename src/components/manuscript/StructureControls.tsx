@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  db, applyStructure, removeStructure, updateBeat,
+  manuscriptRepo, applyStructure, removeStructure, updateBeat,
   type Scene, type Plotline, type Beat, type StructureType,
 } from '../../db'
 import { STRUCTURES } from '../../manuscriptStructures'
@@ -12,9 +12,9 @@ const NO_PLOTLINES: Plotline[] = []
 const NO_BEATS: Beat[] = []
 
 export default function StructureControls({ bookId }: { bookId: string }) {
-  const scenes = useLiveQuery(() => db.scenes.where('bookId').equals(bookId).sortBy('order'), [bookId]) ?? NO_SCENES
-  const plotlines = useLiveQuery(() => db.plotlines.where('bookId').equals(bookId).toArray(), [bookId]) ?? NO_PLOTLINES
-  const beats = useLiveQuery(() => db.beats.where('bookId').equals(bookId).toArray(), [bookId]) ?? NO_BEATS
+  const scenes = useLiveQuery(() => manuscriptRepo.listScenesForBook(bookId), [bookId]) ?? NO_SCENES
+  const plotlines = useLiveQuery(() => manuscriptRepo.listPlotlinesForBook(bookId), [bookId]) ?? NO_PLOTLINES
+  const beats = useLiveQuery(() => manuscriptRepo.listBeatsForBook(bookId), [bookId]) ?? NO_BEATS
 
   const structureLane = plotlines.find((p) => p.kind === 'structure')
   const unplaced = useMemo(

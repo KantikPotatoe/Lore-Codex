@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { db, pageRepo, mapRepo, templateRepo, calendarRepo } from '../db'
+import { db, pageRepo, mapRepo, templateRepo, calendarRepo, manuscriptRepo } from '../db'
 
 // The repositories are the storage-agnostic seam the UI now goes through instead
 // of touching Dexie directly (#140). These tests pin that each method reads/writes
@@ -215,5 +215,53 @@ describe('calendarRepo', () => {
 
   it('listEvents() returns every event', async () => {
     expect((await calendarRepo.listEvents()).map((e) => e.id).sort()).toEqual(['e1', 'e2'])
+  })
+})
+
+describe('manuscriptRepo', () => {
+  beforeEach(async () => {
+    await Promise.all([
+      db.books.clear(), db.chapters.clear(), db.scenes.clear(),
+      db.plotlines.clear(), db.beats.clear(),
+    ])
+    await db.books.bulkAdd([
+      { id: 'b2', title: 'Second', synopsis: '', order: 1, createdAt: 1, updatedAt: 1 },
+      { id: 'b1', title: 'First', synopsis: '', order: 0, createdAt: 1, updatedAt: 1 },
+    ] as never)
+    await db.chapters.bulkAdd([
+      { id: 'ch2', bookId: 'b1', title: 'Two', order: 1 },
+      { id: 'ch1', bookId: 'b1', title: 'One', order: 0 },
+    ] as never)
+    await db.scenes.bulkAdd([
+      { id: 's2', bookId: 'b1', chapterId: 'ch1', title: 'Later', order: 1, wordCount: 5 },
+      { id: 's1', bookId: 'b1', chapterId: 'ch1', title: 'Sooner', order: 0, wordCount: 3 },
+      { id: 's3', bookId: 'b2', chapterId: 'ch9', title: 'Other book', order: 0, wordCount: 1 },
+    ] as never)
+  })
+
+  it('listBooks() orders by order', async () => {
+    expect((await manuscriptRepo.listBooks()).map((b) => b.id)).toEqual(['b1', 'b2'])
+  })
+
+  it('getBook() fetches one', async () => {
+    expect((await manuscriptRepo.getBook('b2'))?.title).toBe('Second')
+  })
+
+  it('listChaptersForBook() is scoped to the book and ordered', async () => {
+    expect((await manuscriptRepo.listChaptersForBook('b1')).map((c) => c.id)).toEqual(['ch1', 'ch2'])
+  })
+
+  // The read the UI needed and the module never had: book-scoped, not
+  // chapter-scoped. Must not leak scenes from other books.
+  it('listScenesForBook() is scoped to the book and ordered', async () => {
+    expect((await manuscriptRepo.listScenesForBook('b1')).map((s) => s.id)).toEqual(['s1', 's2'])
+  })
+
+  it('listAllScenes() spans every book', async () => {
+    expect((await manuscriptRepo.listAllScenes()).map((s) => s.id).sort()).toEqual(['s1', 's2', 's3'])
+  })
+
+  it('getScene() fetches one', async () => {
+    expect((await manuscriptRepo.getScene('s1'))?.title).toBe('Sooner')
   })
 })
