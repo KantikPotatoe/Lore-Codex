@@ -1,24 +1,14 @@
-import Dexie, { type Table } from 'dexie'
+import Dexie from 'dexie'
 import { CURRENT_LORE_KEY, currentLoreId, dbNameFor } from './loreId'
 import { broadcastWorldChange } from './tabSync'
+import { registry, type Lore } from './registryDb'
 
-export interface Lore {
-  id: string
-  name: string
-  banner: string | null // data URL, or null
-  createdAt: number
-  updatedAt: number
-}
-
-class LoreRegistryDB extends Dexie {
-  lores!: Table<Lore, string>
-  constructor() {
-    super('lore-registry')
-    this.version(1).stores({ lores: 'id, createdAt' })
-  }
-}
-
-export const registry = new LoreRegistryDB()
+// The registry DB now lives in registryDb.ts so `appSettings.ts` can reach it
+// without importing this module (whose world-CRUD is mocked wholesale in
+// LoreSelectorRoute.test.tsx). Re-exported so every existing call site keeps
+// importing `registry` / `Lore` from './lores'.
+export { registry }
+export type { Lore }
 
 // Marks that the one-time default-world seeding has happened. Without this,
 // an empty registry is indistinguishable from a fresh install, so deleting
