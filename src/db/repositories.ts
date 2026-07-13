@@ -1,25 +1,31 @@
 // Repository seam over the data layer.
 //
-// Routes and components used to reach straight into the Dexie singleton
-// (`db.pages.get(id)`, `db.pins.update(...)`) — which welds the whole UI to
-// Dexie/IndexedDB and blocks the planned Electron / on-disk-JSON move (#142).
-// These repositories are the seam: a small, storage-agnostic interface plus a
-// Dexie-backed implementation bound in one place. To swap the backend later,
-// provide an alternate implementation of the same interface here — call sites
-// stay untouched.
+// The seam exists so the UI has exactly ONE idiom for reaching data: routes and
+// components call a repository, never the Dexie singleton. That is enforced by
+// lint (`no-restricted-imports` in eslint.config.js), because the honour system
+// did not hold — this file's header used to say "follow-up sweep" and the sweep
+// did not happen, so new code kept copying the wrong idiom.
+//
+// What this seam is NOT: a portability layer. An earlier header claimed it
+// unblocked the storage swap (#142). It does not. Phase 2 of the desktop move
+// (#174) mirrors worlds to disk via exportAll() and needs nothing from here, and
+// any non-Dexie backend must bring its own invalidation story for the ~77
+// `useLiveQuery` sites — which no repository interface reduces. See
+// docs/desktop-transition-investigation.md §4.1. Do not justify work here on
+// portability grounds without re-reading that section.
 //
 // Reactivity note: the read methods just return the promise from a `db.*`
 // query, so `useLiveQuery(() => pageRepo.get(id), [id])` stays reactive —
 // Dexie tracks the read globally on the `db` instance regardless of how deep in
 // the call stack it happens, so wrapping it in a method changes nothing.
 //
-// Scope: pages + maps (the heaviest leak sites) + templates (page types) +
-// calendars & timeline events + manuscript (books/chapters/scenes/plotlines/beats).
-// Images and snapshots still use their module functions directly (no dedicated
-// repo — not enough call sites to warrant one). Meta reads go through the
-// existing getMeta()/setMeta() helpers in schema.ts rather than a metaRepo,
-// by design (#186 task 4): a single key/value getter doesn't fit the
-// per-domain repository shape either.
+// Tiers:
+//   UI (components, routes, hooks) — repositories only. Lint-enforced.
+//   Infra (src/backup.ts, searchSync.ts, snapshots.ts, htmlExport.ts,
+//          manuscriptExport.ts) — keeps raw `db`, permanently and on purpose:
+//          it does whole-DB, cross-table, transactional work that a per-table
+//          repository would serve worse, not better.
+//   Data layer (src/db/**) — owns `db`.
 
 import { db } from './schema'
 import {
