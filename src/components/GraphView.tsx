@@ -227,11 +227,14 @@ export default function GraphView({
   }, [selectedId, data.nodes])
 
   // Frame the whole chain when a new path arrives — its endpoints are usually
-  // far apart. Keyed on the chain's contents, not the array identity.
-  const pathKey = path ? path.join('>') : ''
+  // far apart. Keyed on the chain's contents, not the array identity, so an
+  // unrelated filter change that rebuilds an identical array does not re-zoom.
+  // JSON, not join('>'), because a path can run through a ghost node whose id
+  // is `ghost:<title>` and a title may contain any character.
+  const pathKey = path ? JSON.stringify(path) : ''
   useEffect(() => {
     if (!pathKey || !fgRef.current) return
-    const ids = new Set(pathKey.split('>'))
+    const ids = new Set<string>(JSON.parse(pathKey))
     fgRef.current.zoomToFit(450, 60, (n: GNode) => ids.has(String(n.id)))
   }, [pathKey])
 
