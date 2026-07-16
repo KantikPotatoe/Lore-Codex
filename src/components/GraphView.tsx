@@ -5,8 +5,8 @@ import ForceGraph2D, {
   type NodeObject,
   type LinkObject,
 } from 'react-force-graph-2d'
-import { type GraphData, type GraphNode, type GraphLink } from '../db'
-import { nodeFill, type ColorBy } from '../graphColor'
+import { type GraphData, type GraphNode, type GraphLink, edgeKey } from '../db'
+import { nodeFill, PATH_ACCENT, type ColorBy } from '../graphColor'
 import { radiusFor } from '../graphGeometry'
 import type { GraphCam } from '../useGraphPrefs'
 import GraphMinimap from './GraphMinimap'
@@ -43,6 +43,7 @@ export default function GraphView({
   highlightTag,
   islandColors,
   selectedId,
+  path,
   onSelect,
   onGhostClick,
   onPinNode,
@@ -55,6 +56,7 @@ export default function GraphView({
   highlightTag: string
   islandColors: Map<string, string>
   selectedId: string | null
+  path: string[] | null
   onSelect: (id: string | null) => void
   onGhostClick: (title: string) => void
   onPinNode: (id: string, x: number, y: number) => void
@@ -98,12 +100,28 @@ export default function GraphView({
     if (clickTimer.current != null) window.clearTimeout(clickTimer.current)
   }, [])
 
-  // Hover takes precedence over the sticky selection for what gets highlighted.
-  const focusId = hoverId ?? selectedId
+  // A path is an explicit, sticky query, so it wins over hover and selection —
+  // otherwise a stray mouse move across the canvas would wipe out the answer.
+  const pathIds = useMemo(() => (path ? new Set(path) : null), [path])
+  const pathEdges = useMemo(() => {
+    if (!path) return null
+    const keys = new Set<string>()
+    for (let i = 0; i < path.length - 1; i++) keys.add(edgeKey(path[i], path[i + 1]))
+    return keys
+  }, [path])
+  const pathEnds = useMemo(
+    () => (path && path.length > 0 ? [path[0], path[path.length - 1]] : null),
+    [path],
+  )
+
+  const focusId = pathIds ? null : (hoverId ?? selectedId)
   const neighbourIds = useMemo(
     () => (focusId ? neighboursOf(focusId, data.links as GLink[]) : null),
     [focusId, data.links],
   )
+  // What stays lit; everything else fades out. The path supersedes the
+  // hover/selection neighbourhood.
+  const activeIds = pathIds ?? neighbourIds
 
   useEffect(() => {
     if (selectedId) {
@@ -121,12 +139,12 @@ export default function GraphView({
       const now = performance.now()
       const dt = lastFrame.current ? now - lastFrame.current : 16
       lastFrame.current = now
-      const target = neighbourIds != null ? 1 : 0
+      const target = activeIds != null ? 1 : 0
       const step = dt / 200 // ~200ms full fade
       focusAmt.current += Math.sign(target - focusAmt.current) * step
       focusAmt.current = Math.max(0, Math.min(1, focusAmt.current))
 
-      const isDim = neighbourIds != null && !neighbourIds.has(String(node.id))
+      const isDim = activeIds != null && !activeIds.has(String(node.id))
       const baseAlpha = isDim ? 1 - 0.85 * focusAmt.current : 1
 
       let r = radiusFor(node.degree)
@@ -155,8 +173,18 @@ export default function GraphView({
         ctx.fill()
       }
 
+      // Ring the two endpoints so they read as the question, not just waypoints.
+      if (pathEnds && (String(node.id) === pathEnds[0] || String(node.id) === pathEnds[1])) {
+        ctx.beginPath()
+        ctx.arc(x, y, r + 3 / globalScale, 0, 2 * Math.PI)
+        ctx.strokeStyle = PATH_ACCENT
+        ctx.lineWidth = 2 / globalScale
+        ctx.stroke()
+        ctx.lineWidth = 1
+      }
+
       // Draw the title under the node once zoomed in, or for focused nodes.
-      if (globalScale > 1.2 || (neighbourIds != null && !isDim)) {
+      if (globalScale > 1.2 || (activeIds != null && !isDim)) {
         const fontSize = 12 / globalScale
         ctx.font = `${fontSize}px sans-serif`
         ctx.textAlign = 'center'
@@ -166,7 +194,7 @@ export default function GraphView({
       }
       ctx.globalAlpha = 1
     },
-    [neighbourIds, colorBy, highlightTag, islandColors],
+    [activeIds, pathEnds, colorBy, highlightTag, islandColors],
   )
 
   // Restore the saved camera once, after the container has a real size. The
@@ -198,8 +226,22 @@ export default function GraphView({
     fgRef.current.zoom(2.5, 450)
   }, [selectedId, data.nodes])
 
+  // Frame the whole chain when a new path arrives — its endpoints are usually
+  // far apart. Keyed on the chain's contents, not the array identity, so an
+  // unrelated filter change that rebuilds an identical array does not re-zoom.
+  // JSON, not join('>'), because a path can run through a ghost node whose id
+  // is `ghost:<title>` and a title may contain any character.
+  const pathKey = path ? JSON.stringify(path) : ''
+  useEffect(() => {
+    if (!pathKey || !fgRef.current) return
+    const ids = new Set<string>(JSON.parse(pathKey))
+    fgRef.current.zoomToFit(450, 60, (n: GNode) => ids.has(String(n.id)))
+  }, [pathKey])
+
   const linkColor = useCallback(
     (link: GLink) => {
+      const onPath = pathEdges?.has(edgeKey(endId(link.source), endId(link.target)))
+      if (pathEdges) return onPath ? PATH_ACCENT : 'rgba(160,160,160,0.08)'
       // Mutual (A↔B) links read as the stronger ties: brighter and bluer at rest
       // than the greyer one-way links.
       if (neighbourIds == null) return link.mutual ? 'rgba(150,180,255,0.5)' : 'rgba(160,160,160,0.28)'
@@ -207,11 +249,18 @@ export default function GraphView({
       if (!active) return 'rgba(160,160,160,0.08)'
       return link.mutual ? 'rgba(190,210,255,0.95)' : 'rgba(170,185,225,0.7)'
     },
-    [neighbourIds],
+    [pathEdges, neighbourIds],
   )
 
-  // Mutual links also draw thicker, so reciprocity reads even without colour.
-  const linkWidth = useCallback((link: GLink) => (link.mutual ? 2.5 : 1), [])
+  // Mutual links also draw thicker, so reciprocity reads even without colour;
+  // a path hop draws thicker still.
+  const linkWidth = useCallback(
+    (link: GLink) => {
+      if (pathEdges?.has(edgeKey(endId(link.source), endId(link.target)))) return 4
+      return link.mutual ? 2.5 : 1
+    },
+    [pathEdges],
+  )
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>

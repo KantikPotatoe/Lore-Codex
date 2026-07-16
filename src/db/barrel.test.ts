@@ -27,7 +27,7 @@ const EXPECTED_FUNCTIONS = [
   // images.ts
   'addImage', 'updateImageCaption', 'deleteImage', 'reorderImages', 'setAsPortrait',
   // graph.ts
-  'buildGraphData',
+  'buildGraphData', 'nodesWithinHops', 'connectedComponents', 'shortestPath', 'findPath', 'edgeKey',
   // worldHealth.ts
   'computeWorldHealth',
   // calendar.ts

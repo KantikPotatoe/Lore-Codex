@@ -1449,6 +1449,28 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   border-radius: 50%;
   flex: none;
 }
+/* The path row occupies a full line of the wrapping toolbar flexbox, so the two
+   pickers and the answer stay together instead of being split mid-control. */
+.graph-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+}
+.graph-path-label,
+.graph-path-arrow {
+  color: var(--ink-dim);
+  font-family: var(--sans);
+  font-size: 14px;
+}
+.graph-path .ref-field {
+  min-width: 180px;
+}
+.graph-path-msg {
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 14px;
+}
 .graph-export {
   position: relative;
 }

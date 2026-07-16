@@ -12,6 +12,11 @@ export type ColorBy = 'type' | 'status' | 'tag' | 'island'
 export const TAG_ACCENT = '#4fc3d9'
 export const MUTED = '#8a8a84'
 
+// The shortest-path highlight. Applied to link strokes and endpoint rings only —
+// never to node fills — so a highlighted chain still shows each page's type or
+// island colour, and the accent can't collide with an island fill.
+export const PATH_ACCENT = '#f0c060'
+
 // Distinct hues for connected-component ("island") colouring, ordered so the
 // first few are the most visually separable. Chosen to read on the #15130f
 // canvas; colours cycle when a world has more clusters than entries.

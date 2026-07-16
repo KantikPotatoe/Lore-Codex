@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildGraphData, nodesWithinHops, connectedComponents, type GraphLink, type LorePage } from '../db'
+import { buildGraphData, nodesWithinHops, connectedComponents, shortestPath, findPath, edgeKey, type GraphLink, type LorePage } from '../db'
 import type { Infobox, InfoboxField } from './types'
 
 // buildGraphData is a pure function over a page array, so these tests pass pages
@@ -311,5 +311,120 @@ describe('connectedComponents', () => {
     const { componentOf, sizes } = connectedComponents([], [])
     expect(componentOf.size).toBe(0)
     expect(sizes).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Shortest path (Task 1)
+// ---------------------------------------------------------------------------
+
+// A link array in the shape buildGraphData emits (mutual is irrelevant to
+// traversal, so these helpers omit it via the Pick<> parameter type).
+function edge(source: string, target: string) {
+  return { source, target }
+}
+
+describe('edgeKey', () => {
+  it('is the same key regardless of endpoint order', () => {
+    expect(edgeKey('a', 'b')).toBe(edgeKey('b', 'a'))
+  })
+
+  it('distinguishes different pairs', () => {
+    expect(edgeKey('a', 'b')).not.toBe(edgeKey('a', 'c'))
+  })
+})
+
+describe('shortestPath', () => {
+  it('finds a directly linked pair (1 hop)', () => {
+    expect(shortestPath([edge('a', 'b')], 'a', 'b')).toEqual(['a', 'b'])
+  })
+
+  it('finds a multi-hop chain', () => {
+    const links = [edge('a', 'b'), edge('b', 'c'), edge('c', 'd')]
+    expect(shortestPath(links, 'a', 'd')).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('walks links against their direction (links are undirected)', () => {
+    // Every link points *away* from the target, so a directed search would fail.
+    const links = [edge('b', 'a'), edge('c', 'b')]
+    expect(shortestPath(links, 'a', 'c')).toEqual(['a', 'b', 'c'])
+  })
+
+  it('prefers the shorter of two chains', () => {
+    const links = [
+      edge('a', 'x'), edge('x', 'd'), // 2 hops
+      edge('a', 'p'), edge('p', 'q'), edge('q', 'd'), // 3 hops
+    ]
+    expect(shortestPath(links, 'a', 'd')).toEqual(['a', 'x', 'd'])
+  })
+
+  it('returns null when the pages are not connected', () => {
+    expect(shortestPath([edge('a', 'b'), edge('c', 'd')], 'a', 'd')).toBeNull()
+  })
+
+  it('returns null for an isolated endpoint (a page with no links)', () => {
+    // 'lonely' appears in no link, so it never enters the adjacency map.
+    expect(shortestPath([edge('a', 'b')], 'a', 'lonely')).toBeNull()
+  })
+
+  it('returns a single-element chain when both endpoints are the same page', () => {
+    expect(shortestPath([edge('a', 'b')], 'a', 'a')).toEqual(['a'])
+  })
+
+  it('routes through a ghost node when ghost links are present', () => {
+    // Two real pages both link [[Mordor]], which has no page yet — a real
+    // connection through a page that does not exist.
+    const links = [edge('a', 'ghost:mordor'), edge('b', 'ghost:mordor')]
+    expect(shortestPath(links, 'a', 'b')).toEqual(['a', 'ghost:mordor', 'b'])
+  })
+
+  it('is deterministic — link array order does not change the chain', () => {
+    // Two equally short chains a→x→d and a→y→d exist; the answer must not
+    // depend on the order links happen to arrive in.
+    const links = [edge('a', 'x'), edge('x', 'd'), edge('a', 'y'), edge('y', 'd')]
+    const reversed = [...links].reverse()
+    const first = shortestPath(links, 'a', 'd')
+    expect(shortestPath(reversed, 'a', 'd')).toEqual(first)
+    expect(first).toEqual(['a', 'x', 'd']) // 'x' < 'y', so 'x' wins the tie
+  })
+
+  it('handles links whose endpoints the force sim resolved to node objects', () => {
+    // ForceGraph2D mutates a drawn link's source/target from an id string into
+    // the resolved node object in place, so the same links this runs over in the
+    // live app carry {id} objects, not strings. Must find the same chain either
+    // way — otherwise a path over the drawn graph silently fails post-render.
+    const resolved = [
+      { source: { id: 'a' }, target: { id: 'b' } },
+      { source: { id: 'b' }, target: { id: 'c' } },
+    ]
+    expect(shortestPath(resolved, 'a', 'c')).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('findPath', () => {
+  const full = [edge('a', 'b'), edge('b', 'c')]
+
+  it('reports a chain that exists in the drawn graph', () => {
+    expect(findPath(full, full, 'a', 'c')).toEqual({ kind: 'path', nodes: ['a', 'b', 'c'] })
+  })
+
+  it('reports "hidden" when only the filters break the chain', () => {
+    // The drawn graph is missing b→c, but the full graph still connects a and c.
+    const drawn = [edge('a', 'b')]
+    expect(findPath(drawn, full, 'a', 'c')).toEqual({ kind: 'hidden' })
+  })
+
+  it('reports "none" when the pages are unconnected even unfiltered', () => {
+    expect(findPath(full, full, 'a', 'zz')).toEqual({ kind: 'none' })
+  })
+
+  it('reports a real chain when the drawn links carry resolved node objects', () => {
+    // The drawn links are the ones the force sim has mutated to {id} objects; a
+    // path plainly exists, so the answer must be 'path', never a false 'hidden'.
+    const drawn = [
+      { source: { id: 'a' }, target: { id: 'b' } },
+      { source: { id: 'b' }, target: { id: 'c' } },
+    ]
+    expect(findPath(drawn, full, 'a', 'c')).toEqual({ kind: 'path', nodes: ['a', 'b', 'c'] })
   })
 })
