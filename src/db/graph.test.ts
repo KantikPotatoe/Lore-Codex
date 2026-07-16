@@ -387,6 +387,18 @@ describe('shortestPath', () => {
     expect(shortestPath(reversed, 'a', 'd')).toEqual(first)
     expect(first).toEqual(['a', 'x', 'd']) // 'x' < 'y', so 'x' wins the tie
   })
+
+  it('handles links whose endpoints the force sim resolved to node objects', () => {
+    // ForceGraph2D mutates a drawn link's source/target from an id string into
+    // the resolved node object in place, so the same links this runs over in the
+    // live app carry {id} objects, not strings. Must find the same chain either
+    // way — otherwise a path over the drawn graph silently fails post-render.
+    const resolved = [
+      { source: { id: 'a' }, target: { id: 'b' } },
+      { source: { id: 'b' }, target: { id: 'c' } },
+    ]
+    expect(shortestPath(resolved, 'a', 'c')).toEqual(['a', 'b', 'c'])
+  })
 })
 
 describe('findPath', () => {
@@ -404,5 +416,15 @@ describe('findPath', () => {
 
   it('reports "none" when the pages are unconnected even unfiltered', () => {
     expect(findPath(full, full, 'a', 'zz')).toEqual({ kind: 'none' })
+  })
+
+  it('reports a real chain when the drawn links carry resolved node objects', () => {
+    // The drawn links are the ones the force sim has mutated to {id} objects; a
+    // path plainly exists, so the answer must be 'path', never a false 'hidden'.
+    const drawn = [
+      { source: { id: 'a' }, target: { id: 'b' } },
+      { source: { id: 'b' }, target: { id: 'c' } },
+    ]
+    expect(findPath(drawn, full, 'a', 'c')).toEqual({ kind: 'path', nodes: ['a', 'b', 'c'] })
   })
 })

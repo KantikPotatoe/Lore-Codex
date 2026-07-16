@@ -252,9 +252,13 @@ export function connectedComponents(
  *  exists to cut through.
  *
  *  A page with no links never enters the adjacency map, so an isolated page
- *  simply has no path — no special case needed. */
+ *  simply has no path — no special case needed.
+ *
+ *  Endpoints are read through `endId`, so this works on both the pre-simulation
+ *  links (id strings) and the drawn links the force sim has mutated in place to
+ *  resolved node objects — the same dual shape `connectedComponents` accepts. */
 export function shortestPath(
-  links: Pick<GraphLink, 'source' | 'target'>[],
+  links: { source: LinkEnd; target: LinkEnd }[],
   fromId: string,
   toId: string,
 ): string[] | null {
@@ -267,8 +271,10 @@ export function shortestPath(
     list.push(b)
   }
   for (const l of links) {
-    link(l.source, l.target)
-    link(l.target, l.source)
+    const s = endId(l.source)
+    const t = endId(l.target)
+    link(s, t)
+    link(t, s)
   }
   for (const list of adj.values()) list.sort()
 
@@ -313,8 +319,8 @@ export type PathResult =
 /** Search the *drawn* graph, so every highlighted hop is a link actually on
  *  screen, and consult the full graph only to choose the message. */
 export function findPath(
-  drawnLinks: Pick<GraphLink, 'source' | 'target'>[],
-  fullLinks: Pick<GraphLink, 'source' | 'target'>[],
+  drawnLinks: { source: LinkEnd; target: LinkEnd }[],
+  fullLinks: { source: LinkEnd; target: LinkEnd }[],
   fromId: string,
   toId: string,
 ): PathResult {
