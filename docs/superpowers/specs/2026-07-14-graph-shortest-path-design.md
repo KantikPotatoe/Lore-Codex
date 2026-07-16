@@ -2,6 +2,8 @@
 
 **Issue:** [#127](https://github.com/KantikPotatoe/Lore-Codex/issues/127) — "Pick two nodes and highlight the chain of links connecting them ('how is this villain connected to that city?')."
 
+> **As-built note.** Two things landed differently from the sketch below, both simpler: (1) `GraphView` takes a single `path: string[] | null` prop and derives `pathIds`/`pathEdges`/`pathEnds` itself, rather than the route deriving and passing two sets — this keeps the canonical-edge logic next to the renderer. (2) `shortestPath`/`findPath` accept `{ source: LinkEnd; target: LinkEnd }[]` and read endpoints through `endId`, not the `Pick<GraphLink,…>` shown here: the force sim mutates a drawn link's endpoints from id strings to node objects in place, so a string-only reader fails post-render (caught in the browser pass, fixed with regression tests).
+
 ## Goal
 
 On `/graph`, the user picks two pages and sees the shortest chain of wiki links
