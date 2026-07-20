@@ -136,4 +136,44 @@ describe('useUpdateCheck', () => {
     const { getAppSettings } = await import('./appSettings')
     expect((await getAppSettings()).dismissedUpdateVersion).toBe('0.39.0')
   })
+
+  it('refuses to dismiss a downloaded update', async () => {
+    vi.mocked(checkForUpdate).mockResolvedValue(fakeUpdate() as never)
+    const { result } = renderHook(() => useUpdateCheck())
+    await act(async () => { await result.current.check(true) })
+    await act(async () => { await result.current.download() })
+    await act(async () => { await result.current.dismiss() })
+    // Still ready, and still installable — the handle was not cleared.
+    expect(result.current.state).toEqual({ status: 'ready', version: '0.39.0' })
+    const { getAppSettings } = await import('./appSettings')
+    expect((await getAppSettings()).dismissedUpdateVersion).toBe(null)
+  })
+
+  it('still installs after a dismiss attempt in the ready state', async () => {
+    const install = vi.fn(async () => {})
+    vi.mocked(checkForUpdate).mockResolvedValue(fakeUpdate({ install }) as never)
+    const { result } = renderHook(() => useUpdateCheck())
+    await act(async () => { await result.current.check(true) })
+    await act(async () => { await result.current.download() })
+    await act(async () => { await result.current.dismiss() })
+    await act(async () => { await result.current.install() })
+    expect(install).toHaveBeenCalledOnce()
+  })
+
+  it('does nothing when there is no pending update to install', async () => {
+    const { result } = renderHook(() => useUpdateCheck())
+    await act(async () => { await result.current.install() })
+    // Still idle — no spurious transition into installing.
+    expect(result.current.state.status).toBe('idle')
+  })
+
+  it('surfaces an install failure', async () => {
+    vi.mocked(checkForUpdate).mockResolvedValue(
+      fakeUpdate({ install: vi.fn(async () => { throw new Error('installer blocked') }) }) as never,
+    )
+    const { result } = renderHook(() => useUpdateCheck())
+    await act(async () => { await result.current.check(true) })
+    await act(async () => { await result.current.install() })
+    expect(result.current.state).toEqual({ status: 'error', message: 'installer blocked' })
+  })
 })

@@ -43,6 +43,9 @@ export function useUpdateCheck() {
     setState({ status: 'checking' })
     try {
       const update = await checkForUpdate()
+      // Deliberately only stamped on a SUCCESSFUL check: a failed one hasn't
+      // learned anything, and muting checks for 24h over one network blip
+      // would be worse than retrying next launch.
       await updateAppSettings({ lastUpdateCheckAt: Date.now() })
       if (!update) {
         pending.current = null
@@ -93,11 +96,16 @@ export function useUpdateCheck() {
   }, [])
 
   const dismiss = useCallback(async () => {
+    // A downloaded update is not dismissable: the installer is already on
+    // disk, and recording the version as dismissed would hide it from every
+    // future automatic check while `install()` no-ops on the cleared handle.
+    // The banner correspondingly stops offering dismiss once `ready`.
+    if (state.status === 'ready' || state.status === 'installing') return
     const update = pending.current
     if (update) await updateAppSettings({ dismissedUpdateVersion: update.version })
     pending.current = null
     setState({ status: 'none' })
-  }, [])
+  }, [state.status])
 
   return { state, check, download, install, dismiss }
 }
