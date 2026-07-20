@@ -15,6 +15,14 @@ export interface AppSettings {
   backupOnExit: boolean
   /** Desktop only: the folder the Save dialog opens in. null = none picked. */
   defaultBackupDir: string | null
+  /** Check GitHub for a newer release on start. The app's only outbound
+   *  request — off means Lore Codex touches the network zero times. */
+  autoUpdateCheck: boolean
+  /** Epoch ms of the last check, for the 24h throttle. null = never checked. */
+  lastUpdateCheckAt: number | null
+  /** A version the user dismissed; the banner stays hidden until a different
+   *  one appears. null = nothing dismissed. */
+  dismissedUpdateVersion: string | null
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -23,6 +31,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   spellcheckLang: '',
   backupOnExit: false,
   defaultBackupDir: null,
+  autoUpdateCheck: true,
+  lastUpdateCheckAt: null,
+  dismissedUpdateVersion: null,
 }
 
 export const APP_SETTINGS_KEY = 'app-settings'
@@ -62,6 +73,13 @@ function coerceSettings(value: unknown): AppSettings {
   }
   if (typeof stored.defaultBackupDir === 'string' || stored.defaultBackupDir === null) {
     out.defaultBackupDir = stored.defaultBackupDir
+  }
+  if (typeof stored.autoUpdateCheck === 'boolean') out.autoUpdateCheck = stored.autoUpdateCheck
+  if (typeof stored.lastUpdateCheckAt === 'number' || stored.lastUpdateCheckAt === null) {
+    out.lastUpdateCheckAt = stored.lastUpdateCheckAt
+  }
+  if (typeof stored.dismissedUpdateVersion === 'string' || stored.dismissedUpdateVersion === null) {
+    out.dismissedUpdateVersion = stored.dismissedUpdateVersion
   }
   return out
 }

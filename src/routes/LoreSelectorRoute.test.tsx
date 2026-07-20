@@ -35,6 +35,9 @@ vi.mock('../appSettings', async (importOriginal) => ({
     spellcheckLang: '',
     backupOnExit: false,
     defaultBackupDir: null,
+    autoUpdateCheck: true,
+    lastUpdateCheckAt: null,
+    dismissedUpdateVersion: null,
   })),
 }))
 
@@ -170,6 +173,9 @@ describe('LoreSelectorRoute — open last world on launch', () => {
     spellcheckLang: '',
     backupOnExit: false,
     defaultBackupDir: null,
+    autoUpdateCheck: true,
+    lastUpdateCheckAt: null,
+    dismissedUpdateVersion: null,
   }
 
   function renderAtRoot(RouteComponent: typeof LoreSelectorRoute) {

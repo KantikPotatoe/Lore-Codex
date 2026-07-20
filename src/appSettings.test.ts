@@ -26,7 +26,43 @@ describe('appSettings', () => {
       spellcheckLang: '',
       backupOnExit: false,
       defaultBackupDir: null,
+      autoUpdateCheck: true,
+      lastUpdateCheckAt: null,
+      dismissedUpdateVersion: null,
     })
+  })
+
+  it('defaults the updater prefs to on, never-checked, nothing dismissed', () => {
+    expect(DEFAULT_APP_SETTINGS.autoUpdateCheck).toBe(true)
+    expect(DEFAULT_APP_SETTINGS.lastUpdateCheckAt).toBe(null)
+    expect(DEFAULT_APP_SETTINGS.dismissedUpdateVersion).toBe(null)
+  })
+
+  it('round-trips the updater prefs', async () => {
+    await updateAppSettings({
+      autoUpdateCheck: false,
+      lastUpdateCheckAt: 1_700_000_000_000,
+      dismissedUpdateVersion: '0.39.0',
+    })
+    const a = await getAppSettings()
+    expect(a.autoUpdateCheck).toBe(false)
+    expect(a.lastUpdateCheckAt).toBe(1_700_000_000_000)
+    expect(a.dismissedUpdateVersion).toBe('0.39.0')
+  })
+
+  it('rejects wrong-typed updater prefs on read', async () => {
+    await registry.appMeta.put({
+      key: APP_SETTINGS_KEY,
+      value: {
+        autoUpdateCheck: 'yes',
+        lastUpdateCheckAt: 'never',
+        dismissedUpdateVersion: 42,
+      },
+    })
+    const a = await getAppSettings()
+    expect(a.autoUpdateCheck).toBe(true)
+    expect(a.lastUpdateCheckAt).toBe(null)
+    expect(a.dismissedUpdateVersion).toBe(null)
   })
 
   it('merges a stored partial over defaults', async () => {
