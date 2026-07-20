@@ -9,6 +9,7 @@ import { type GraphData, type GraphNode, type GraphLink, edgeKey } from '../db'
 import { nodeFill, PATH_ACCENT, type ColorBy } from '../graphColor'
 import { radiusFor } from '../graphGeometry'
 import type { GraphCam } from '../useGraphPrefs'
+import type { TagFilter } from '../tagFilter'
 import GraphMinimap from './GraphMinimap'
 
 // The force simulation augments our plain nodes/links in place (adds x/y and
@@ -40,7 +41,7 @@ export default function GraphView({
   data,
   showArrows,
   colorBy,
-  highlightTag,
+  tagFilter,
   islandColors,
   selectedId,
   path,
@@ -53,7 +54,7 @@ export default function GraphView({
   data: GraphData
   showArrows: boolean
   colorBy: ColorBy
-  highlightTag: string
+  tagFilter: TagFilter
   islandColors: Map<string, string>
   selectedId: string | null
   path: string[] | null
@@ -169,7 +170,7 @@ export default function GraphView({
         ctx.setLineDash([])
         ctx.lineWidth = 1
       } else {
-        ctx.fillStyle = nodeFill(node, colorBy, highlightTag, islandColors)
+        ctx.fillStyle = nodeFill(node, colorBy, tagFilter, islandColors)
         ctx.fill()
       }
 
@@ -194,7 +195,7 @@ export default function GraphView({
       }
       ctx.globalAlpha = 1
     },
-    [activeIds, pathEnds, colorBy, highlightTag, islandColors],
+    [activeIds, pathEnds, colorBy, tagFilter, islandColors],
   )
 
   // Restore the saved camera once, after the container has a real size. The

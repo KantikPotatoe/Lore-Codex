@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildScene, sceneToSvg, svgBlob, EXPORT_BG, GHOST_COLOR, LABEL_COLOR } from './graphExport'
 import { categoryColor, type GraphData, type GraphNode } from './db'
+import { NO_TAG_FILTER } from './tagFilter'
 
 // Nodes as the running sim leaves them: plain GraphNode + injected x/y.
 function pos(n: Partial<GraphNode> & { id: string }, x: number, y: number) {
@@ -10,7 +11,7 @@ function pos(n: Partial<GraphNode> & { id: string }, x: number, y: number) {
   } as GraphNode & { x: number; y: number }
 }
 
-const OPTS = { colorBy: 'type' as const, highlightTag: '', islandColors: new Map<string, string>() }
+const OPTS = { colorBy: 'type' as const, tagFilter: NO_TAG_FILTER, islandColors: new Map<string, string>() }
 
 describe('buildScene', () => {
   it('returns null when no node has coordinates', () => {
@@ -107,7 +108,7 @@ function scene1() {
     ],
     links: [{ source: 'a', target: 'g', mutual: false }],
   } as unknown as GraphData
-  return buildScene(data, { colorBy: 'type', highlightTag: '', islandColors: new Map() })!
+  return buildScene(data, { colorBy: 'type', tagFilter: NO_TAG_FILTER, islandColors: new Map() })!
 }
 
 describe('sceneToSvg', () => {
@@ -159,7 +160,7 @@ describe('graphFilename', () => {
 describe('sceneToPng', () => {
   it('resolves to a non-empty image/png Blob', async () => {
     const data = { nodes: [{ title: 'A', category: 'Character', tags: [], status: 'Draft', degree: 0, id: 'a', x: 0, y: 0 }], links: [] } as unknown as import('./db').GraphData
-    const scene = buildScene(data, { colorBy: 'type', highlightTag: '', islandColors: new Map() })!
+    const scene = buildScene(data, { colorBy: 'type', tagFilter: NO_TAG_FILTER, islandColors: new Map() })!
     let blob: Blob
     try {
       blob = await sceneToPng(scene)

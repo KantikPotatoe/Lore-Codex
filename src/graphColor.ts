@@ -1,4 +1,5 @@
 import { categoryColor, statusColor, type GraphNode } from './db'
+import { matchesTags, type TagFilter } from './tagFilter'
 
 /** Which dimension drives a graph node's fill colour. */
 export type ColorBy = 'type' | 'status' | 'tag' | 'island'
@@ -53,12 +54,15 @@ export function islandColorOf(
 export function nodeFill(
   node: GraphNode,
   colorBy: ColorBy,
-  highlightTag: string,
+  tagFilter: TagFilter,
   islandColors?: Map<string, string>,
 ): string {
   if (colorBy === 'status') return statusColor(node.status)
   if (colorBy === 'tag') {
-    return highlightTag !== '' && node.tags.includes(highlightTag) ? TAG_ACCENT : MUTED
+    // The explicit length check matters: `matchesTags` treats an empty
+    // selection as "passes", but an empty selection here must leave the whole
+    // graph muted — there is nothing to highlight yet.
+    return tagFilter.tags.length > 0 && matchesTags(node.tags, tagFilter) ? TAG_ACCENT : MUTED
   }
   if (colorBy === 'island') return islandColors?.get(node.id) ?? MUTED
   return categoryColor(node.category)

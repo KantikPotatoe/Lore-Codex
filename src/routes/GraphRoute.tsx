@@ -11,6 +11,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { islandColorOf, type ColorBy } from '../graphColor'
 import { getLore, currentLoreId } from '../lores'
 import { buildScene, sceneToSvg, svgBlob, sceneToPng, downloadBlob, graphFilename } from '../graphExport'
+import { NO_TAG_FILTER, type TagFilter } from '../tagFilter'
 
 // The 3D view drags in three.js, so load it only when the user opts in.
 const GraphView3D = lazy(() => import('../components/GraphView3D'))
@@ -164,9 +165,13 @@ export default function GraphRoute() {
     requestAnimationFrame(() => setSelectedId(id))
   }
 
+  // Temporary bridge while `tag` is still a single string; Task 5 replaces this
+  // with the real multi-tag selection from useGraphPrefs.
+  const tagFilter = useMemo<TagFilter>(() => (tag ? { tags: [tag], mode: 'any' } : NO_TAG_FILTER), [tag])
+
   async function doExport(format: 'png' | 'svg') {
     setExportMsg(null)
-    const scene = buildScene(filtered, { colorBy, highlightTag: tag, islandColors })
+    const scene = buildScene(filtered, { colorBy, tagFilter, islandColors })
     if (!scene) {
       setExportMsg('Graph still settling — try again')
       return
@@ -400,7 +405,7 @@ export default function GraphRoute() {
                 data={filtered}
                 showArrows={showArrows}
                 colorBy={colorBy}
-                highlightTag={tag}
+                tagFilter={tagFilter}
                 islandColors={islandColors}
                 onGhostClick={wiki.stageCreate}
               />
@@ -410,7 +415,7 @@ export default function GraphRoute() {
               data={filtered}
               showArrows={showArrows}
               colorBy={colorBy}
-              highlightTag={tag}
+              tagFilter={tagFilter}
               islandColors={islandColors}
               selectedId={selectedId}
               onSelect={setSelectedId}
