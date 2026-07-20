@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useUpdateCheck } from '../useUpdateCheck'
+import { useSharedUpdateCheck } from '../UpdateCheckContext'
 import { CHECK_DELAY_MS } from '../updater'
 import { isTauri } from '../platform'
 
@@ -9,7 +9,7 @@ import { isTauri } from '../platform'
 // Errors are deliberately invisible here. An automatic check that failed is
 // not news; the Settings panel reports failures, because there the user asked.
 export default function UpdateBanner() {
-  const { state, check, download, install, dismiss } = useUpdateCheck()
+  const { state, check, download, install, dismiss } = useSharedUpdateCheck()
   const desktop = isTauri()
 
   useEffect(() => {

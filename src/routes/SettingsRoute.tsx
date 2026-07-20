@@ -24,7 +24,7 @@ import { exportAsHtml } from '../htmlExport'
 import { getSettings, updateSettings, DEFAULT_SETTINGS, type LoreSettings } from '../settings'
 import { deleteLore, currentLoreId } from '../lores'
 import { openTextFile, isTauri, pickDirectory, appVersion } from '../platform'
-import { useUpdateCheck } from '../useUpdateCheck'
+import { useSharedUpdateCheck } from '../UpdateCheckContext'
 import { getAppSettings, updateAppSettings, DEFAULT_APP_SETTINGS, SPELLCHECK_LANGS, type AppSettings } from '../appSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
 
@@ -81,7 +81,7 @@ export default function SettingsRoute() {
     updateAppSettings(patch) // useLiveQuery re-reads; no local mirror to drift
   }
 
-  const { state: updateState, check: runUpdateCheck, download: downloadUpdate, install: installUpdate } = useUpdateCheck()
+  const { state: updateState, check: runUpdateCheck, download: downloadUpdate, install: installUpdate } = useSharedUpdateCheck()
   const [version, setVersion] = useState<string | null>(null)
   useEffect(() => { appVersion().then(setVersion) }, [])
 
@@ -399,7 +399,7 @@ export default function SettingsRoute() {
           />
           <span className="settings-hint">
             {desktop
-              ? 'Asks GitHub once a day whether a newer release exists. This is the only time Lore Codex touches the network — turn it off and nothing ever leaves this machine.'
+              ? 'Asks GitHub once a day whether a newer release exists. This is the only time Lore Codex reaches the network on its own — turn it off and it never does. “Check now” below still works when you ask for it.'
               : 'Desktop app only.'}
           </span>
         </label>

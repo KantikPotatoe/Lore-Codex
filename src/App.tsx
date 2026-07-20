@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import BackupBanner from './components/BackupBanner'
 import StorageErrorBanner from './components/StorageErrorBanner'
 import UpdateBanner from './components/UpdateBanner'
+import { UpdateCheckProvider } from './UpdateCheckContext'
 import TabSyncOverlay from './components/TabSyncOverlay'
 import SearchModal from './components/SearchModal'
 import WikiLinkPopover from './components/WikiLinkPopover'
@@ -134,44 +135,50 @@ export default function App() {
   }
 
   // All other routes: existing sidebar shell
+  // The provider wraps the whole shell so the banner and the routed
+  // SettingsRoute share ONE update state machine. Two instances would each
+  // hold their own plugin handle, letting the banner dismiss a version that
+  // the other instance had already downloaded — stranding the installer.
   return (
-    <div className="app-shell">
-      <StorageErrorBanner />
-      <TabSyncOverlay />
-      <Sidebar onOpenSearch={() => setSearchOpen(true)} />
-      <main className="content" ref={contentRef} onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 600)}>
-        <UpdateBanner />
-        <BackupBanner />
-        <div className="route-fade" data-nav={navDir} key={location.pathname}>
-          <Suspense fallback={<div className="content-pad">Loading…</div>}>
-            <Routes>
-              <Route path="/home" element={<HomeRoute />} />
-              <Route path="/page/:id" element={<PageRoute />} />
-              <Route path="/map" element={<MapRoute />} />
-              <Route path="/graph" element={<GraphRoute />} />
-              <Route path="/health" element={<HealthRoute />} />
-              <Route path="/timeline" element={<TimelineRoute />} />
-              <Route path="/templates" element={<TemplatesRoute />} />
-              <Route path="/settings" element={<SettingsRoute />} />
-              <Route path="/manuscript" element={<ManuscriptRoute />} />
-              <Route path="/book/:bookId" element={<BookRoute />} />
-              <Route path="/browse/:category" element={<CategoryRoute />} />
-              <Route path="/tag/:tag" element={<TagRoute />} />
-            </Routes>
-          </Suspense>
-        </div>
-        {showTop && (
-          <button
-            className="back-to-top"
-            aria-label="Back to top"
-            onClick={() => contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
-          >
-            ↑
-          </button>
-        )}
-      </main>
-      {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
-      <WikiLinkPopover />
-    </div>
+    <UpdateCheckProvider>
+      <div className="app-shell">
+        <StorageErrorBanner />
+        <TabSyncOverlay />
+        <Sidebar onOpenSearch={() => setSearchOpen(true)} />
+        <main className="content" ref={contentRef} onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 600)}>
+          <UpdateBanner />
+          <BackupBanner />
+          <div className="route-fade" data-nav={navDir} key={location.pathname}>
+            <Suspense fallback={<div className="content-pad">Loading…</div>}>
+              <Routes>
+                <Route path="/home" element={<HomeRoute />} />
+                <Route path="/page/:id" element={<PageRoute />} />
+                <Route path="/map" element={<MapRoute />} />
+                <Route path="/graph" element={<GraphRoute />} />
+                <Route path="/health" element={<HealthRoute />} />
+                <Route path="/timeline" element={<TimelineRoute />} />
+                <Route path="/templates" element={<TemplatesRoute />} />
+                <Route path="/settings" element={<SettingsRoute />} />
+                <Route path="/manuscript" element={<ManuscriptRoute />} />
+                <Route path="/book/:bookId" element={<BookRoute />} />
+                <Route path="/browse/:category" element={<CategoryRoute />} />
+                <Route path="/tag/:tag" element={<TagRoute />} />
+              </Routes>
+            </Suspense>
+          </div>
+          {showTop && (
+            <button
+              className="back-to-top"
+              aria-label="Back to top"
+              onClick={() => contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            >
+              ↑
+            </button>
+          )}
+        </main>
+        {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
+        <WikiLinkPopover />
+      </div>
+    </UpdateCheckProvider>
   )
 }

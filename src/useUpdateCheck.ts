@@ -96,11 +96,12 @@ export function useUpdateCheck() {
   }, [])
 
   const dismiss = useCallback(async () => {
-    // A downloaded update is not dismissable: the installer is already on
-    // disk, and recording the version as dismissed would hide it from every
-    // future automatic check while `install()` no-ops on the cleared handle.
     // The banner correspondingly stops offering dismiss once `ready`.
-    if (state.status === 'ready' || state.status === 'installing') return
+    // Anything past "merely offered" may hold a live handle or a downloaded
+    // installer; dismissing then records the version (hiding it from every
+    // future automatic check) while install() no-ops on a cleared ref.
+    // Deliberately broader than the states today's UI can dismiss from.
+    if (pending.current && state.status !== 'available') return
     const update = pending.current
     if (update) await updateAppSettings({ dismissedUpdateVersion: update.version })
     pending.current = null

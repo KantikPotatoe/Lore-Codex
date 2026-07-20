@@ -9,8 +9,10 @@ const install = vi.fn(async () => {})
 const dismiss = vi.fn(async () => {})
 let state: UpdateState = { status: 'idle' }
 
-vi.mock('../useUpdateCheck', () => ({
-  useUpdateCheck: () => ({ state, check, download, install, dismiss }),
+// The banner reads the shared context, not the hook directly — one state
+// machine for both consumers (see UpdateCheckContext.tsx).
+vi.mock('../UpdateCheckContext', () => ({
+  useSharedUpdateCheck: () => ({ state, check, download, install, dismiss }),
 }))
 vi.mock('../platform', () => ({ isTauri: vi.fn(() => true) }))
 
@@ -123,6 +125,12 @@ describe('UpdateBanner', () => {
     expect(screen.getByText(/close/i)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /restart/i }))
     expect(install).toHaveBeenCalledOnce()
+  })
+
+  it('says the app will close while installing', () => {
+    state = { status: 'installing' }
+    render(<UpdateBanner />)
+    expect(screen.getByText(/will close/i)).toBeTruthy()
   })
 
   it('offers no dismiss once the update is downloaded', () => {
