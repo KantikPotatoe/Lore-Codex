@@ -1098,6 +1098,15 @@ describe('UpdateBanner', () => {
     expect(install).toHaveBeenCalledOnce()
   })
 
+  it('offers no dismiss once the update is downloaded', () => {
+    // The hook refuses to dismiss from `ready` (it would strand the installer
+    // and hide the version from automatic checks), so the banner must not
+    // render a control that would do nothing.
+    state = { status: 'ready', version: '0.39.0' }
+    render(<UpdateBanner />)
+    expect(screen.queryByTitle(/dismiss/i)).toBeNull()
+  })
+
   it('dismisses on the close button', () => {
     state = { status: 'available', version: '0.39.0', notes: '' }
     render(<UpdateBanner />)
@@ -1181,7 +1190,10 @@ export default function UpdateBanner() {
         <span>✦ {state.version} is ready. Restarting will close the app and run the installer.</span>
         <div className="backup-banner-actions">
           <button className="backup-banner-btn" onClick={() => void install()}>Restart to install</button>
-          <button className="backup-banner-x" title="Dismiss until the next version" onClick={() => void dismiss()}>×</button>
+          {/* No dismiss here, deliberately. The installer is already on disk;
+              dismissing would record the version and hide it from every future
+              automatic check while install() no-ops on a cleared handle. The
+              hook refuses it too — this just avoids rendering a dead control. */}
         </div>
       </div>
     )
@@ -1199,7 +1211,7 @@ export default function UpdateBanner() {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/components/UpdateBanner.test.tsx`
-Expected: PASS, 11 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Add the styles**
 
