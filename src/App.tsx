@@ -3,6 +3,7 @@ import { Routes, Route, useLocation } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import BackupBanner from './components/BackupBanner'
 import StorageErrorBanner from './components/StorageErrorBanner'
+import UpdateBanner from './components/UpdateBanner'
 import TabSyncOverlay from './components/TabSyncOverlay'
 import SearchModal from './components/SearchModal'
 import WikiLinkPopover from './components/WikiLinkPopover'
@@ -139,6 +140,7 @@ export default function App() {
       <TabSyncOverlay />
       <Sidebar onOpenSearch={() => setSearchOpen(true)} />
       <main className="content" ref={contentRef} onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 600)}>
+        <UpdateBanner />
         <BackupBanner />
         <div className="route-fade" data-nav={navDir} key={location.pathname}>
           <Suspense fallback={<div className="content-pad">Loading…</div>}>

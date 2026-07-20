@@ -997,6 +997,23 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .backup-banner-x { background: none; border: none; color: #d8c79e; font-size: 19px; line-height: 1; padding: 0 4px; }
 .backup-banner-x:hover { color: #fff; }
 
+/* --- Update banner -------------------------------------------------------- */
+/* Deliberately the calmer sibling of .backup-banner: an available update is
+   good news, not a warning, so it reads blue-slate rather than amber. */
+.update-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  background: linear-gradient(180deg, #1e2c3a, #16212e); border-bottom: 1px solid #2f4a63;
+  color: #dceaf6; padding: 9px 18px; font-size: 14px;
+}
+.update-progress {
+  flex: 1; max-width: 260px; height: 6px; border-radius: 3px;
+  background: #0f1922; overflow: hidden;
+}
+.update-progress-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent-soft), var(--accent));
+  transition: width 160ms ease-out;
+}
+
 /* Storage quota / eviction alert — a fixed bar that overlays everything, since a
    failed write means data is actively at risk (roadmap #7). */
 .storage-error-banner {
