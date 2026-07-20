@@ -89,7 +89,7 @@ Sources: `roadmap.md`, `graph-improvement-ideas.md`, `map-roadmap.md`,
 - 🟡 **Mini-map / overview** for large graphs.
 
 ### Filtering
-- 🟡 **Multi-tag filtering with AND/OR** (replaces the single-tag dropdown).
+- ✅ **Multi-tag filtering with AND/OR** — shipped; replaced the single-tag dropdown.
 - 🟡 **Degree / depth slider** — hide weakly-connected nodes, or show only N hops from a focus.
 - 🟢 **Filter by status** alongside type and tag.
 
