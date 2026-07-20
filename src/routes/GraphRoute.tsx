@@ -11,7 +11,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { islandColorOf, type ColorBy } from '../graphColor'
 import { getLore, currentLoreId } from '../lores'
 import { buildScene, sceneToSvg, svgBlob, sceneToPng, downloadBlob, graphFilename } from '../graphExport'
-import { NO_TAG_FILTER, type TagFilter } from '../tagFilter'
+import { matchesTags, NO_TAG_FILTER, type TagFilter } from '../tagFilter'
 
 // The 3D view drags in three.js, so load it only when the user opts in.
 const GraphView3D = lazy(() => import('../components/GraphView3D'))
@@ -32,7 +32,7 @@ export default function GraphRoute() {
     showGhosts, setShowGhosts,
     threeD, setThreeD,
     panelOpen, setPanelOpen,
-    tag, setTag,
+    tags, setTags, tagMode,
     colorBy, setColorBy,
     minDegree, setMinDegree,
     depth, setDepth,
@@ -56,7 +56,7 @@ export default function GraphRoute() {
     () => [...new Set(full.nodes.filter((n) => !n.ghost).map((n) => n.category))].sort((a, b) => a.localeCompare(b)),
     [full],
   )
-  const tags = useMemo(
+  const allTags = useMemo(
     () => [...new Set(full.nodes.filter((n) => !n.ghost).flatMap((n) => n.tags))].sort((a, b) => a.localeCompare(b)),
     [full],
   )
@@ -75,6 +75,13 @@ export default function GraphRoute() {
     return STATUSES.map((s) => s.name).filter((name) => present.has(name))
   }, [full])
 
+  // Temporary bridge while `tags`/`tagMode` are still surfaced through a single-
+  // select adapter; Task 5 replaces this with the real multi-tag selection UI.
+  const tagFilter = useMemo<TagFilter>(
+    () => (tags.length > 0 ? { tags, mode: tagMode } : NO_TAG_FILTER),
+    [tags, tagMode],
+  )
+
   const filtered = useMemo(() => {
     const hopSet = depthFocus ? nodesWithinHops(full.links, depthFocus, depth) : null
     const nodes = full.nodes.filter(
@@ -82,7 +89,7 @@ export default function GraphRoute() {
         (showGhosts || !n.ghost) &&
         !hidden.has(n.category) &&
         (n.ghost || !hiddenStatuses.has(n.status)) &&
-        (colorBy === 'tag' || tag === '' || n.tags.includes(tag)) &&
+        (colorBy === 'tag' || matchesTags(n.tags, tagFilter)) &&
         n.degree >= minDegree &&
         (hopSet == null || hopSet.has(n.id)),
     )
@@ -92,7 +99,7 @@ export default function GraphRoute() {
       nodes: nodes.map((n) => ({ ...n })),
       links: links.map((l) => ({ ...l })),
     }
-  }, [full, hidden, hiddenStatuses, tag, showGhosts, minDegree, depth, depthFocus, colorBy])
+  }, [full, hidden, hiddenStatuses, tagFilter, showGhosts, minDegree, depth, depthFocus, colorBy])
 
   // A page can be deleted while its id still sits in an endpoint; drop it by
   // derivation rather than by writing state from an effect.
@@ -164,10 +171,6 @@ export default function GraphRoute() {
     // Defer so the GraphView effect sees a real change and re-glides.
     requestAnimationFrame(() => setSelectedId(id))
   }
-
-  // Temporary bridge while `tag` is still a single string; Task 5 replaces this
-  // with the real multi-tag selection from useGraphPrefs.
-  const tagFilter = useMemo<TagFilter>(() => (tag ? { tags: [tag], mode: 'any' } : NO_TAG_FILTER), [tag])
 
   async function doExport(format: 'png' | 'svg') {
     setExportMsg(null)
@@ -252,9 +255,9 @@ export default function GraphRoute() {
           )}
         </div>
 
-        <select value={tag} onChange={(e) => setTag(e.target.value)}>
+        <select value={tags[0] ?? ''} onChange={(e) => setTags(e.target.value ? [e.target.value] : [])}>
           <option value="">All tags</option>
-          {tags.map((t) => <option key={t} value={t}>{t}</option>)}
+          {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
 
         <label className="graph-slider" title="Colour nodes by page type, status, a highlighted tag, or connected island">
@@ -392,7 +395,7 @@ export default function GraphRoute() {
           {filtered.nodes.length} pages · {filtered.links.length} links
           {depth > 0 && !selectedId && ' — select a node to apply depth'}
           {filtered.nodes.length > 300 && ' — filter by type or tag to declutter'}
-          {colorBy === 'tag' && tag === '' && ' — select a tag to highlight'}
+          {colorBy === 'tag' && tags.length === 0 && ' — select a tag to highlight'}
           {colorBy === 'island' && ` — ${clusterCount} island${clusterCount === 1 ? '' : 's'}`}
         </span>
       </div>

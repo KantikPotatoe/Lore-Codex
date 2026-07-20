@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getMeta, setMeta } from './db'
 import type { ColorBy } from './graphColor'
+import type { TagMode } from './tagFilter'
 
 const VIEW_KEY = 'graph-view'
 const PINS_KEY = 'graph-pins'
@@ -22,7 +23,13 @@ interface SavedView {
   showGhosts: boolean
   threeD: boolean
   panelOpen: boolean
-  tag: string
+  /** Legacy single-tag filter, read-migrated into `tags` and dropped on the
+   *  next write. Never written by current code. */
+  tag?: string
+  /** Selected tag filter; empty means "all tags". */
+  tags: string[]
+  /** How a multi-tag selection combines. */
+  tagMode: TagMode
   /** Hide nodes with fewer than this many connections (0 = show all). */
   minDegree: number
   /** When a node is selected, show only nodes within this many hops (0 = off). */
@@ -43,7 +50,8 @@ const DEFAULT_VIEW: SavedView = {
   showGhosts: true,
   threeD: false,
   panelOpen: false,
-  tag: '',
+  tags: [],
+  tagMode: 'any',
   minDegree: 0,
   depth: 0,
   colorBy: 'type',
@@ -64,8 +72,11 @@ export interface GraphPrefs {
   setThreeD: (v: boolean) => void
   panelOpen: boolean
   setPanelOpen: (v: boolean) => void
-  tag: string
-  setTag: (v: string) => void
+  tags: string[]
+  setTags: (tags: string[]) => void
+  toggleTag: (tag: string) => void
+  tagMode: TagMode
+  setTagMode: (m: TagMode) => void
   minDegree: number
   setMinDegree: (v: number) => void
   depth: number
@@ -78,6 +89,16 @@ export interface GraphPrefs {
   pinNode: (id: string, x: number, y: number) => void
   clearPins: () => void
   prunePins: (validIds: Set<string>) => void
+}
+
+/** Fold a row written before multi-tag filtering into the current shape. Safe
+ *  to run on every hydrate: once a migrated row is written back, `tag` is gone
+ *  and this is a no-op. An explicit `tags` selection always wins. */
+export function migrateView(view: SavedView): SavedView {
+  if (view.tags.length > 0 || !view.tag) return view
+  const next: SavedView = { ...view, tags: [view.tag] }
+  delete next.tag
+  return next
 }
 
 export function useGraphPrefs(): GraphPrefs {
@@ -94,7 +115,7 @@ export function useGraphPrefs(): GraphPrefs {
   const [pinsDraft, setPinsDraft] = useState<Pins | null>(null)
 
   const view = useMemo(
-    () => viewDraft ?? (savedView ? { ...DEFAULT_VIEW, ...savedView } : DEFAULT_VIEW),
+    () => viewDraft ?? (savedView ? migrateView({ ...DEFAULT_VIEW, ...savedView }) : DEFAULT_VIEW),
     [viewDraft, savedView],
   )
   const pins = pinsDraft ?? savedPins ?? NO_PINS
@@ -130,7 +151,16 @@ export function useGraphPrefs(): GraphPrefs {
   const setShowGhosts = useCallback((v: boolean) => writeView({ ...view, showGhosts: v }), [view, writeView])
   const setThreeD = useCallback((v: boolean) => writeView({ ...view, threeD: v }), [view, writeView])
   const setPanelOpen = useCallback((v: boolean) => writeView({ ...view, panelOpen: v }), [view, writeView])
-  const setTag = useCallback((v: string) => writeView({ ...view, tag: v }), [view, writeView])
+  const setTags = useCallback((v: string[]) => writeView({ ...view, tags: v }), [view, writeView])
+  const setTagMode = useCallback((v: TagMode) => writeView({ ...view, tagMode: v }), [view, writeView])
+
+  const toggleTag = useCallback((tag: string) => {
+    const next = view.tags.includes(tag)
+      ? view.tags.filter((t) => t !== tag)
+      : [...view.tags, tag]
+    writeView({ ...view, tags: next })
+  }, [view, writeView])
+
   const setMinDegree = useCallback((v: number) => writeView({ ...view, minDegree: v }), [view, writeView])
   const setDepth = useCallback((v: number) => writeView({ ...view, depth: v }), [view, writeView])
   const setColorBy = useCallback((v: ColorBy) => writeView({ ...view, colorBy: v }), [view, writeView])
@@ -159,7 +189,7 @@ export function useGraphPrefs(): GraphPrefs {
     showGhosts: view.showGhosts, setShowGhosts,
     threeD: view.threeD, setThreeD,
     panelOpen: view.panelOpen, setPanelOpen,
-    tag: view.tag, setTag,
+    tags: view.tags, setTags, toggleTag, tagMode: view.tagMode, setTagMode,
     minDegree: view.minDegree, setMinDegree,
     depth: view.depth, setDepth,
     colorBy: view.colorBy, setColorBy,

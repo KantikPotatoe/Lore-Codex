@@ -2,12 +2,37 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act, waitFor, cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
 import { db, setMeta, getMeta } from './db'
-import { useGraphPrefs } from './useGraphPrefs'
+import { useGraphPrefs, migrateView } from './useGraphPrefs'
 
 afterEach(cleanup)
 
 beforeEach(async () => {
   await db.meta.clear()
+})
+
+describe('migrateView', () => {
+  const base = {
+    hidden: [], hiddenStatuses: [], showArrows: false, showGhosts: true, threeD: false,
+    panelOpen: false, tags: [], tagMode: 'any' as const, minDegree: 0, depth: 0,
+    colorBy: 'type' as const, cam: null,
+  }
+
+  it('folds a legacy tag into tags and drops the field', () => {
+    expect(migrateView({ ...base, tag: 'magic' })).toEqual({ ...base, tags: ['magic'] })
+  })
+
+  it('leaves a row with no legacy tag alone', () => {
+    expect(migrateView(base)).toEqual(base)
+  })
+
+  it('ignores an empty legacy tag', () => {
+    expect(migrateView({ ...base, tag: '' })).toEqual({ ...base, tag: '' })
+  })
+
+  it('prefers an existing tags selection over the legacy field', () => {
+    const row = { ...base, tags: ['norse'], tag: 'magic' }
+    expect(migrateView(row)).toEqual(row)
+  })
 })
 
 describe('useGraphPrefs', () => {
@@ -18,7 +43,8 @@ describe('useGraphPrefs', () => {
     expect(result.current.showGhosts).toBe(true)
     expect(result.current.showArrows).toBe(false)
     expect(result.current.panelOpen).toBe(false)
-    expect(result.current.tag).toBe('')
+    expect(result.current.tags).toEqual([])
+    expect(result.current.tagMode).toBe('any')
     expect(result.current.cam).toBeNull()
     expect(result.current.minDegree).toBe(0)
     expect(result.current.depth).toBe(0)
@@ -66,17 +92,48 @@ describe('useGraphPrefs', () => {
     await setMeta('graph-view', { hidden: [], showArrows: false, showGhosts: true, panelOpen: false })
     const { result } = renderHook(() => useGraphPrefs())
     await waitFor(() => expect(result.current).toBeTruthy())
-    expect(result.current.tag).toBe('')
+    expect(result.current.tags).toEqual([])
     expect(result.current.cam).toBeNull()
   })
 
-  it('persists the selected tag to meta', async () => {
+  it('persists a multi-tag selection and match mode to meta', async () => {
     const { result } = renderHook(() => useGraphPrefs())
     await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.setTag('Faction'))
-    await waitFor(() => expect(result.current.tag).toBe('Faction'))
-    const v = await getMeta<{ tag: string }>('graph-view')
-    expect(v?.tag).toBe('Faction')
+    act(() => result.current.setTags(['magic', 'norse']))
+    await waitFor(() => expect(result.current.tags).toEqual(['magic', 'norse']))
+    act(() => result.current.setTagMode('all'))
+    await waitFor(() => expect(result.current.tagMode).toBe('all'))
+    const v = await getMeta<{ tags: string[]; tagMode: string }>('graph-view')
+    expect(v?.tags).toEqual(['magic', 'norse'])
+    expect(v?.tagMode).toBe('all')
+  })
+
+  it('toggleTag adds then removes a tag', async () => {
+    const { result } = renderHook(() => useGraphPrefs())
+    await waitFor(() => expect(result.current).toBeTruthy())
+    act(() => result.current.toggleTag('magic'))
+    await waitFor(() => expect(result.current.tags).toEqual(['magic']))
+    act(() => result.current.toggleTag('norse'))
+    await waitFor(() => expect(result.current.tags).toEqual(['magic', 'norse']))
+    act(() => result.current.toggleTag('magic'))
+    await waitFor(() => expect(result.current.tags).toEqual(['norse']))
+  })
+
+  it('migrates a legacy single-tag row into the multi-tag shape', async () => {
+    await setMeta('graph-view', { hidden: [], showArrows: false, showGhosts: true, panelOpen: false, tag: 'magic' })
+    const { result } = renderHook(() => useGraphPrefs())
+    await waitFor(() => expect(result.current.tags).toEqual(['magic']))
+    expect(result.current.tagMode).toBe('any')
+  })
+
+  it('drops the legacy tag field on the next write', async () => {
+    await setMeta('graph-view', { hidden: [], showArrows: false, showGhosts: true, panelOpen: false, tag: 'magic' })
+    const { result } = renderHook(() => useGraphPrefs())
+    await waitFor(() => expect(result.current.tags).toEqual(['magic']))
+    act(() => result.current.toggleTag('norse'))
+    await waitFor(() => expect(result.current.tags).toEqual(['magic', 'norse']))
+    const v = await getMeta<{ tag?: string }>('graph-view')
+    expect(v?.tag).toBeUndefined()
   })
 
   it('persists the colour-by mode to meta', async () => {
