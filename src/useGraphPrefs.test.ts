@@ -226,6 +226,7 @@ describe('useGraphPrefs', () => {
     expect(v?.showArrows).toBe(true)
     expect(v?.tags).toEqual(['magic'])
     expect(v?.tagMode).toBe('all')
+    expect(v?.cam).toBeNull()
   })
 
   it('still persists a camera write made after hydration', async () => {
