@@ -23,7 +23,7 @@ export default function UpdateBanner() {
 
   if (state.status === 'available') {
     return (
-      <div className="update-banner">
+      <div className="update-banner" role="status">
         <span>✦ Lore Codex {state.version} is available.</span>
         <div className="backup-banner-actions">
           <button className="backup-banner-btn" onClick={() => void download()}>Download</button>
@@ -35,11 +35,17 @@ export default function UpdateBanner() {
 
   if (state.status === 'downloading') {
     return (
-      <div className="update-banner">
+      <div className="update-banner" role="status">
         <span>{state.pct === null ? 'Downloading…' : `Downloading ${state.version}… ${state.pct}%`}</span>
-        {state.pct !== null && (
+        {state.pct !== null ? (
           <div className="update-progress" role="progressbar" aria-valuenow={state.pct} aria-valuemin={0} aria-valuemax={100}>
             <div className="update-progress-fill" style={{ width: `${state.pct}%` }} />
+          </div>
+        ) : (
+          // Omitting aria-valuenow is what marks a progressbar indeterminate;
+          // aria-valuenow={0} would claim the download is stuck at zero.
+          <div className="update-progress" role="progressbar">
+            <div className="update-progress-indeterminate" />
           </div>
         )}
       </div>
@@ -48,7 +54,7 @@ export default function UpdateBanner() {
 
   if (state.status === 'ready') {
     return (
-      <div className="update-banner">
+      <div className="update-banner" role="status">
         <span>✦ {state.version} is ready. Restarting will close the app and run the installer.</span>
         <div className="backup-banner-actions">
           <button className="backup-banner-btn" onClick={() => void install()}>Restart to install</button>
@@ -62,7 +68,7 @@ export default function UpdateBanner() {
   }
 
   if (state.status === 'installing') {
-    return <div className="update-banner"><span>Installing… the app will close.</span></div>
+    return <div className="update-banner" role="status"><span>Installing… the app will close.</span></div>
   }
 
   // idle / checking / none / error — nothing worth a bar.

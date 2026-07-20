@@ -426,12 +426,12 @@ export default function SettingsRoute() {
         </div>
 
         {updateState.status === 'available' && (
-          <div className="settings-actions">
+          <div className="settings-cta">
             <button className="ghost-btn" onClick={() => void downloadUpdate()}>Download {updateState.version}</button>
           </div>
         )}
         {updateState.status === 'ready' && (
-          <div className="settings-actions">
+          <div className="settings-cta">
             <button className="ghost-btn" onClick={() => void installUpdate()}>Restart to install</button>
           </div>
         )}

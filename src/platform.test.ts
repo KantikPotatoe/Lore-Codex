@@ -210,6 +210,22 @@ describe('checkForUpdate', () => {
     expect(update?.notes).toBe('Notes here')
   })
 
+  it('exposes only the seam shape — the plugin object never escapes', async () => {
+    // Containment is this function's whole reason for returning a handle
+    // rather than the plugin's Update. TypeScript enforces it today; this
+    // makes a future `as`-cast breach fail loudly instead of silently.
+    enterTauri()
+    vi.mocked(check).mockResolvedValue({
+      version: '0.39.0', currentVersion: '0.38.0', body: '', download: vi.fn(), install: vi.fn(),
+      // Fields a real plugin Update carries that must NOT be re-exported:
+      rid: 7, date: '2026-01-01', downloadAndInstall: vi.fn(), close: vi.fn(),
+    } as never)
+    const update = await checkForUpdate()
+    expect(Object.keys(update!).sort()).toEqual(
+      ['currentVersion', 'download', 'install', 'notes', 'version'],
+    )
+  })
+
   it('tolerates a missing release body', async () => {
     enterTauri()
     vi.mocked(check).mockResolvedValue({

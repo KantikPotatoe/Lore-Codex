@@ -32,9 +32,32 @@ describe('UpdateBanner', () => {
 
   it('renders nothing in a plain browser and never checks', () => {
     vi.mocked(isTauri).mockReturnValue(false)
-    const { container } = render(<UpdateBanner />)
-    expect(container.firstChild).toBeNull()
-    expect(check).not.toHaveBeenCalled()
+    // Fake timers, or the assertion is vacuous: on real timers CHECK_DELAY_MS
+    // has not elapsed, so `check` is uncalled whether or not the guard exists.
+    vi.useFakeTimers()
+    try {
+      const { container } = render(<UpdateBanner />)
+      expect(container.firstChild).toBeNull()
+      vi.advanceTimersByTime(CHECK_DELAY_MS)
+      expect(check).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('checks once, even across re-renders', () => {
+    // The mount effect depends on `check` being referentially stable. If that
+    // regressed, the effect would re-arm on every state change.
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<UpdateBanner />)
+      state = { status: 'available', version: '0.39.0', notes: '' }
+      rerender(<UpdateBanner />)
+      vi.advanceTimersByTime(CHECK_DELAY_MS * 3)
+      expect(check).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('runs an automatic check on mount in the shell, after a delay', async () => {
@@ -88,6 +111,10 @@ describe('UpdateBanner', () => {
     state = { status: 'downloading', version: '0.39.0', pct: null }
     render(<UpdateBanner />)
     expect(screen.getByText(/Downloading…/)).toBeTruthy()
+    // The bar must exist — a missing bar reads as a hang. Omitting
+    // aria-valuenow is what marks it indeterminate.
+    const bar = screen.getByRole('progressbar')
+    expect(bar.getAttribute('aria-valuenow')).toBeNull()
   })
 
   it('warns that restarting closes the app, and installs on click', () => {
