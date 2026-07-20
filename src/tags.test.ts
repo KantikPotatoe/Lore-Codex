@@ -82,4 +82,13 @@ describe('orderTagChips', () => {
   it('handles no tags at all', () => {
     expect(orderTagChips([], new Set(), 12)).toEqual({ shown: [], hiddenCount: 0 })
   })
+
+  it('ignores a selected tag no longer present in counts (e.g. its last page was deleted)', () => {
+    // A stale selection shouldn't conjure a phantom chip or inflate hiddenCount —
+    // callers are expected to have already dropped it from the filter itself.
+    expect(orderTagChips(counts, new Set(['ghost']), 2)).toEqual({
+      shown: ['a', 'b'],
+      hiddenCount: 2,
+    })
+  })
 })
