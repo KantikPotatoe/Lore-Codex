@@ -57,11 +57,15 @@ describe('useGraphPrefs', () => {
 
   it('persists the min-degree and depth sliders to meta', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.setMinDegree(2))
+    // Hydration (even to "no row") is an async round-trip; a write attempted
+    // before it resolves is now dropped by design, so retry the write inside
+    // the poll until it lands rather than firing it once before hydration.
+    await waitFor(() => {
+      act(() => result.current.setMinDegree(2))
+      expect(result.current.minDegree).toBe(2)
+    })
     act(() => result.current.setDepth(3))
-    await waitFor(() => expect(result.current.minDegree).toBe(2))
-    expect(result.current.depth).toBe(3)
+    await waitFor(() => expect(result.current.depth).toBe(3))
     const v = await getMeta<{ minDegree: number; depth: number }>('graph-view')
     expect(v?.minDegree).toBe(2)
     expect(v?.depth).toBe(3)
@@ -69,9 +73,10 @@ describe('useGraphPrefs', () => {
 
   it('toggleStatus hides then reveals a status, persisting to meta', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.toggleStatus('Stub'))
-    await waitFor(() => expect([...result.current.hiddenStatuses]).toEqual(['Stub']))
+    await waitFor(() => {
+      act(() => result.current.toggleStatus('Stub'))
+      expect([...result.current.hiddenStatuses]).toEqual(['Stub'])
+    })
     const v = await getMeta<{ hiddenStatuses: string[] }>('graph-view')
     expect(v?.hiddenStatuses).toEqual(['Stub'])
     act(() => result.current.toggleStatus('Stub'))
@@ -80,9 +85,10 @@ describe('useGraphPrefs', () => {
 
   it('persists the 3D toggle to meta', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.setThreeD(true))
-    await waitFor(() => expect(result.current.threeD).toBe(true))
+    await waitFor(() => {
+      act(() => result.current.setThreeD(true))
+      expect(result.current.threeD).toBe(true)
+    })
     const v = await getMeta<{ threeD: boolean }>('graph-view')
     expect(v?.threeD).toBe(true)
   })
@@ -98,9 +104,10 @@ describe('useGraphPrefs', () => {
 
   it('persists a multi-tag selection and match mode to meta', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.setTags(['magic', 'norse']))
-    await waitFor(() => expect(result.current.tags).toEqual(['magic', 'norse']))
+    await waitFor(() => {
+      act(() => result.current.setTags(['magic', 'norse']))
+      expect(result.current.tags).toEqual(['magic', 'norse'])
+    })
     act(() => result.current.setTagMode('all'))
     await waitFor(() => expect(result.current.tagMode).toBe('all'))
     const v = await getMeta<{ tags: string[]; tagMode: string }>('graph-view')
@@ -110,9 +117,10 @@ describe('useGraphPrefs', () => {
 
   it('toggleTag adds then removes a tag', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.toggleTag('magic'))
-    await waitFor(() => expect(result.current.tags).toEqual(['magic']))
+    await waitFor(() => {
+      act(() => result.current.toggleTag('magic'))
+      expect(result.current.tags).toEqual(['magic'])
+    })
     act(() => result.current.toggleTag('norse'))
     await waitFor(() => expect(result.current.tags).toEqual(['magic', 'norse']))
     act(() => result.current.toggleTag('magic'))
@@ -138,18 +146,20 @@ describe('useGraphPrefs', () => {
 
   it('persists the colour-by mode to meta', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.setColorBy('status'))
-    await waitFor(() => expect(result.current.colorBy).toBe('status'))
+    await waitFor(() => {
+      act(() => result.current.setColorBy('status'))
+      expect(result.current.colorBy).toBe('status')
+    })
     const v = await getMeta<{ colorBy: string }>('graph-view')
     expect(v?.colorBy).toBe('status')
   })
 
   it('persists the camera transform to meta', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.setCam({ k: 2, x: 100, y: -50 }))
-    await waitFor(() => expect(result.current.cam).toEqual({ k: 2, x: 100, y: -50 }))
+    await waitFor(() => {
+      act(() => result.current.setCam({ k: 2, x: 100, y: -50 }))
+      expect(result.current.cam).toEqual({ k: 2, x: 100, y: -50 })
+    })
     const v = await getMeta<{ cam: { k: number } }>('graph-view')
     expect(v?.cam).toEqual({ k: 2, x: 100, y: -50 })
   })
@@ -179,29 +189,70 @@ describe('useGraphPrefs', () => {
 
   it('persists a toggle change to meta', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.setShowArrows(true))
-    await waitFor(async () => {
-      const v = await getMeta<{ showArrows: boolean }>('graph-view')
-      expect(v?.showArrows).toBe(true)
+    await waitFor(() => {
+      act(() => result.current.setShowArrows(true))
+      expect(result.current.showArrows).toBe(true)
     })
+    const v = await getMeta<{ showArrows: boolean }>('graph-view')
+    expect(v?.showArrows).toBe(true)
   })
 
   it('pinNode adds a pin and clearPins empties them', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.pinNode('p1', 5, 6))
-    await waitFor(() => expect(result.current.pins).toEqual({ p1: { x: 5, y: 6 } }))
+    await waitFor(() => {
+      act(() => result.current.pinNode('p1', 5, 6))
+      expect(result.current.pins).toEqual({ p1: { x: 5, y: 6 } })
+    })
     act(() => result.current.clearPins())
     await waitFor(() => expect(result.current.pins).toEqual({}))
   })
 
+  it('does not let a write attempted before hydration clobber a stored row', async () => {
+    await setMeta('graph-view', {
+      hidden: ['Character'], hiddenStatuses: [], showArrows: true, showGhosts: true,
+      threeD: false, panelOpen: false, tags: ['magic'], tagMode: 'all', minDegree: 0,
+      depth: 0, colorBy: 'type', cam: null,
+    })
+    const { result } = renderHook(() => useGraphPrefs())
+    // Fire immediately, without awaiting hydration — this is the initial
+    // zoomToFit camera report racing the async useLiveQuery.
+    act(() => result.current.setCam({ k: 3, x: 1, y: 2 }))
+    await waitFor(() => expect(result.current.hidden.has('Character')).toBe(true))
+    expect(result.current.showArrows).toBe(true)
+    expect(result.current.tags).toEqual(['magic'])
+    expect(result.current.tagMode).toBe('all')
+    const v = await getMeta<{ hidden: string[]; showArrows: boolean; tags: string[]; tagMode: string; cam: unknown }>('graph-view')
+    expect(v?.hidden).toEqual(['Character'])
+    expect(v?.showArrows).toBe(true)
+    expect(v?.tags).toEqual(['magic'])
+    expect(v?.tagMode).toBe('all')
+  })
+
+  it('still persists a camera write made after hydration', async () => {
+    // Seed a marker that differs from any default, so waiting for it to
+    // appear proves genuine hydration completed — not just that the hook
+    // rendered — before the write below is attempted.
+    await setMeta('graph-view', {
+      hidden: ['Marker'], hiddenStatuses: [], showArrows: false, showGhosts: true,
+      threeD: false, panelOpen: false, tags: [], tagMode: 'any', minDegree: 0,
+      depth: 0, colorBy: 'type', cam: null,
+    })
+    const { result } = renderHook(() => useGraphPrefs())
+    await waitFor(() => expect(result.current.hidden.has('Marker')).toBe(true))
+    act(() => result.current.setCam({ k: 2, x: 100, y: -50 }))
+    // Post-hydration, the write is immediate — no retry needed.
+    expect(result.current.cam).toEqual({ k: 2, x: 100, y: -50 })
+    const v = await getMeta<{ cam: { k: number } }>('graph-view')
+    expect(v?.cam).toEqual({ k: 2, x: 100, y: -50 })
+  })
+
   it('prunePins drops pins whose id is not in the valid set', async () => {
     const { result } = renderHook(() => useGraphPrefs())
-    await waitFor(() => expect(result.current).toBeTruthy())
-    act(() => result.current.pinNode('keep', 1, 1))
-    act(() => result.current.pinNode('drop', 2, 2))
-    await waitFor(() => expect(Object.keys(result.current.pins)).toHaveLength(2))
+    await waitFor(() => {
+      act(() => result.current.pinNode('keep', 1, 1))
+      act(() => result.current.pinNode('drop', 2, 2))
+      expect(Object.keys(result.current.pins)).toHaveLength(2)
+    })
     act(() => result.current.prunePins(new Set(['keep'])))
     await waitFor(() => expect(result.current.pins).toEqual({ keep: { x: 1, y: 1 } }))
   })

@@ -102,11 +102,17 @@ export function migrateView(view: SavedView): SavedView {
 }
 
 export function useGraphPrefs(): GraphPrefs {
-  // Read the persisted rows reactively. getMeta returns undefined both while
-  // loading and when no row exists — both collapse to defaults below, and we
-  // never write on load, so a stored row is never clobbered by defaults.
-  const savedView = useLiveQuery(() => getMeta<SavedView>(VIEW_KEY), [])
-  const savedPins = useLiveQuery(() => getMeta<Pins>(PINS_KEY), [])
+  // Read the persisted rows reactively, resolving to an explicit sentinel:
+  // `undefined` means "still loading", `null` means "no row saved" (getMeta
+  // itself returns undefined for both, which can't tell those apart). We never
+  // write until hydrated, so a stored row is never clobbered by a write racing
+  // ahead of its own hydration (e.g. the initial zoomToFit camera report firing
+  // before the liveQuery resolves) — and the `savedView ? ... : DEFAULT_VIEW`
+  // fallback below still collapses correctly since `null` is falsy.
+  const savedView = useLiveQuery(async () => (await getMeta<SavedView>(VIEW_KEY)) ?? null, [])
+  const savedPins = useLiveQuery(async () => (await getMeta<Pins>(PINS_KEY)) ?? null, [])
+  const viewHydrated = savedView !== undefined
+  const pinsHydrated = savedPins !== undefined
 
   // Local overrides layered on top of the persisted values; null until the user
   // acts, after which the draft reflects intent immediately (the liveQuery also
@@ -121,14 +127,16 @@ export function useGraphPrefs(): GraphPrefs {
   const pins = pinsDraft ?? savedPins ?? NO_PINS
 
   const writeView = useCallback((next: SavedView) => {
+    if (!viewHydrated) return
     setViewDraft(next)
     setMeta(VIEW_KEY, next)
-  }, [])
+  }, [viewHydrated])
 
   const writePins = useCallback((next: Pins) => {
+    if (!pinsHydrated) return
     setPinsDraft(next)
     setMeta(PINS_KEY, next)
-  }, [])
+  }, [pinsHydrated])
 
   const hidden = useMemo(() => new Set(view.hidden), [view.hidden])
   const hiddenStatuses = useMemo(() => new Set(view.hiddenStatuses), [view.hiddenStatuses])
