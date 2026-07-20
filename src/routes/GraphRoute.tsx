@@ -11,12 +11,15 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { islandColorOf, type ColorBy } from '../graphColor'
 import { getLore, currentLoreId } from '../lores'
 import { buildScene, sceneToSvg, svgBlob, sceneToPng, downloadBlob, graphFilename } from '../graphExport'
+import { matchesTags, NO_TAG_FILTER, type TagFilter } from '../tagFilter'
+import { tagCounts, orderTagChips } from '../tags'
 
 // The 3D view drags in three.js, so load it only when the user opts in.
 const GraphView3D = lazy(() => import('../components/GraphView3D'))
 
 const NO_PAGES: LorePage[] = []
 const EMPTY_ISLAND_COLORS = new Map<string, string>()
+const TAG_CHIP_LIMIT = 12
 
 export default function GraphRoute() {
   const pages = useLiveQuery(() => pageRepo.list(), []) ?? NO_PAGES
@@ -31,7 +34,7 @@ export default function GraphRoute() {
     showGhosts, setShowGhosts,
     threeD, setThreeD,
     panelOpen, setPanelOpen,
-    tag, setTag,
+    tags, toggleTag, tagMode, setTagMode,
     colorBy, setColorBy,
     minDegree, setMinDegree,
     depth, setDepth,
@@ -46,6 +49,7 @@ export default function GraphRoute() {
   const [toId, setToId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [exportMsg, setExportMsg] = useState<string | null>(null)
+  const [showAllTags, setShowAllTags] = useState(false)
   const lore = useLiveQuery(() => getLore(currentLoreId()), [])
   const loreName = lore?.name ?? 'World'
 
@@ -53,10 +57,6 @@ export default function GraphRoute() {
   // Exclude ghost nodes so the filter chips only show real page categories/tags.
   const categories = useMemo(
     () => [...new Set(full.nodes.filter((n) => !n.ghost).map((n) => n.category))].sort((a, b) => a.localeCompare(b)),
-    [full],
-  )
-  const tags = useMemo(
-    () => [...new Set(full.nodes.filter((n) => !n.ghost).flatMap((n) => n.tags))].sort((a, b) => a.localeCompare(b)),
     [full],
   )
   // Highest connection count present, so the min-degree slider caps at something
@@ -74,6 +74,33 @@ export default function GraphRoute() {
     return STATUSES.map((s) => s.name).filter((name) => present.has(name))
   }, [full])
 
+  // Tag counts across all real pages, for the chip row (most-used first).
+  const counts = useMemo(() => tagCounts(pages), [pages])
+
+  // A tag can vanish from the data (its last page deleted or retagged) while
+  // staying in the persisted selection, since `toggleTag` only ever adds/
+  // removes what the user clicked. If we filtered on the raw persisted
+  // `tags`, a vanished tag would have no chip to unselect it and — under
+  // `Match all` — would silently empty the graph with no visible cause. So the
+  // effective selection is *derived* by intersecting the persisted tags with
+  // what's actually present in `counts`, the same "derive, don't write back
+  // from an effect" approach `fromValid`/`toValid` use above for stale path
+  // endpoints. Nothing ever writes this pruned set back to the meta row.
+  const selectedTags = useMemo(() => {
+    const present = new Set(counts.map((c) => c.tag))
+    return new Set(tags.filter((t) => present.has(t)))
+  }, [tags, counts])
+
+  const tagChips = useMemo(
+    () => orderTagChips(counts, selectedTags, showAllTags ? counts.length : TAG_CHIP_LIMIT),
+    [counts, selectedTags, showAllTags],
+  )
+
+  const tagFilter = useMemo<TagFilter>(
+    () => (selectedTags.size > 0 ? { tags: [...selectedTags], mode: tagMode } : NO_TAG_FILTER),
+    [selectedTags, tagMode],
+  )
+
   const filtered = useMemo(() => {
     const hopSet = depthFocus ? nodesWithinHops(full.links, depthFocus, depth) : null
     const nodes = full.nodes.filter(
@@ -81,7 +108,7 @@ export default function GraphRoute() {
         (showGhosts || !n.ghost) &&
         !hidden.has(n.category) &&
         (n.ghost || !hiddenStatuses.has(n.status)) &&
-        (colorBy === 'tag' || tag === '' || n.tags.includes(tag)) &&
+        (colorBy === 'tag' || matchesTags(n.tags, tagFilter)) &&
         n.degree >= minDegree &&
         (hopSet == null || hopSet.has(n.id)),
     )
@@ -91,7 +118,7 @@ export default function GraphRoute() {
       nodes: nodes.map((n) => ({ ...n })),
       links: links.map((l) => ({ ...l })),
     }
-  }, [full, hidden, hiddenStatuses, tag, showGhosts, minDegree, depth, depthFocus, colorBy])
+  }, [full, hidden, hiddenStatuses, tagFilter, showGhosts, minDegree, depth, depthFocus, colorBy])
 
   // A page can be deleted while its id still sits in an endpoint; drop it by
   // derivation rather than by writing state from an effect.
@@ -166,7 +193,7 @@ export default function GraphRoute() {
 
   async function doExport(format: 'png' | 'svg') {
     setExportMsg(null)
-    const scene = buildScene(filtered, { colorBy, highlightTag: tag, islandColors })
+    const scene = buildScene(filtered, { colorBy, tagFilter, islandColors })
     if (!scene) {
       setExportMsg('Graph still settling — try again')
       return
@@ -247,10 +274,33 @@ export default function GraphRoute() {
           )}
         </div>
 
-        <select value={tag} onChange={(e) => setTag(e.target.value)}>
-          <option value="">All tags</option>
-          {tags.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
+        {tagChips.shown.length > 0 && (
+          <div className="graph-chips">
+            {tagChips.shown.map((t) => (
+              <button
+                key={t}
+                className={`graph-chip${selectedTags.has(t) ? '' : ' off'}`}
+                onClick={() => toggleTag(t)}
+              >
+                #{t}
+              </button>
+            ))}
+            {tagChips.hiddenCount > 0 && (
+              <button className="graph-chip" onClick={() => setShowAllTags(true)}>
+                +{tagChips.hiddenCount} more
+              </button>
+            )}
+            {selectedTags.size >= 2 && (
+              <button
+                className="ghost-btn active"
+                title="Match pages carrying every selected tag, or any of them"
+                onClick={() => setTagMode(tagMode === 'all' ? 'any' : 'all')}
+              >
+                {tagMode === 'all' ? '⋂ Match all' : '⋃ Match any'}
+              </button>
+            )}
+          </div>
+        )}
 
         <label className="graph-slider" title="Colour nodes by page type, status, a highlighted tag, or connected island">
           Color by
@@ -387,7 +437,7 @@ export default function GraphRoute() {
           {filtered.nodes.length} pages · {filtered.links.length} links
           {depth > 0 && !selectedId && ' — select a node to apply depth'}
           {filtered.nodes.length > 300 && ' — filter by type or tag to declutter'}
-          {colorBy === 'tag' && tag === '' && ' — select a tag to highlight'}
+          {colorBy === 'tag' && tagFilter.tags.length === 0 && ' — select a tag to highlight'}
           {colorBy === 'island' && ` — ${clusterCount} island${clusterCount === 1 ? '' : 's'}`}
         </span>
       </div>
@@ -400,7 +450,7 @@ export default function GraphRoute() {
                 data={filtered}
                 showArrows={showArrows}
                 colorBy={colorBy}
-                highlightTag={tag}
+                tagFilter={tagFilter}
                 islandColors={islandColors}
                 onGhostClick={wiki.stageCreate}
               />
@@ -410,7 +460,7 @@ export default function GraphRoute() {
               data={filtered}
               showArrows={showArrows}
               colorBy={colorBy}
-              highlightTag={tag}
+              tagFilter={tagFilter}
               islandColors={islandColors}
               selectedId={selectedId}
               onSelect={setSelectedId}

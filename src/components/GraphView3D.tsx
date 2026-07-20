@@ -6,6 +6,7 @@ import ForceGraph3D, {
 } from 'react-force-graph-3d'
 import { type GraphData, type GraphNode, type GraphLink } from '../db'
 import { nodeFill, type ColorBy } from '../graphColor'
+import type { TagFilter } from '../tagFilter'
 
 // The 3D view is a "wow" companion to the 2D canvas: same data, simpler
 // interaction. Nodes are coloured by category (ghosts muted), sized by degree;
@@ -24,14 +25,14 @@ export default function GraphView3D({
   data,
   showArrows,
   colorBy,
-  highlightTag,
+  tagFilter,
   islandColors,
   onGhostClick,
 }: {
   data: GraphData
   showArrows: boolean
   colorBy: ColorBy
-  highlightTag: string
+  tagFilter: TagFilter
   islandColors: Map<string, string>
   onGhostClick: (title: string) => void
 }) {
@@ -53,8 +54,8 @@ export default function GraphView3D({
   }, [])
 
   const nodeColor = useCallback(
-    (node: GNode) => (node.ghost ? GHOST_COLOR : nodeFill(node, colorBy, highlightTag, islandColors)),
-    [colorBy, highlightTag, islandColors],
+    (node: GNode) => (node.ghost ? GHOST_COLOR : nodeFill(node, colorBy, tagFilter, islandColors)),
+    [colorBy, tagFilter, islandColors],
   )
   const linkColor = useCallback(
     (link: GLink) => (link.mutual ? 'rgba(150,180,255,0.8)' : 'rgba(160,160,160,0.4)'),

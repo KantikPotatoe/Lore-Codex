@@ -2,6 +2,7 @@ import { radiusFor } from './graphGeometry'
 import { nodeFill, type ColorBy } from './graphColor'
 import { saveFile } from './platform'
 import type { GraphData, GraphNode, GraphLink } from './db'
+import type { TagFilter } from './tagFilter'
 
 // Solid dark background matching the live graph canvas, so the light labels and
 // edges stay readable when the image is pasted onto any surface.
@@ -71,7 +72,7 @@ function endId(end: string | Positioned): string {
  */
 export function buildScene(
   data: GraphData,
-  opts: { colorBy: ColorBy; highlightTag: string; islandColors: Map<string, string> },
+  opts: { colorBy: ColorBy; tagFilter: TagFilter; islandColors: Map<string, string> },
 ): GraphScene | null {
   const positioned = new Map<string, Positioned>()
   const sceneNodes: SceneNode[] = []
@@ -84,7 +85,7 @@ export function buildScene(
       x: n.x,
       y: n.y,
       r: radiusFor(n.degree),
-      fill: ghost ? null : nodeFill(n, opts.colorBy, opts.highlightTag, opts.islandColors),
+      fill: ghost ? null : nodeFill(n, opts.colorBy, opts.tagFilter, opts.islandColors),
       ghost,
       title: n.title,
       labelColor: ghost ? GHOST_COLOR : LABEL_COLOR,
