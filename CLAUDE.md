@@ -136,6 +136,50 @@ FlexSearch `Index` (tokenize `'forward'`, res 5), synced on every `db.pages` cha
 
 Tauri v2 wraps the unchanged web app (WebView2; data still in IndexedDB inside the webview). See `docs/desktop-transition-investigation.md` for the full plan. **`src/platform.ts` is the only place allowed to call `@tauri-apps/*` APIs or trigger an `<a download>`** (lint-enforced via `no-restricted-imports`). The seam: `saveFile(data, name, { defaultDir })` (browser download vs native Save-As pre-filled with `defaultDir`; returns `false` on dialog cancel — `downloadBackup()` only stamps `lastBackupAt` when saved) · `openTextFile()` (file input vs native Open; feeds Settings restore and the selector's import wizard) · `writeAppData(relPath, text)` (shell-only, `false` in browser; pre-import safety copies land in `$APPDATA/backups`) · `printHtml(html)` (hidden-iframe print on both targets; `printBook` uses it — no `window.open`) · `pickDirectory()` (shell-only native folder picker; the path is a **hint that pre-fills the Save dialog, never a write grant** — Tauri only scopes fs writes to paths picked in the *current* session's dialog, so a folder remembered from an earlier session can't be written to) · `onCloseRequested(handler)` (shell-only; intercepts window close, awaits `handler` — wrapped so a failing/hanging handler can never wedge the window shut — then destroys the window; a no-op in the browser). `App.tsx` wires the close handler to `backupOnExit()` (`src/backup.ts`), racing it against a 5s timeout so a hung export can't leave the app unclosable. Because `pickDirectory()`'s result is never a write grant, `backupOnExit()` writes to `$APPDATA/backups` instead of the user's chosen folder, and — unlike a normal backup — deliberately does **not** stamp `LAST_BACKUP_KEY`: an `$APPDATA` copy hasn't left the machine, so silencing the backup-reminder banner would be a lie. The only new permission this needed is `core:window:allow-destroy` (no new fs scope, no new Rust deps). **Migration wizard:** `LoreSelectorRoute`'s "Import World" → `parseBackup` → `importLoreFromBackup(name, json)` (`lores.ts`: registers a world *without* switching, imports via `importBackupInto(target, json)` — the parameterized twin of `importAll` — then the caller `switchLore`s; App-start seeding fills missing built-ins). **No host `alert()`/`confirm()`** — use `ConfirmDialog` (`hideCancel` for notices); wry renders host dialogs unreliably. Shell permissions live in `src-tauri/capabilities/default.json` (dialog save/open + writes to dialog-picked paths + `$APPDATA` writes; keep minimal); CSP is set in `tauri.conf.json` (`img-src data: blob:` is load-bearing). Rust side stays config-only (`lib.rs` registers dialog/fs plugins). `tauri.conf.json` reads `version` from `package.json`; `release.yml` builds the installer on every `v*` tag, and `desktop.yml` runs `cargo check` on `windows-latest` for PRs touching `src-tauri/**` or `package.json` (`build.rs` validates the config, the semver it reads from `package.json`, and the capability ACL — so those regressions fail on the PR, not at release). Fonts are self-hosted via `@fontsource` imports in `main.tsx` (keep `index.html` CDN-free). Web build/tests are unaffected — the shell path is behind feature detection.
 
+### Auto-updater — `src/updater.ts` + `useUpdateCheck.ts` + `UpdateBanner.tsx`
+
+Desktop only. `tauri-plugin-updater` fetches a **minisign-signed** `latest.json`
+from `releases/latest/download/` on the GitHub repo; `release.yml` emits and
+signs it via `includeUpdaterJson: true` plus the `TAURI_SIGNING_PRIVATE_KEY`
+secrets. The pubkey is committed in `tauri.conf.json`; **losing the private key
+permanently strands every installed copy** (`docs/updater-key.md`). Signing
+also requires `bundle.createUpdaterArtifacts: true` in `tauri.conf.json`
+itself — it defaults to `false`, and without it the bundler emits no updater
+artifact and no `.sig` at all, so the release ships with no `latest.json`
+regardless of whether the workflow secrets are set. This is the single least
+discoverable requirement in the whole feature.
+
+`platform.ts` owns the only `@tauri-apps/plugin-updater` import and returns an
+**`UpdateInfo` handle** (`version`/`notes`/`download()`/`install()`) rather than
+free functions — `install()` must act on the same plugin `Update` instance
+`check()` returned, and a module-level "current update" would race. Download and
+install are **separate calls on purpose**: on Windows the NSIS installer
+terminates the running app, so installing must be a second, explicit click.
+
+`updater.ts` is pure (`shouldCheck` 24h throttle — a future timestamp counts as
+due, so a clock rollback can't wedge checking off, and a non-finite
+`lastCheckedAt` counts as due too, since `coerceSettings` accepts `NaN`
+— `typeof NaN === 'number'` — and `NaN` fails every comparison, so an
+unguarded check would silently disable update checking forever; `isDismissed`
+is plain string identity, since the plugin decides what's *newer*).
+`useUpdateCheck` is the one state machine both consumers read. Automatic
+checks fail **silently**; manual "Check now" in Settings surfaces errors and
+bypasses both throttle and dismissal. `lastUpdateCheckAt` is stamped only on a
+**successful** check — a failed one hasn't learned anything, and muting checks
+for 24h over one network blip would be worse than retrying next launch.
+
+`dismiss()` refuses to run once an update has been downloaded (`ready` or
+`installing`): dismissing a downloaded update would both clear the update
+handle and record the version as dismissed, stranding an installer already on
+disk that `install()` would then no-op on and that automatic checks would
+never re-offer. Neither the banner nor the Settings panel renders a dismiss
+control once an update is downloaded.
+
+The check is the app's **only** outbound request, governed by the device-level
+`autoUpdateCheck` pref (`appSettings.ts`, registry DB — structurally incapable
+of travelling in a world backup). Off means Lore Codex touches the network zero
+times, which is what keeps the local-first claim honest.
+
 ### Other
 
 - **Auto-snapshots (`src/snapshots.ts`):** `maybeTakeSnapshot()` snapshots when ≥50 records changed or ≥24h passed with ≥1 change; keeps 10 most recent. Called on start + after each edit session.
