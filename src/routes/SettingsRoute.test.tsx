@@ -14,6 +14,8 @@ vi.mock('../platform', () => ({
   writeAppData: vi.fn(async () => false),
   saveFile: vi.fn(async () => true),
   pickDirectory: vi.fn(async () => null),
+  appVersion: vi.fn(async () => null),
+  checkForUpdate: vi.fn(async () => null), // reached via useUpdateCheck in the Updates section
   isTauri: () => false, // the suite runs as the browser build
 }))
 
