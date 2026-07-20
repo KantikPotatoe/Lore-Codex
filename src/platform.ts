@@ -230,3 +230,86 @@ export async function onCloseRequested(handler: () => Promise<void>): Promise<()
   })
   return unlisten
 }
+
+/**
+ * A pending update, with the shell plumbing already bound to it.
+ *
+ * This is a handle rather than three free functions on purpose: `install()`
+ * must act on the *same* plugin `Update` instance that `check()` returned, and
+ * a module-level variable holding "the current update" would be a race the
+ * moment two checks overlap. The plugin object itself never escapes this
+ * module — only these plain fields and methods do.
+ */
+export interface UpdateInfo {
+  /** The version on offer, e.g. "0.39.0". */
+  version: string
+  /** The version currently running. */
+  currentVersion: string
+  /** Release notes; '' when the release has no body. */
+  notes: string
+  /**
+   * Download the installer, reporting progress as 0-100. `null` means
+   * indeterminate: the server sent no content length, so a percentage would
+   * be a lie and the UI should show a spinner instead of a filled bar.
+   *
+   * Downloading does NOT install — see `install()`.
+   */
+  download(onProgress: (pct: number | null) => void): Promise<void>
+  /**
+   * Run the downloaded installer. **This terminates the running app** on
+   * Windows: NSIS has to replace the executable it would otherwise be
+   * holding open. That is why download and install are separate — the app
+   * must never disappear out from under an author mid-sentence.
+   */
+  install(): Promise<void>
+}
+
+/**
+ * Ask GitHub whether a newer signed release exists.
+ *
+ * Resolves `null` in the browser (always) and in the shell when the running
+ * version is current. Throws if the network is unreachable or the manifest
+ * fails signature verification — callers decide whether that is worth
+ * surfacing (an automatic check swallows it; an explicit one reports it).
+ */
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  if (!isTauri()) return null
+  const { check } = await import('@tauri-apps/plugin-updater')
+  const update = await check()
+  if (!update) return null
+
+  return {
+    version: update.version,
+    currentVersion: update.currentVersion,
+    notes: update.body ?? '',
+    async download(onProgress) {
+      let total = 0
+      let received = 0
+      await update.download((event) => {
+        if (event.event === 'Started') {
+          total = event.data.contentLength ?? 0
+          onProgress(total > 0 ? 0 : null)
+        } else if (event.event === 'Progress') {
+          received += event.data.chunkLength
+          onProgress(total > 0 ? Math.min(100, Math.round((received / total) * 100)) : null)
+        } else if (event.event === 'Finished') {
+          onProgress(100)
+        }
+      })
+    },
+    install() {
+      return update.install()
+    },
+  }
+}
+
+/**
+ * The running shell's version, from the bundle metadata (which
+ * `tauri.conf.json` reads from `package.json`). `null` in the browser, where
+ * there is no installed app to have a version.
+ */
+export async function appVersion(): Promise<string | null> {
+  if (!isTauri()) return null
+  const { getVersion } = await import('@tauri-apps/api/app')
+  return getVersion()
+}
