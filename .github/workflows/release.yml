@@ -3,6 +3,9 @@ name: Release
 # Builds the Windows installer and attaches it to a GitHub Release whenever a
 # version tag lands. Tags are pushed by version-bump.yml using BUMP_PAT — a
 # PAT-pushed tag DOES trigger workflows (a GITHUB_TOKEN-pushed one would not).
+# Updater manifests are signed with TAURI_SIGNING_PRIVATE_KEY; without that
+# secret set, a tagged build FAILS rather than silently shipping an unsigned,
+# unusable manifest (bundle.createUpdaterArtifacts is on).
 # Unsigned on purpose: personal tool; SmartScreen's "More info → Run anyway"
 # on first run is the accepted cost (see docs/desktop-transition-investigation.md §6).
 on:
