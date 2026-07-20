@@ -157,7 +157,7 @@ git commit -m "feat: device prefs for the update check (#225)"
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `CHECK_INTERVAL_MS: number`, `shouldCheck(args: { enabled: boolean; lastCheckedAt: number | null; now: number }): boolean`, `isDismissed(version: string, dismissedVersion: string | null): boolean`.
+- Produces: `CHECK_INTERVAL_MS: number`, `CHECK_DELAY_MS: number`, `shouldCheck(args: { enabled: boolean; lastCheckedAt: number | null; now: number }): boolean`, `isDismissed(version: string, dismissedVersion: string | null): boolean`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -230,6 +230,11 @@ Create `src/updater.ts`:
  *  a morning must cost GitHub one request, not five. "Check now" in Settings
  *  bypasses this deliberately. */
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
+
+/** How long after mount the banner waits before checking, so the request never
+ *  competes with loading a world. Exported so the test drives the same number
+ *  the component does, rather than hard-coding a duplicate. */
+export const CHECK_DELAY_MS = 2000
 
 /** Whether an automatic check is due.
  *
@@ -994,7 +999,8 @@ Create `src/components/UpdateBanner.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
+import { CHECK_DELAY_MS } from '../updater'
 import type { UpdateState } from '../useUpdateCheck'
 
 const check = vi.fn(async () => {})
@@ -1031,9 +1037,31 @@ describe('UpdateBanner', () => {
     expect(check).not.toHaveBeenCalled()
   })
 
-  it('runs an automatic check on mount in the shell', async () => {
-    render(<UpdateBanner />)
-    await waitFor(() => expect(check).toHaveBeenCalledWith(false))
+  it('runs an automatic check on mount in the shell, after a delay', async () => {
+    // Fake timers, because the banner deliberately waits CHECK_DELAY_MS before
+    // checking so it never competes with loading a world — longer than
+    // waitFor's default 1s patience.
+    vi.useFakeTimers()
+    try {
+      render(<UpdateBanner />)
+      expect(check).not.toHaveBeenCalled() // not immediately
+      await act(async () => { vi.advanceTimersByTime(CHECK_DELAY_MS) })
+      expect(check).toHaveBeenCalledWith(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels the pending check if unmounted first', () => {
+    vi.useFakeTimers()
+    try {
+      const { unmount } = render(<UpdateBanner />)
+      unmount()
+      vi.advanceTimersByTime(CHECK_DELAY_MS)
+      expect(check).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('offers the update when one is available', () => {
@@ -1101,6 +1129,7 @@ Create `src/components/UpdateBanner.tsx`:
 ```tsx
 import { useEffect } from 'react'
 import { useUpdateCheck } from '../useUpdateCheck'
+import { CHECK_DELAY_MS } from '../updater'
 import { isTauri } from '../platform'
 
 // A sibling of BackupBanner: same bar, same placement, same dismiss idiom.
@@ -1115,7 +1144,7 @@ export default function UpdateBanner() {
   useEffect(() => {
     if (!desktop) return
     // A beat after mount, so the check never competes with loading a world.
-    const t = setTimeout(() => { void check(false) }, 2000)
+    const t = setTimeout(() => { void check(false) }, CHECK_DELAY_MS)
     return () => clearTimeout(t)
   }, [desktop, check])
 
@@ -1170,7 +1199,7 @@ export default function UpdateBanner() {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/components/UpdateBanner.test.tsx`
-Expected: PASS, 10 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 5: Add the styles**
 
