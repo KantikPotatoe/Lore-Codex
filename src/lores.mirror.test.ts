@@ -66,4 +66,26 @@ describe('deleteLore', () => {
     const json = vi.mocked(writeRegistryMirror).mock.calls.at(-1)![0]
     expect(json).not.toContain('doomed')
   })
+
+  it('trashes the world mirror before re-indexing', async () => {
+    await registry.lores.add({
+      id: 'doomed', name: 'Doomed', banner: null, createdAt: 1, updatedAt: 2,
+    })
+    const order: string[] = []
+    vi.mocked(trashWorldMirror).mockImplementation(async () => {
+      order.push('trash')
+      return true
+    })
+    vi.mocked(writeRegistryMirror).mockImplementation(async () => {
+      order.push('reindex')
+      return true
+    })
+
+    await deleteLore('doomed')
+
+    // If the order were reversed and the process died between the two steps,
+    // registry.json would advertise a world whose file is gone, and recovery
+    // would offer to restore it. Trash must come first.
+    expect(order).toEqual(['trash', 'reindex'])
+  })
 })
