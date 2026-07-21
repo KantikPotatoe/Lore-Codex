@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   saveFile, openTextFile, writeAppData, isTauri, checkForUpdate, appVersion,
-  writeWorldMirror, readWorldMirror,
+  writeWorldMirror, readWorldMirror, writeRegistryMirror, readRegistryMirror, trashWorldMirror,
 } from './platform'
 
 // The platform seam (desktop transition Phase 0): every capability that
@@ -330,6 +330,33 @@ describe('writeWorldMirror', () => {
     await expect(writeWorldMirror('../../evil', '{}')).rejects.toThrow(/unsafe lore id/i)
     expect(writeTextFile).not.toHaveBeenCalled()
   })
+
+  it('awaits the temp write before committing the rename', async () => {
+    // The order-only assertion above ("writes a temp file and renames it
+    // over the target") passes even if the `await` before `rename` is
+    // dropped, because the mocks resolve synchronously in the same tick —
+    // proved by mutation. This test pins the actual suspension: writeTextFile
+    // is gated on a promise we control, so if the implementation doesn't
+    // await it, `rename` fires before we ever release the gate.
+    enterTauri()
+    let releaseWrite = () => {}
+    const writeGate = new Promise<void>((resolve) => { releaseWrite = resolve })
+    vi.mocked(writeTextFile).mockImplementation(async () => { await writeGate })
+    vi.mocked(rename).mockImplementation(async () => {})
+
+    const pending = writeWorldMirror('default', '{"pages":[]}')
+    // A macrotask boundary (not a fixed count of microtask ticks) drains
+    // every microtask queued so far — including the implementation's own
+    // `await import(...)` and `await mkdir(...)` hops before it ever reaches
+    // the write — without releasing the gate. Only a real suspension on
+    // writeGate can still block `rename` at this point.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rename).not.toHaveBeenCalled()
+
+    releaseWrite()
+    await pending
+    expect(rename).toHaveBeenCalledOnce()
+  })
 })
 
 describe('readWorldMirror', () => {
@@ -348,5 +375,71 @@ describe('readWorldMirror', () => {
     enterTauri()
     vi.mocked(readTextFile).mockRejectedValue(new Error('ENOENT'))
     expect(await readWorldMirror('default')).toBeNull()
+  })
+})
+
+describe('registry mirror', () => {
+  it('is a no-op in the browser', async () => {
+    expect(await writeRegistryMirror('[]')).toBe(false)
+    expect(await readRegistryMirror()).toBeNull()
+  })
+
+  it('writes atomically, like a world mirror', async () => {
+    enterTauri()
+    const order: string[] = []
+    vi.mocked(writeTextFile).mockImplementation(async (p) => { order.push(`write:${String(p)}`) })
+    vi.mocked(rename).mockImplementation(async (a, b) => { order.push(`rename:${String(a)}->${String(b)}`) })
+
+    expect(await writeRegistryMirror('[]')).toBe(true)
+    expect(order).toEqual([
+      'write:worlds/registry.json.tmp',
+      'rename:worlds/registry.json.tmp->worlds/registry.json',
+    ])
+  })
+
+  it('awaits the temp write before committing the rename', async () => {
+    // Same mutation-proofing as writeWorldMirror's equivalent test, applied
+    // to the registry's call site of the shared atomicAppDataWrite helper.
+    enterTauri()
+    let releaseWrite = () => {}
+    const writeGate = new Promise<void>((resolve) => { releaseWrite = resolve })
+    vi.mocked(writeTextFile).mockImplementation(async () => { await writeGate })
+    vi.mocked(rename).mockImplementation(async () => {})
+
+    const pending = writeRegistryMirror('[]')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(rename).not.toHaveBeenCalled()
+
+    releaseWrite()
+    await pending
+    expect(rename).toHaveBeenCalledOnce()
+  })
+
+  it('returns null when there is no registry on disk', async () => {
+    enterTauri()
+    vi.mocked(readTextFile).mockRejectedValue(new Error('ENOENT'))
+    expect(await readRegistryMirror()).toBeNull()
+  })
+})
+
+describe('trashWorldMirror', () => {
+  it('is a no-op in the browser', async () => {
+    expect(await trashWorldMirror('default', '2026-07-21_10-00')).toBe(false)
+  })
+
+  it('renames the world file into the trash folder instead of deleting it', async () => {
+    enterTauri()
+    expect(await trashWorldMirror('default', '2026-07-21_10-00')).toBe(true)
+    expect(rename).toHaveBeenCalledWith(
+      'worlds/default.lore',
+      'worlds/trash/default-2026-07-21_10-00.lore',
+      expect.anything(),
+    )
+  })
+
+  it('reports false when there is no mirror to trash', async () => {
+    enterTauri()
+    vi.mocked(rename).mockRejectedValue(new Error('ENOENT'))
+    expect(await trashWorldMirror('default', '2026-07-21_10-00')).toBe(false)
   })
 })

@@ -325,6 +325,23 @@ function assertSafeLoreId(loreId: string): void {
   }
 }
 
+/** Write `json` to `relativePath` under $APPDATA via temp-then-rename. */
+async function atomicAppDataWrite(relativePath: string, json: string): Promise<void> {
+  const { writeTextFile, rename, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  const dir = relativePath.split('/').slice(0, -1).join('/')
+  if (dir) {
+    await mkdir(dir, { baseDir: BaseDirectory.AppData, recursive: true }).catch(() => {
+      // Already exists — fine. A real permission failure surfaces on the write.
+    })
+  }
+  const tmpPath = `${relativePath}.tmp`
+  await writeTextFile(tmpPath, json, { baseDir: BaseDirectory.AppData })
+  await rename(tmpPath, relativePath, {
+    oldPathBaseDir: BaseDirectory.AppData,
+    newPathBaseDir: BaseDirectory.AppData,
+  })
+}
+
 /**
  * Write `json` to `<app-data>/worlds/<loreId>.lore` **atomically**: the bytes
  * land in a `.tmp` sibling first, and a rename commits them. A crash, a full
@@ -338,17 +355,7 @@ function assertSafeLoreId(loreId: string): void {
 export async function writeWorldMirror(loreId: string, json: string): Promise<boolean> {
   assertSafeLoreId(loreId)
   if (!isTauri()) return false
-  const { writeTextFile, rename, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs')
-  await mkdir(WORLDS_DIR, { baseDir: BaseDirectory.AppData, recursive: true }).catch(() => {
-    // Already exists — fine. A real permission failure surfaces on the write.
-  })
-  const finalPath = `${WORLDS_DIR}/${loreId}.lore`
-  const tmpPath = `${finalPath}.tmp`
-  await writeTextFile(tmpPath, json, { baseDir: BaseDirectory.AppData })
-  await rename(tmpPath, finalPath, {
-    oldPathBaseDir: BaseDirectory.AppData,
-    newPathBaseDir: BaseDirectory.AppData,
-  })
+  await atomicAppDataWrite(`${WORLDS_DIR}/${loreId}.lore`, json)
   return true
 }
 
@@ -366,5 +373,55 @@ export async function readWorldMirror(loreId: string): Promise<string | null> {
     return await readTextFile(`${WORLDS_DIR}/${loreId}.lore`, { baseDir: BaseDirectory.AppData })
   } catch {
     return null
+  }
+}
+
+/** Where the mirrored world index lives, relative to $APPDATA. */
+const REGISTRY_MIRROR_PATH = `${WORLDS_DIR}/registry.json`
+
+/**
+ * Mirror the world index. This is what makes recovery possible without
+ * `fs:allow-read-dir`: the app reads one known path to learn which `.lore`
+ * files to expect, instead of enumerating a directory.
+ */
+export async function writeRegistryMirror(json: string): Promise<boolean> {
+  if (!isTauri()) return false
+  await atomicAppDataWrite(REGISTRY_MIRROR_PATH, json)
+  return true
+}
+
+/** Read the mirrored world index; `null` in the browser or when absent. */
+export async function readRegistryMirror(): Promise<string | null> {
+  if (!isTauri()) return null
+  const { readTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  try {
+    return await readTextFile(REGISTRY_MIRROR_PATH, { baseDir: BaseDirectory.AppData })
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Move a deleted world's mirror into `worlds/trash/` rather than unlinking it.
+ * Cheap insurance the browser could never offer: deleting a world in the app
+ * is instant and irreversible, but the last mirror survives on disk.
+ *
+ * `stamp` is supplied by the caller so this stays free of ambient time.
+ * Resolves `false` when there was no mirror to move — a world created and
+ * deleted inside one session never had one.
+ */
+export async function trashWorldMirror(loreId: string, stamp: string): Promise<boolean> {
+  assertSafeLoreId(loreId)
+  if (!isTauri()) return false
+  const { rename, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  await mkdir(`${WORLDS_DIR}/trash`, { baseDir: BaseDirectory.AppData, recursive: true }).catch(() => {})
+  try {
+    await rename(`${WORLDS_DIR}/${loreId}.lore`, `${WORLDS_DIR}/trash/${loreId}-${stamp}.lore`, {
+      oldPathBaseDir: BaseDirectory.AppData,
+      newPathBaseDir: BaseDirectory.AppData,
+    })
+    return true
+  } catch {
+    return false
   }
 }
