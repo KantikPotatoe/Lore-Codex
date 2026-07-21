@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { saveFile, openTextFile, writeAppData, isTauri, checkForUpdate, appVersion } from './platform'
+import {
+  saveFile, openTextFile, writeAppData, isTauri, checkForUpdate, appVersion,
+  writeWorldMirror, readWorldMirror,
+} from './platform'
 
 // The platform seam (desktop transition Phase 0): every capability that
 // differs between the browser and the Tauri shell goes through this module.
@@ -13,13 +16,14 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
   writeTextFile: vi.fn(),
   readTextFile: vi.fn(),
   mkdir: vi.fn(async () => {}),
+  rename: vi.fn(),
   BaseDirectory: { AppData: 13 },
 }))
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: vi.fn() }))
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn() }))
 
 import { save, open } from '@tauri-apps/plugin-dialog'
-import { writeFile, writeTextFile, readTextFile, mkdir } from '@tauri-apps/plugin-fs'
+import { writeFile, writeTextFile, readTextFile, mkdir, rename } from '@tauri-apps/plugin-fs'
 import { check } from '@tauri-apps/plugin-updater'
 import { getVersion } from '@tauri-apps/api/app'
 
@@ -296,5 +300,53 @@ describe('appVersion', () => {
     enterTauri()
     vi.mocked(getVersion).mockResolvedValue('0.38.0')
     expect(await appVersion()).toBe('0.38.0')
+  })
+})
+
+describe('writeWorldMirror', () => {
+  it('is a no-op in the browser', async () => {
+    expect(await writeWorldMirror('default', '{}')).toBe(false)
+    expect(writeTextFile).not.toHaveBeenCalled()
+  })
+
+  it('writes a temp file and renames it over the target', async () => {
+    enterTauri()
+    const order: string[] = []
+    vi.mocked(writeTextFile).mockImplementation(async (p) => { order.push(`write:${String(p)}`) })
+    vi.mocked(rename).mockImplementation(async (a, b) => { order.push(`rename:${String(a)}->${String(b)}`) })
+
+    expect(await writeWorldMirror('default', '{"pages":[]}')).toBe(true)
+
+    // The rename is the commit point: a torn write must never land on the
+    // real file, so the temp write has to come first.
+    expect(order).toEqual([
+      'write:worlds/default.lore.tmp',
+      'rename:worlds/default.lore.tmp->worlds/default.lore',
+    ])
+  })
+
+  it('refuses a lore id that could escape the worlds folder', async () => {
+    enterTauri()
+    await expect(writeWorldMirror('../../evil', '{}')).rejects.toThrow(/unsafe lore id/i)
+    expect(writeTextFile).not.toHaveBeenCalled()
+  })
+})
+
+describe('readWorldMirror', () => {
+  it('is a no-op in the browser', async () => {
+    expect(await readWorldMirror('default')).toBeNull()
+  })
+
+  it('reads the named world file', async () => {
+    enterTauri()
+    vi.mocked(readTextFile).mockResolvedValue('{"pages":[]}')
+    expect(await readWorldMirror('default')).toBe('{"pages":[]}')
+    expect(readTextFile).toHaveBeenCalledWith('worlds/default.lore', expect.anything())
+  })
+
+  it('returns null when the file is absent rather than throwing', async () => {
+    enterTauri()
+    vi.mocked(readTextFile).mockRejectedValue(new Error('ENOENT'))
+    expect(await readWorldMirror('default')).toBeNull()
   })
 })

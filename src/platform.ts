@@ -11,6 +11,8 @@
 // Rule for new code: never call a `@tauri-apps/*` API or trigger an
 // `<a download>` outside this module.
 
+import { isValidLoreId } from './worldMirror'
+
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
@@ -312,4 +314,57 @@ export async function appVersion(): Promise<string | null> {
   if (!isTauri()) return null
   const { getVersion } = await import('@tauri-apps/api/app')
   return getVersion()
+}
+
+/** Where per-world mirrors live, relative to $APPDATA. */
+export const WORLDS_DIR = 'worlds'
+
+function assertSafeLoreId(loreId: string): void {
+  if (!isValidLoreId(loreId)) {
+    throw new Error(`Unsafe lore id for a filename: ${JSON.stringify(loreId)}`)
+  }
+}
+
+/**
+ * Write `json` to `<app-data>/worlds/<loreId>.lore` **atomically**: the bytes
+ * land in a `.tmp` sibling first, and a rename commits them. A crash, a full
+ * disk, or the close-handler timeout firing mid-write can then never leave a
+ * truncated file where a good mirror used to be — the previous mirror survives
+ * intact until the rename succeeds.
+ *
+ * Shell-only: resolves `false` in the browser, which has no filesystem to
+ * mirror to.
+ */
+export async function writeWorldMirror(loreId: string, json: string): Promise<boolean> {
+  assertSafeLoreId(loreId)
+  if (!isTauri()) return false
+  const { writeTextFile, rename, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  await mkdir(WORLDS_DIR, { baseDir: BaseDirectory.AppData, recursive: true }).catch(() => {
+    // Already exists — fine. A real permission failure surfaces on the write.
+  })
+  const finalPath = `${WORLDS_DIR}/${loreId}.lore`
+  const tmpPath = `${finalPath}.tmp`
+  await writeTextFile(tmpPath, json, { baseDir: BaseDirectory.AppData })
+  await rename(tmpPath, finalPath, {
+    oldPathBaseDir: BaseDirectory.AppData,
+    newPathBaseDir: BaseDirectory.AppData,
+  })
+  return true
+}
+
+/**
+ * Read a world's mirror. Resolves `null` in the browser, and `null` rather
+ * than throwing when the file is missing or unreadable — to a recovery flow
+ * "absent" and "corrupt on read" are the same answer: there is nothing here to
+ * offer the user.
+ */
+export async function readWorldMirror(loreId: string): Promise<string | null> {
+  assertSafeLoreId(loreId)
+  if (!isTauri()) return null
+  const { readTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  try {
+    return await readTextFile(`${WORLDS_DIR}/${loreId}.lore`, { baseDir: BaseDirectory.AppData })
+  } catch {
+    return null
+  }
 }
