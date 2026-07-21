@@ -33,7 +33,7 @@ import { installStorageErrorListener } from './storageError'
 import { installTabSyncListener } from './tabSync'
 import { shouldOpenSearch } from './searchShortcut'
 import { useNavDirection } from './navDirection'
-import { onCloseRequested } from './platform'
+import { onCloseRequested, isTauri } from './platform'
 import { getAppSettings } from './appSettings'
 import { startMirrorLoop, flushWorldMirror } from './worldMirrorSync'
 
@@ -100,10 +100,15 @@ export default function App() {
     return teardown
   }, [])
 
-  // Keep the active world's .lore mirror current (#174). Shell-only in effect:
-  // writeWorldMirror is a no-op in the browser, so this costs a cheap indexed
-  // read per poll there and nothing else.
-  useEffect(() => startMirrorLoop(), [])
+  // Keep the active world's .lore mirror current (#174). Shell-only: gated on
+  // isTauri() rather than relying on the seam's no-op, because a mirror attempt
+  // pays a full exportAll() BEFORE reaching the seam, and a browser no-op never
+  // advances lastMirrorAt — so an ungated loop would re-serialize the whole DB,
+  // images included, every 30s for the rest of the session and discard it.
+  useEffect(() => {
+    if (!isTauri()) return
+    return startMirrorLoop()
+  }, [])
 
   // Desktop only: finish a backup before the window closes. Everything is read
   // *inside* the handler, at exit time — a value captured now would be stale by

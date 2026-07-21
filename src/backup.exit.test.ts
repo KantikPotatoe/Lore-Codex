@@ -34,7 +34,7 @@ describe('shouldBackupOnExit', () => {
 vi.mock('./platform', () => ({
   onCloseRequested: vi.fn(async () => () => {}),
   openTextFile: vi.fn(),
-  isTauri: () => false,
+  isTauri: vi.fn(() => false),
 }))
 vi.mock('./worldMirrorSync', () => ({
   flushWorldMirror: vi.fn(async () => {}),
@@ -42,13 +42,18 @@ vi.mock('./worldMirrorSync', () => ({
   withMirroringSuspended: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }))
 
-import { onCloseRequested } from './platform'
-import { flushWorldMirror } from './worldMirrorSync'
+import { onCloseRequested, isTauri } from './platform'
+import { flushWorldMirror, startMirrorLoop } from './worldMirrorSync'
 import App from './App'
 
 describe('App — close handler', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    // isTauri is mocked with a default implementation (`() => false`), which
+    // survives clearAllMocks (that only clears call history, not
+    // mockReturnValue overrides) — but a test that calls mockReturnValue(true)
+    // would otherwise leak into later tests, so pin the default here too.
+    vi.mocked(isTauri).mockReturnValue(false)
     // Default AppSettings has backupOnExit: false — clearing appMeta keeps
     // shouldBackupOnExit's `enabled` false, so this test never exercises the
     // real backupOnExit()/writeAppData path, only the mirror flush.
@@ -70,5 +75,53 @@ describe('App — close handler', () => {
     await handler()
 
     expect(flushWorldMirror).toHaveBeenCalled()
+  })
+
+  it('resolves even when the mirror flush hangs past the 5s close budget', async () => {
+    // Finding 3: pin that flushWorldMirror() runs *inside* withTimeout's race,
+    // not after it — a hung write must never leave the window unclosable.
+    vi.mocked(flushWorldMirror).mockReturnValue(new Promise<void>(() => {})) // never resolves
+
+    render(createElement(MemoryRouter, { initialEntries: ['/'] }, createElement(App)))
+    await screen.findByText('Lore Codex')
+    await waitFor(() => expect(onCloseRequested).toHaveBeenCalled())
+    const handler = vi.mocked(onCloseRequested).mock.calls[0][0]
+
+    vi.useFakeTimers()
+    try {
+      let resolved = false
+      const done = handler().then(() => {
+        resolved = true
+      })
+      await vi.advanceTimersByTimeAsync(5000)
+      await done
+      expect(resolved).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('App — mirror loop startup (#174)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(isTauri).mockReturnValue(false)
+  })
+  afterEach(() => cleanup())
+
+  it('starts the mirror loop in the desktop shell', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+
+    render(createElement(MemoryRouter, { initialEntries: ['/'] }, createElement(App)))
+    await screen.findByText('Lore Codex')
+
+    expect(startMirrorLoop).toHaveBeenCalled()
+  })
+
+  it('does not start the mirror loop in a plain browser', async () => {
+    render(createElement(MemoryRouter, { initialEntries: ['/'] }, createElement(App)))
+    await screen.findByText('Lore Codex')
+
+    expect(startMirrorLoop).not.toHaveBeenCalled()
   })
 })
