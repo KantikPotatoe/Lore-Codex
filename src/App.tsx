@@ -35,6 +35,7 @@ import { shouldOpenSearch } from './searchShortcut'
 import { useNavDirection } from './navDirection'
 import { onCloseRequested } from './platform'
 import { getAppSettings } from './appSettings'
+import { startMirrorLoop, flushWorldMirror } from './worldMirrorSync'
 
 // onCloseRequested awaits its handler before destroying the window (platform.ts),
 // and only catches a *rejected* handler — a backup that hangs (e.g. a stalled
@@ -46,9 +47,12 @@ import { getAppSettings } from './appSettings'
 // writeAppData's writeTextFile is mid-write, leaving a truncated exit-<Day>.json
 // that looks valid by its name. This is deliberately not guarded against — it
 // fails loudly at restore (parseBackup throws on the truncated JSON) rather
-// than corrupting anything silently, and a write-to-temp-then-rename fix would
-// need an fs permission (temp-file write/rename outside the final path) this
-// branch refuses to add for a backup that's already a secondary safety net.
+// than corrupting anything silently.
+// The mirror written alongside it (#174) is immune to this: writeWorldMirror
+// commits by rename, so a timeout mid-write leaves the previous mirror whole.
+// backupOnExit's own write is still direct and still truncatable — moving it
+// to the same atomic idiom is a small follow-up now that fs:allow-rename is
+// granted, but it stays out of this change.
 function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
   return Promise.race([promise, new Promise<void>((resolve) => setTimeout(resolve, ms))])
 }
@@ -96,6 +100,11 @@ export default function App() {
     return teardown
   }, [])
 
+  // Keep the active world's .lore mirror current (#174). Shell-only in effect:
+  // writeWorldMirror is a no-op in the browser, so this costs a cheap indexed
+  // read per poll there and nothing else.
+  useEffect(() => startMirrorLoop(), [])
+
   // Desktop only: finish a backup before the window closes. Everything is read
   // *inside* the handler, at exit time — a value captured now would be stale by
   // the time the user actually quits.
@@ -110,6 +119,12 @@ export default function App() {
           if (shouldBackupOnExit(enabled, lastBackup, await latestChangeTime())) {
             await backupOnExit()
           }
+          // Inside the same race on purpose: the mirror is worth up to the
+          // remaining budget, but an app you cannot quit is never acceptable.
+          // A truncated mirror is impossible regardless — writeWorldMirror
+          // commits by rename, so a timeout mid-write leaves the previous
+          // mirror intact.
+          await flushWorldMirror()
         })(),
         5000,
       )

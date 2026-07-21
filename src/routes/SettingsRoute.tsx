@@ -26,6 +26,7 @@ import { deleteLore, currentLoreId } from '../lores'
 import { openTextFile, isTauri, pickDirectory, appVersion } from '../platform'
 import { useSharedUpdateCheck } from '../UpdateCheckContext'
 import { getAppSettings, updateAppSettings, DEFAULT_APP_SETTINGS, SPELLCHECK_LANGS, type AppSettings } from '../appSettings'
+import { withMirroringSuspended } from '../worldMirrorSync'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function SettingsRoute() {
@@ -128,7 +129,10 @@ export default function SettingsRoute() {
         await restoreSnapshot(json)
         setNotice({ title: 'Snapshot restored', body: 'Your text was rolled back to this snapshot. Images and maps were kept as they are now.' })
       } else {
-        await importAll(json)
+        // Suspend the mirror poll across the clear-then-repopulate window: a
+        // write landing mid-import would export a stale/incomplete active
+        // world and rename it over a perfectly good mirror (#174).
+        await withMirroringSuspended(() => importAll(json))
         setNotice({ title: 'Backup restored', body: 'Your codex was replaced with the backup contents.' })
       }
     } catch (err) {
