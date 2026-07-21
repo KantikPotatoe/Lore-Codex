@@ -21,6 +21,11 @@ describe('parseDiskRegistry', () => {
     expect(parseDiskRegistry('not json')).toEqual([])
     expect(parseDiskRegistry('{"not":"an array"}')).toEqual([])
     expect(parseDiskRegistry('[]')).toEqual([])
+    // Array elements can themselves be anything JSON allows — null, nested
+    // arrays, bare numbers — and none of them is an object with a usable id.
+    expect(parseDiskRegistry('[null]')).toEqual([])
+    expect(parseDiskRegistry('[[1,2]]')).toEqual([])
+    expect(parseDiskRegistry('[42]')).toEqual([])
   })
 
   it('drops entries that could not name a file safely', () => {

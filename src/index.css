@@ -2119,6 +2119,37 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   padding: 10px 26px;
 }
 
+/* Worlds found on disk but missing from the library (#174). Uses the gold
+   accent rather than --danger: this is a recoverable situation, not an error.
+   Lengths in px per #216 (px = round(rem × 16); index.css is px-only). */
+.recovery-panel {
+  margin: 0 auto 32px;
+  max-width: 768px;
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.recovery-panel h2 {
+  font-family: var(--display);
+  font-size: 16px;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+.recovery-panel p { margin: 0 0 12px; color: var(--ink-dim); font-size: 14px; }
+.recovery-panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.recovery-panel li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  border-radius: var(--radius);
+}
+.recovery-name { font-weight: 600; color: var(--ink); }
+.recovery-meta { color: var(--ink-faint); font-size: 14px; margin-right: auto; }
+
 /* --- Timeline ------------------------------------------------------------- */
 .timeline-page { display: flex; flex-direction: column; height: 100%; }
 .timeline-toolbar {

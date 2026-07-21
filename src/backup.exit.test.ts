@@ -35,6 +35,11 @@ vi.mock('./platform', () => ({
   onCloseRequested: vi.fn(async () => () => {}),
   openTextFile: vi.fn(),
   isTauri: vi.fn(() => false),
+  // LoreSelectorRoute (#174 recovery panel) reads these on mount; App renders
+  // it at "/" in every test in this file, so they need a default no-op here
+  // too, not just in LoreSelectorRoute.test.tsx's own mock.
+  readRegistryMirror: vi.fn(async () => null),
+  readWorldMirror: vi.fn(async () => null),
 }))
 vi.mock('./worldMirrorSync', () => ({
   flushWorldMirror: vi.fn(async () => {}),
