@@ -126,7 +126,12 @@ export default function SettingsRoute() {
     try {
       await downloadPreImportBackup()
       if (kind === 'snapshot') {
-        await restoreSnapshot(json)
+        // Suspend the mirror poll across the clear-then-repopulate window: a
+        // write landing mid-restore would export a stale/incomplete active
+        // world and rename it over a perfectly good mirror (#174).
+        // restoreSnapshot carries the identical clear-and-repopulate shape as
+        // importAll below, for the same reason.
+        await withMirroringSuspended(() => restoreSnapshot(json))
         setNotice({ title: 'Snapshot restored', body: 'Your text was rolled back to this snapshot. Images and maps were kept as they are now.' })
       } else {
         // Suspend the mirror poll across the clear-then-repopulate window: a

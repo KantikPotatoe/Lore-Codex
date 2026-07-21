@@ -211,10 +211,24 @@ between those two would capture a half-empty world and rename it over a
 perfectly good mirror — turning the durability feature into a data-loss
 mechanism at the exact moment the user is restoring.
 
-Mirroring is therefore **suppressed for the duration of any import**, via an
-explicit guard in `worldMirror.ts` that `importAll`/`importBackupInto` raise and
-lower. This gets a dedicated test: a mirror write attempted mid-import must be
-dropped, not queued and flushed afterwards against the intermediate state.
+`restoreSnapshot()` (Settings' snapshot-restore branch) carries the identical
+clear-and-repopulate shape — `restoreSnapshotInto()` clears ten of the active
+DB's tables and bulk-adds into them — and is wrapped for the same reason. A
+mirror write landing mid-restore is exactly as destructive as one landing
+mid-import; the two call sites are treated symmetrically rather than only
+naming `importAll`.
+
+Mirroring is therefore **suppressed for the duration of any import or
+snapshot restore**, via an explicit guard in `worldMirror.ts` that
+`importAll`/`importBackupInto` and `restoreSnapshot` raise and lower. This
+gets a dedicated test: a mirror write attempted mid-import (or mid-restore)
+must be dropped, not queued and flushed afterwards against the intermediate
+state.
+
+The lore selector's `importLoreFromBackup` needs no such guard: it imports via
+`importBackupInto(target, json)` into a *newly registered, not-yet-active*
+world's DB, never the active one, so it cannot produce a half-exported active
+world for a mirror write to capture.
 
 ## Active world only
 
