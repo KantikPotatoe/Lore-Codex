@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import LoreSelectorRoute from './LoreSelectorRoute'
 import { openTextFile, readRegistryMirror, readWorldMirror } from '../platform'
@@ -267,10 +267,27 @@ describe('LoreSelectorRoute — recovery panel', () => {
   // never write anything without a click, and must not render at all when
   // there's nothing to recover — the normal case for every healthy install.
 
+  // `toHaveBeenCalled()` is true the instant the effect fires the read on
+  // mount — synchronously, in the same act() flush as render(). It says
+  // nothing about whether the read has *resolved* or whether React has
+  // applied the setDiskWorlds() update that follows it, so a negative
+  // assertion right after it races a pending state update and passes
+  // vacuously either way. Instead, await the exact promise the effect
+  // itself is chained off of (the mock's own return value for that call),
+  // wrapped in act() so React flushes the resulting render before we go on
+  // to assert its absence.
+  async function settleDiskRead() {
+    await waitFor(() => expect(readRegistryMirror).toHaveBeenCalled())
+    const pending = vi.mocked(readRegistryMirror).mock.results[0]?.value
+    await act(async () => {
+      await pending
+    })
+  }
+
   it('stays hidden when there is nothing on disk to recover', async () => {
     vi.mocked(readRegistryMirror).mockResolvedValue(null)
     render(<LoreSelectorRoute />)
-    await waitFor(() => expect(readRegistryMirror).toHaveBeenCalled())
+    await settleDiskRead()
     expect(screen.queryByText(/found on disk/i)).toBeNull()
   })
 
@@ -307,7 +324,7 @@ describe('LoreSelectorRoute — recovery panel', () => {
       JSON.stringify([{ id: 'default', name: 'Aethel' }]),
     )
     render(<LoreSelectorRoute />)
-    await waitFor(() => expect(readRegistryMirror).toHaveBeenCalled())
+    await settleDiskRead()
     expect(screen.queryByText(/found on disk/i)).toBeNull()
   })
 })
