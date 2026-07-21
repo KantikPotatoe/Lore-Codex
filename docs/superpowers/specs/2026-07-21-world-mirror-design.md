@@ -119,32 +119,51 @@ Permission delta to confirm during implementation: `fs:allow-rename` plus
 `$APPDATA` read, added to `src-tauri/capabilities/default.json`. No
 `fs:allow-read-dir`, no `fs:allow-remove`, no new Rust dependencies.
 
+Granting `fs:allow-rename` incidentally settles a known issue recorded in
+`App.tsx`'s close-handler comment: `backupOnExit()` can currently be truncated
+by the 5s timeout racing `win.destroy()`, and the comment explains that the
+temp-then-rename fix was refused because it needed exactly this permission for
+a secondary safety net. Once the permission exists for the mirror, moving
+`writeAppData` to the same atomic idiom becomes a small follow-up — noted here,
+not done in this issue.
+
 ### `src/worldMirror.ts` — cadence (new)
 
 The policy is a **pure function**, in the shape `updater.ts`'s `shouldCheck`
 and `backup.ts`'s `shouldBackupOnExit` already established:
 
 ```ts
-shouldMirror({ dirty, lastWriteAt, lastChangeAt, now, quietMs, floorMs }): boolean
+shouldMirror({ lastChangeAt, lastMirrorAt, now, quietMs, floorMs }): boolean
 ```
 
-True when the world is dirty, the last change is at least `quietMs` old (an
-idle window, so writes land between editing bursts rather than during them),
-and at least `floorMs` has passed since the last write (so a long editing
-session cannot rewrite tens of megabytes every half minute). Defaults: ~30s
-quiet, ~5min floor — tunable constants, not settings; there is no user-facing
-knob for this.
+True when there is a change newer than the last mirror, the last change is at
+least `quietMs` old (an idle window, so writes land between editing bursts
+rather than during them), and at least `floorMs` has passed since the last
+write (so a long editing session cannot rewrite tens of megabytes every half
+minute). Defaults: ~30s quiet, ~5min floor — tunable constants, not settings;
+there is no user-facing knob for this.
 
 Guard the same non-finite/clock-rollback cases `shouldCheck` learned to guard:
-a `NaN` or future `lastWriteAt` must count as due, never as "wait forever".
+a `NaN` or future timestamp must count as due, never as "wait forever".
 
-The impure wrapper mirrors `maybeTakeSnapshot()`'s proven structure — an
-in-flight promise that coalesces overlapping calls, since the App start effect
-double-invokes under StrictMode in dev. `markDirty()` is called from the same
-post-edit-session hook that already calls `maybeTakeSnapshot()`; a flush is
-wired into the existing `onCloseRequested` handler alongside `backupOnExit()`,
-inside the same 5s timeout race so a slow mirror write cannot wedge the window
-shut.
+**There is no dirty flag.** `lastChangeAt` comes from `latestChangeTime()`
+(`backup.ts`), which already reads a boundary row per table through its sort
+index — six cheap reads covering pages, maps, events, calendars, images and
+scenes. A single interval in the shell re-evaluates the policy; that catches
+map-only, timeline-only and manuscript-only sessions, which a flag hung off
+`maybeTakeSnapshot()`'s call sites would silently miss (it fires only on page
+saves, from `PageRoute`). The absence of per-call-site instrumentation is the
+point: no future edit path can forget to mark the world dirty.
+
+`lastMirrorAt` is module state, not persisted. A fresh launch therefore mirrors
+once shortly after start if anything changed since the file was written — which
+is the desired behaviour, not a cost worth engineering away.
+
+The impure wrapper keeps `maybeTakeSnapshot()`'s in-flight promise that
+coalesces overlapping calls. A flush is wired into the existing
+`onCloseRequested` handler alongside `backupOnExit()`, inside the same 5s
+timeout race so a slow mirror write cannot wedge the window shut; the flush
+ignores the quiet and floor windows, since there is no later opportunity.
 
 Every world write also refreshes `registry.json`, so the two never disagree
 about which worlds exist.
@@ -212,7 +231,7 @@ behind.
 
 | Area | Test |
 |---|---|
-| `shouldMirror` | Table of `{dirty, ages}` → expected, including `NaN`/future `lastWriteAt` |
+| `shouldMirror` | Table of `{lastChangeAt, lastMirrorAt, now}` → expected, including `NaN`/future timestamps |
 | `plannedRecovery` | Disk/registry set differences; trashed worlds never offered |
 | Seam | Mocked `@tauri-apps/plugin-fs`: asserts `.tmp` write *precedes* rename; browser returns `false` |
 | `loreId` validation | Traversal-shaped and empty ids rejected before reaching the fs |
