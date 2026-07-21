@@ -25,7 +25,15 @@ describe('shouldMirror', () => {
   })
 
   it('waits until the interval floor has passed since the last write', () => {
-    expect(shouldMirror({ ...base, lastMirrorAt: NOW - 1000 })).toBe(false)
+    // Deliberately not spread from `base`: the change must be NEWER than the
+    // last mirror (or the "already mirrored" branch short-circuits) and settled
+    // (or the quiet window does), leaving the floor as the only thing that can
+    // block the write.
+    expect(shouldMirror({
+      now: NOW,
+      lastMirrorAt: NOW - 60_000,
+      lastChangeAt: NOW - 40_000,
+    })).toBe(false)
   })
 
   it('writes on the very first evaluation of a session', () => {
@@ -40,7 +48,9 @@ describe('shouldMirror', () => {
   // Mirrors the guards updater.ts's shouldCheck learned: a corrupt or
   // rolled-back clock must fail toward writing, never toward silence.
   it('treats non-finite timestamps as due', () => {
-    expect(shouldMirror({ ...base, lastChangeAt: NaN })).toBe(true)
+    // lastMirrorAt is inside the floor window here, so without the finite guard
+    // this would return false — the assertion can only pass because of it.
+    expect(shouldMirror({ ...base, lastChangeAt: NaN, lastMirrorAt: NOW - 1000 })).toBe(true)
     expect(shouldMirror({ ...base, lastMirrorAt: NaN })).toBe(true)
   })
 
@@ -61,7 +71,7 @@ describe('isValidLoreId', () => {
   })
 
   it('rejects anything that could escape the worlds folder', () => {
-    for (const bad of ['', '.', '..', '../etc', 'a/b', 'a\\b', 'a.lore', 'a b', 'a b']) {
+    for (const bad of ['', '.', '..', '../etc', 'a/b', 'a\\b', 'a.lore', 'a b']) {
       expect(isValidLoreId(bad)).toBe(false)
     }
   })
