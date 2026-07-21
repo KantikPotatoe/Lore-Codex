@@ -2,6 +2,8 @@ import Dexie from 'dexie'
 import { CURRENT_LORE_KEY, currentLoreId, dbNameFor } from './loreId'
 import { broadcastWorldChange } from './tabSync'
 import { registry, type Lore } from './registryDb'
+import { writeRegistryMirror, trashWorldMirror } from './platform'
+import pkg from '../package.json'
 
 // The registry DB now lives in registryDb.ts so `appSettings.ts` can reach it
 // without importing this module (whose world-CRUD is mocked wholesale in
@@ -49,6 +51,7 @@ export async function registerLore(name: string): Promise<string> {
     createdAt: now,
     updatedAt: now,
   })
+  await syncRegistryMirror()
   return id
 }
 
@@ -84,10 +87,12 @@ export async function importLoreFromBackup(name: string, json: string): Promise<
 
 export async function renameLore(id: string, name: string): Promise<void> {
   await registry.lores.update(id, { name: name.trim() || 'Untitled World', updatedAt: Date.now() })
+  await syncRegistryMirror()
 }
 
 export async function setLoreBanner(id: string, banner: string | null): Promise<void> {
   await registry.lores.update(id, { banner, updatedAt: Date.now() })
+  await syncRegistryMirror()
 }
 
 export async function deleteLore(id: string): Promise<void> {
@@ -95,6 +100,11 @@ export async function deleteLore(id: string): Promise<void> {
   const isActive = id === currentLoreId()
   await Dexie.delete(dbNameFor(id))
   await registry.lores.delete(id)
+  // Trash the world's mirror file FIRST, then re-index. If the order were
+  // reversed and the process died between the two steps, registry.json would
+  // advertise a world whose file is gone.
+  await trashWorldMirror(id, mirrorStamp())
+  await syncRegistryMirror()
   if (isActive) {
     localStorage.removeItem(CURRENT_LORE_KEY)
     // Reload to re-initialize the db singleton; land on the lore selector.
@@ -140,4 +150,42 @@ async function doBootstrapDefaultLore(): Promise<void> {
   const now = Date.now()
   await registry.lores.add({ id: 'default', name, banner: null, createdAt: now, updatedAt: now })
   localStorage.setItem(BOOTSTRAPPED_KEY, '1')
+}
+
+/**
+ * Refresh `<app-data>/worlds/registry.json` — the index that lets recovery
+ * find world files with a single read of a known path instead of a directory
+ * listing (which would need an fs permission this app does not grant).
+ *
+ * Banners are deliberately omitted: the index is read on every launch, and a
+ * data-URL banner per world would be megabytes of startup cost for nothing a
+ * recovery decision needs. `mirroredAt`/`appVersion` are shown in the restore
+ * panel so the user can see how fresh each recoverable world is.
+ *
+ * Best-effort: a failure here must never break world CRUD, which is the
+ * user's actual action.
+ */
+export async function syncRegistryMirror(): Promise<void> {
+  try {
+    const lores = await listLores()
+    const now = Date.now()
+    const index = lores.map((l) => ({
+      id: l.id,
+      name: l.name,
+      createdAt: l.createdAt,
+      updatedAt: l.updatedAt,
+      mirroredAt: now,
+      appVersion: pkg.version,
+    }))
+    await writeRegistryMirror(JSON.stringify(index))
+  } catch {
+    // A world that cannot be indexed is still a world the user just made.
+  }
+}
+
+/** A filename-safe timestamp for trashed mirrors, e.g. 2026-07-21_14-32. */
+function mirrorStamp(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}`
 }
