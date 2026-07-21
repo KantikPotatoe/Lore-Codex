@@ -88,6 +88,7 @@ export default defineConfig([
       'src/snapshots.ts',
       'src/htmlExport.ts',
       'src/manuscriptExport.ts',
+      'src/worldMirrorSync.ts',
     ],
     rules: {
       'no-restricted-imports': ['error', { patterns: [TAURI_BAN] }],
