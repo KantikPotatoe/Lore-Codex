@@ -19,6 +19,7 @@
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@tiptap/extension-image": "^3.26.1",
     "@tiptap/extension-table": "^3.26.1",
     "@tiptap/pm": "^3.26.1",

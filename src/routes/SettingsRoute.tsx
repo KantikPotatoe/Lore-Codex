@@ -23,7 +23,8 @@ import {
 import { exportAsHtml } from '../htmlExport'
 import { getSettings, updateSettings, DEFAULT_SETTINGS, type LoreSettings } from '../settings'
 import { deleteLore, currentLoreId } from '../lores'
-import { openTextFile, isTauri, pickDirectory } from '../platform'
+import { openTextFile, isTauri, pickDirectory, appVersion } from '../platform'
+import { useSharedUpdateCheck } from '../UpdateCheckContext'
 import { getAppSettings, updateAppSettings, DEFAULT_APP_SETTINGS, SPELLCHECK_LANGS, type AppSettings } from '../appSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
 
@@ -79,6 +80,10 @@ export default function SettingsRoute() {
   function setApp(patch: Partial<AppSettings>) {
     updateAppSettings(patch) // useLiveQuery re-reads; no local mirror to drift
   }
+
+  const { state: updateState, check: runUpdateCheck, download: downloadUpdate, install: installUpdate } = useSharedUpdateCheck()
+  const [version, setVersion] = useState<string | null>(null)
+  useEffect(() => { appVersion().then(setVersion) }, [])
 
   useEffect(() => {
     isStoragePersisted().then(setPersisted)
@@ -367,6 +372,67 @@ export default function SettingsRoute() {
                 is copied to the cloud automatically.
               </li>
             </ol>
+          </div>
+        )}
+      </section>
+
+      <section className="settings-section">
+        <h2>Updates</h2>
+
+        <div className="settings-field">
+          <span className="settings-label">Version</span>
+          <span>{version ?? '—'}</span>
+          <span className="settings-hint">
+            {desktop
+              ? 'The installed desktop version.'
+              : 'Running in a browser — updates arrive when the page reloads.'}
+          </span>
+        </div>
+
+        <label className={`settings-field${desktop ? '' : ' is-disabled'}`}>
+          <span className="settings-label">Check for updates automatically</span>
+          <input
+            type="checkbox"
+            disabled={!desktop}
+            checked={a.autoUpdateCheck}
+            onChange={(e) => setApp({ autoUpdateCheck: e.target.checked })}
+          />
+          <span className="settings-hint">
+            {desktop
+              ? 'Asks GitHub once a day whether a newer release exists. This is the only time Lore Codex reaches the network on its own — turn it off and it never does. “Check now” below still works when you ask for it.'
+              : 'Desktop app only.'}
+          </span>
+        </label>
+
+        <div className={`settings-field${desktop ? '' : ' is-disabled'}`}>
+          <span className="settings-label">Check now</span>
+          <button
+            className="mini-btn"
+            disabled={!desktop || updateState.status === 'checking' || updateState.status === 'downloading'}
+            onClick={() => void runUpdateCheck(true)}
+          >
+            {updateState.status === 'checking' ? 'Checking…' : 'Check now'}
+          </button>
+          <span className="settings-hint">
+            {updateState.status === 'none' && 'You’re on the latest version.'}
+            {updateState.status === 'available' && `Version ${updateState.version} is available.`}
+            {updateState.status === 'downloading' &&
+              (updateState.pct === null ? 'Downloading…' : `Downloading… ${updateState.pct}%`)}
+            {updateState.status === 'ready' && `${updateState.version} is ready — restarting will close the app.`}
+            {updateState.status === 'error' && `Couldn’t check: ${updateState.message}`}
+            {(updateState.status === 'idle' || updateState.status === 'checking' || updateState.status === 'installing') &&
+              (desktop ? 'Ignores the once-a-day limit.' : 'Desktop app only.')}
+          </span>
+        </div>
+
+        {updateState.status === 'available' && (
+          <div className="settings-cta">
+            <button className="ghost-btn" onClick={() => void downloadUpdate()}>Download {updateState.version}</button>
+          </div>
+        )}
+        {updateState.status === 'ready' && (
+          <div className="settings-cta">
+            <button className="ghost-btn" onClick={() => void installUpdate()}>Restart to install</button>
           </div>
         )}
       </section>

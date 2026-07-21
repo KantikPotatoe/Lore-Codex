@@ -3,6 +3,8 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom'
 import { db } from '../db'
 import SettingsRoute from './SettingsRoute'
+// Mirrors App.tsx: the route is always mounted inside the shared update provider.
+import { UpdateCheckProvider } from '../UpdateCheckContext'
 import { openTextFile } from '../platform'
 import { registry } from '../registryDb'
 import { getAppSettings } from '../appSettings'
@@ -14,6 +16,8 @@ vi.mock('../platform', () => ({
   writeAppData: vi.fn(async () => false),
   saveFile: vi.fn(async () => true),
   pickDirectory: vi.fn(async () => null),
+  appVersion: vi.fn(async () => null),
+  checkForUpdate: vi.fn(async () => null), // reached via useUpdateCheck in the Updates section
   isTauri: () => false, // the suite runs as the browser build
 }))
 
@@ -29,7 +33,7 @@ describe('SettingsRoute', () => {
   })
 
   it('renders the sections and the snapshot policy control', async () => {
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
     expect(await screen.findByText('Auto-snapshots')).toBeTruthy()
     // Settings rework (#173): the old "Linking" section was absorbed into "Editor".
     expect(screen.getByText('Editor')).toBeTruthy()
@@ -40,7 +44,7 @@ describe('SettingsRoute', () => {
   })
 
   it('shows the autolink toggle checked by default', async () => {
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
     const toggle = await screen.findByLabelText(/auto-link page titles/i)
     expect((toggle as HTMLInputElement).checked).toBe(true)
   })
@@ -48,7 +52,7 @@ describe('SettingsRoute', () => {
   it('ignores a cleared (NaN) numeric input instead of persisting NaN', async () => {
     // Clearing a number input yields NaN from valueAsNumber; a NaN threshold breaks
     // snapshot logic (changed < NaN is always false), so it must be dropped.
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
     const input = (await screen.findByLabelText(/Snapshot after this many changes/)) as HTMLInputElement
     fireEvent.change(input, { target: { value: '7' } })
     expect(input.value).toBe('7')
@@ -62,7 +66,7 @@ describe('SettingsRoute', () => {
       name: 'lore-backup.json',
       text: JSON.stringify({ pages: [] }),
     })
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
     fireEvent.click(await screen.findByText(/Restore from backup/))
     // The destructive-replace confirmation appears, driven by parseBackup counts.
     expect(await screen.findByText('Replace your codex?')).toBeTruthy()
@@ -70,7 +74,7 @@ describe('SettingsRoute', () => {
 
   it('does nothing when the file picker is dismissed', async () => {
     vi.mocked(openTextFile).mockResolvedValue(null)
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
     fireEvent.click(await screen.findByText(/Restore from backup/))
     await waitFor(() => expect(openTextFile).toHaveBeenCalled())
     expect(screen.queryByText('Replace your codex?')).toBeNull()
@@ -78,14 +82,14 @@ describe('SettingsRoute', () => {
 
   it('shows an in-app notice (not a host alert) for an unreadable file', async () => {
     vi.mocked(openTextFile).mockResolvedValue({ name: 'junk.json', text: 'not json' })
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
     fireEvent.click(await screen.findByText(/Restore from backup/))
     expect(await screen.findByText('Could not read backup')).toBeTruthy()
     expect(screen.queryByText('Replace your codex?')).toBeNull()
   })
 
   it('presents the browser backup advice as three scannable steps, not a prose block', async () => {
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
 
     const steps = await screen.findByRole('list', { name: 'Backup steps' })
     expect(within(steps).getAllByRole('listitem')).toHaveLength(3)
@@ -101,7 +105,7 @@ describe('SettingsRoute app-level options', () => {
   beforeEach(async () => { await registry.appMeta.clear() })
 
   it('toggles "open the last world on launch"', async () => {
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
     const box = await screen.findByLabelText(/open the last world/i)
     expect((box as HTMLInputElement).checked).toBe(false) // today's behaviour
     fireEvent.click(box)
@@ -111,7 +115,7 @@ describe('SettingsRoute app-level options', () => {
   })
 
   it('picks a spellcheck language', async () => {
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
     const select = await screen.findByLabelText(/spellcheck language/i)
     fireEvent.change(select, { target: { value: 'fr' } })
     await waitFor(async () => {
@@ -120,7 +124,7 @@ describe('SettingsRoute app-level options', () => {
   })
 
   it('disables the desktop-only options in the browser', async () => {
-    render(<MemoryRouter><SettingsRoute /></MemoryRouter>)
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
     const exit = await screen.findByLabelText(/back up when I close/i)
     expect((exit as HTMLInputElement).disabled).toBe(true)
     expect(screen.getAllByText(/desktop app only/i).length).toBeGreaterThan(0)

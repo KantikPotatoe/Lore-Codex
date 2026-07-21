@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { saveFile, openTextFile, writeAppData, isTauri } from './platform'
+import { saveFile, openTextFile, writeAppData, isTauri, checkForUpdate, appVersion } from './platform'
 
 // The platform seam (desktop transition Phase 0): every capability that
 // differs between the browser and the Tauri shell goes through this module.
@@ -15,9 +15,13 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
   mkdir: vi.fn(async () => {}),
   BaseDirectory: { AppData: 13 },
 }))
+vi.mock('@tauri-apps/plugin-updater', () => ({ check: vi.fn() }))
+vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn() }))
 
 import { save, open } from '@tauri-apps/plugin-dialog'
 import { writeFile, writeTextFile, readTextFile, mkdir } from '@tauri-apps/plugin-fs'
+import { check } from '@tauri-apps/plugin-updater'
+import { getVersion } from '@tauri-apps/api/app'
 
 // happy-dom has no URL.createObjectURL — stub the pair the browser path uses.
 const createObjectURL = vi.fn(() => 'blob:fake')
@@ -175,5 +179,122 @@ describe('writeAppData', () => {
       '{"pages":[]}',
       expect.objectContaining({ baseDir: 13 }),
     )
+  })
+})
+
+describe('checkForUpdate', () => {
+  it('resolves null in a plain browser without touching the plugin', async () => {
+    expect(await checkForUpdate()).toBe(null)
+    expect(check).not.toHaveBeenCalled()
+  })
+
+  it('resolves null in the shell when no update is available', async () => {
+    enterTauri()
+    vi.mocked(check).mockResolvedValue(null)
+    expect(await checkForUpdate()).toBe(null)
+  })
+
+  it('maps the plugin update onto the seam shape', async () => {
+    enterTauri()
+    vi.mocked(check).mockResolvedValue({
+      version: '0.39.0',
+      currentVersion: '0.38.0',
+      body: 'Notes here',
+      download: vi.fn(),
+      install: vi.fn(),
+    } as never)
+
+    const update = await checkForUpdate()
+    expect(update?.version).toBe('0.39.0')
+    expect(update?.currentVersion).toBe('0.38.0')
+    expect(update?.notes).toBe('Notes here')
+  })
+
+  it('exposes only the seam shape — the plugin object never escapes', async () => {
+    // Containment is this function's whole reason for returning a handle
+    // rather than the plugin's Update. TypeScript enforces it today; this
+    // makes a future `as`-cast breach fail loudly instead of silently.
+    enterTauri()
+    vi.mocked(check).mockResolvedValue({
+      version: '0.39.0', currentVersion: '0.38.0', body: '', download: vi.fn(), install: vi.fn(),
+      // Fields a real plugin Update carries that must NOT be re-exported:
+      rid: 7, date: '2026-01-01', downloadAndInstall: vi.fn(), close: vi.fn(),
+    } as never)
+    const update = await checkForUpdate()
+    expect(Object.keys(update!).sort()).toEqual(
+      ['currentVersion', 'download', 'install', 'notes', 'version'],
+    )
+  })
+
+  it('tolerates a missing release body', async () => {
+    enterTauri()
+    vi.mocked(check).mockResolvedValue({
+      version: '0.39.0',
+      currentVersion: '0.38.0',
+      body: undefined,
+      download: vi.fn(),
+      install: vi.fn(),
+    } as never)
+
+    expect((await checkForUpdate())?.notes).toBe('')
+  })
+
+  it('reports download progress as a 0-100 percentage', async () => {
+    enterTauri()
+    const download = vi.fn(async (onEvent: (e: unknown) => void) => {
+      onEvent({ event: 'Started', data: { contentLength: 200 } })
+      onEvent({ event: 'Progress', data: { chunkLength: 50 } })
+      onEvent({ event: 'Progress', data: { chunkLength: 50 } })
+      onEvent({ event: 'Finished' })
+    })
+    vi.mocked(check).mockResolvedValue({
+      version: '0.39.0', currentVersion: '0.38.0', body: '', download, install: vi.fn(),
+    } as never)
+
+    const seen: (number | null)[] = []
+    const update = await checkForUpdate()
+    await update?.download((pct) => seen.push(pct))
+    expect(seen).toEqual([0, 25, 50, 100])
+  })
+
+  it('reports indeterminate progress when the server sends no length', async () => {
+    enterTauri()
+    const download = vi.fn(async (onEvent: (e: unknown) => void) => {
+      onEvent({ event: 'Started', data: {} })
+      onEvent({ event: 'Progress', data: { chunkLength: 50 } })
+      onEvent({ event: 'Finished' })
+    })
+    vi.mocked(check).mockResolvedValue({
+      version: '0.39.0', currentVersion: '0.38.0', body: '', download, install: vi.fn(),
+    } as never)
+
+    const seen: (number | null)[] = []
+    const update = await checkForUpdate()
+    await update?.download((pct) => seen.push(pct))
+    expect(seen).toEqual([null, null, 100])
+  })
+
+  it('delegates install to the plugin update', async () => {
+    enterTauri()
+    const install = vi.fn(async () => {})
+    vi.mocked(check).mockResolvedValue({
+      version: '0.39.0', currentVersion: '0.38.0', body: '', download: vi.fn(), install,
+    } as never)
+
+    await (await checkForUpdate())?.install()
+    expect(install).toHaveBeenCalledOnce()
+  })
+})
+
+describe('appVersion', () => {
+  it('resolves null in a plain browser', async () => {
+    expect(await appVersion()).toBe(null)
+    expect(getVersion).not.toHaveBeenCalled()
+  })
+
+  it('reads the shell version', async () => {
+    enterTauri()
+    vi.mocked(getVersion).mockResolvedValue('0.38.0')
+    expect(await appVersion()).toBe('0.38.0')
   })
 })

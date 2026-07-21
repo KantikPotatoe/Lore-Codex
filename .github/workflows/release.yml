@@ -3,6 +3,9 @@ name: Release
 # Builds the Windows installer and attaches it to a GitHub Release whenever a
 # version tag lands. Tags are pushed by version-bump.yml using BUMP_PAT — a
 # PAT-pushed tag DOES trigger workflows (a GITHUB_TOKEN-pushed one would not).
+# Updater manifests are signed with TAURI_SIGNING_PRIVATE_KEY; without that
+# secret set, a tagged build FAILS rather than silently shipping an unsigned,
+# unusable manifest (bundle.createUpdaterArtifacts is on).
 # Unsigned on purpose: personal tool; SmartScreen's "More info → Run anyway"
 # on first run is the accepted cost (see docs/desktop-transition-investigation.md §6).
 on:
@@ -36,14 +39,18 @@ jobs:
           workspaces: src-tauri
 
       # Runs beforeBuildCommand (tsc -b && vite build), compiles the shell,
-      # bundles the NSIS installer, and uploads it to a release for the tag.
+      # bundles the NSIS installer, signs an updater manifest (latest.json),
+      # and uploads both to a release for the tag.
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Lore Codex ${{ github.ref_name }}'
           releaseBody: 'Windows installer for Lore Codex ${{ github.ref_name }}. Unsigned — SmartScreen will ask for "More info → Run anyway" on first launch.'
           releaseDraft: false
           prerelease: false
+          includeUpdaterJson: true
