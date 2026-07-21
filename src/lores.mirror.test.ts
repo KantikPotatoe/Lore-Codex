@@ -5,9 +5,17 @@ vi.mock('./platform', () => ({
   trashWorldMirror: vi.fn(async () => true),
 }))
 
+vi.mock('./db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./db')>()),
+  importBackupInto: vi.fn(async () => {
+    throw new Error('import failed')
+  }),
+}))
+
 import { writeRegistryMirror, trashWorldMirror } from './platform'
 import { registry } from './registryDb'
-import { syncRegistryMirror, registerLore, deleteLore } from './lores'
+import { syncRegistryMirror, registerLore, deleteLore, importLoreFromBackup } from './lores'
+import { CURRENT_SCHEMA_VERSION } from './db'
 
 beforeEach(async () => {
   vi.clearAllMocks()
@@ -87,5 +95,20 @@ describe('deleteLore', () => {
     // registry.json would advertise a world whose file is gone, and recovery
     // would offer to restore it. Trash must come first.
     expect(order).toEqual(['trash', 'reindex'])
+  })
+})
+
+describe('importLoreFromBackup — rollback re-syncs the index (#174)', () => {
+  it('re-syncs the index after rolling back a failed import, and rethrows the original error', async () => {
+    const json = JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, pages: [] })
+
+    await expect(importLoreFromBackup('Doomed Import', json)).rejects.toThrow('import failed')
+
+    // registerLore's own sync (writing the new id in), then the rollback's
+    // re-sync (writing it back out) — both must happen, or the index is
+    // left advertising an id the registry no longer knows about.
+    expect(vi.mocked(writeRegistryMirror).mock.calls.length).toBeGreaterThanOrEqual(2)
+    const lastJson = vi.mocked(writeRegistryMirror).mock.calls.at(-1)![0]
+    expect(lastJson).not.toContain('Doomed Import')
   })
 })

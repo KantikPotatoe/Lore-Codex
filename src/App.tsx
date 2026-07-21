@@ -28,7 +28,7 @@ import { requestPersistentStorage, latestChangeTime, shouldBackupOnExit, backupO
 import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, activeLoreId, getMeta } from './db'
 import { maybeTakeSnapshot } from './snapshots'
 import { installSearchIndex } from './searchSync'
-import { bootstrapDefaultLore } from './lores'
+import { bootstrapDefaultLore, syncRegistryMirror } from './lores'
 import { installStorageErrorListener } from './storageError'
 import { installTabSyncListener } from './tabSync'
 import { shouldOpenSearch } from './searchShortcut'
@@ -108,6 +108,17 @@ export default function App() {
   useEffect(() => {
     if (!isTauri()) return
     return startMirrorLoop()
+  }, [])
+
+  // Reconcile worlds/registry.json on every launch (#174). The per-CRUD
+  // refreshes in lores.ts cannot cover this: bootstrapDefaultLore returns early
+  // once `lore-bootstrapped` is set, which it already is for every existing
+  // install — so a single-world user who never renames anything would otherwise
+  // have their .lore files mirrored faithfully and no index naming them, and
+  // recovery would find nothing.
+  useEffect(() => {
+    if (!isTauri()) return
+    void syncRegistryMirror()
   }, [])
 
   // Desktop only: finish a backup before the window closes. Everything is read

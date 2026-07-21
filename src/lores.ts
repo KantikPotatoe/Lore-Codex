@@ -78,6 +78,11 @@ export async function importLoreFromBackup(name: string, json: string): Promise<
     // Roll the registry entry back so a failed import leaves no ghost world.
     await registry.lores.delete(id)
     await Dexie.delete(dbNameFor(id))
+    // Re-sync so the index doesn't keep advertising an id the registry no
+    // longer knows about until some unrelated CRUD happens to refresh it.
+    // Best-effort (syncRegistryMirror swallows its own failures), so this
+    // cannot mask or replace the original error being rethrown below.
+    await syncRegistryMirror()
     throw err
   } finally {
     target.close()

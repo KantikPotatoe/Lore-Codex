@@ -41,9 +41,14 @@ vi.mock('./worldMirrorSync', () => ({
   startMirrorLoop: vi.fn(() => () => {}),
   withMirroringSuspended: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }))
+vi.mock('./lores', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./lores')>()),
+  syncRegistryMirror: vi.fn(async () => {}),
+}))
 
 import { onCloseRequested, isTauri } from './platform'
 import { flushWorldMirror, startMirrorLoop } from './worldMirrorSync'
+import { syncRegistryMirror } from './lores'
 import App from './App'
 
 describe('App — close handler', () => {
@@ -123,5 +128,29 @@ describe('App — mirror loop startup (#174)', () => {
     await screen.findByText('Lore Codex')
 
     expect(startMirrorLoop).not.toHaveBeenCalled()
+  })
+})
+
+describe('App — registry index reconciliation on startup (#174)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(isTauri).mockReturnValue(false)
+  })
+  afterEach(() => cleanup())
+
+  it('refreshes worlds/registry.json in the desktop shell', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+
+    render(createElement(MemoryRouter, { initialEntries: ['/'] }, createElement(App)))
+    await screen.findByText('Lore Codex')
+
+    await waitFor(() => expect(syncRegistryMirror).toHaveBeenCalled())
+  })
+
+  it('does not touch the registry index in a plain browser', async () => {
+    render(createElement(MemoryRouter, { initialEntries: ['/'] }, createElement(App)))
+    await screen.findByText('Lore Codex')
+
+    expect(syncRegistryMirror).not.toHaveBeenCalled()
   })
 })
