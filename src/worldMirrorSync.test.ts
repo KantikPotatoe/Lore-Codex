@@ -19,6 +19,7 @@ vi.mock('./db', () => ({
   countAll: vi.fn(async () => ({
     pages: 0, maps: 0, pins: 0, regions: 0, templates: 0, calendars: 0, events: 0,
     images: 0, docLinks: 0, books: 0, chapters: 0, scenes: 0, plotlines: 0, beats: 0,
+    relationshipTypes: 0, relationships: 0,
   })),
   db: {
     pins: { count: vi.fn(async () => 0) },
@@ -59,6 +60,7 @@ const SETTLED = NOW - MIRROR_QUIET_MS - 1
 const ZERO_COUNTS = {
   pages: 0, maps: 0, pins: 0, regions: 0, templates: 0, calendars: 0, events: 0,
   images: 0, docLinks: 0, books: 0, chapters: 0, scenes: 0, plotlines: 0, beats: 0,
+  relationshipTypes: 0, relationships: 0,
 }
 
 function deferred<T>() {

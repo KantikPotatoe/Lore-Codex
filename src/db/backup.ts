@@ -2,6 +2,7 @@ import { db, now, activeLoreId, type LoreDB } from './schema'
 import { broadcastWorldChange } from '../tabSync'
 import { seedTemplates } from './templates'
 import { seedDefaultCalendar } from './calendar'
+import { seedRelationshipTypes } from './relationshipTypes'
 import { BODY_IMAGES_MIGRATED_KEY } from './bodyImageMigration'
 import { sanitizeHtml } from '../sanitize'
 import pkg from '../../package.json'
@@ -18,6 +19,8 @@ import type {
   MetaEntry,
   PageImage,
   Plotline,
+  Relationship,
+  RelationshipType,
   Scene,
   TimelineEvent,
   WorldMap,
@@ -33,7 +36,7 @@ import type {
  * changes, and add a MIGRATIONS step (below) for the new version so older
  * backups keep importing.
  */
-export const CURRENT_SCHEMA_VERSION = 14
+export const CURRENT_SCHEMA_VERSION = 15
 
 /**
  * Meta keys that describe this device/install rather than the world, so they
@@ -69,6 +72,8 @@ export interface BackupData {
   scenes?: Scene[]
   plotlines?: Plotline[]
   beats?: Beat[]
+  relationshipTypes?: RelationshipType[]
+  relationships?: Relationship[]
   meta?: MetaEntry[]
 }
 
@@ -88,6 +93,8 @@ export interface BackupCounts {
   scenes: number
   plotlines: number
   beats: number
+  relationshipTypes: number
+  relationships: number
 }
 
 /** Live row counts for every table, in `BackupCounts` shape. Settings shows
@@ -97,15 +104,17 @@ export interface BackupCounts {
  *  follow. */
 export async function countAll(): Promise<BackupCounts> {
   const [pages, maps, pins, regions, templates, calendars, events, images, docLinks,
-    books, chapters, scenes, plotlines, beats] = await Promise.all([
+    books, chapters, scenes, plotlines, beats, relationshipTypes, relationships] =
+    await Promise.all([
     db.pages.count(), db.maps.count(), db.pins.count(), db.regions.count(),
     db.templates.count(), db.calendars.count(), db.events.count(), db.images.count(),
     db.docLinks.count(), db.books.count(), db.chapters.count(), db.scenes.count(),
     db.plotlines.count(), db.beats.count(),
+    db.relationshipTypes.count(), db.relationships.count(),
   ])
   return {
     pages, maps, pins, regions, templates, calendars, events, images, docLinks,
-    books, chapters, scenes, plotlines, beats,
+    books, chapters, scenes, plotlines, beats, relationshipTypes, relationships,
   }
 }
 
@@ -166,6 +175,14 @@ const MIGRATIONS: Record<number, (d: BackupData) => BackupData> = {
   // from title on every import, so no per-row work is needed here — this step
   // exists only to advance the ladder to 14.
   13: (d) => d,
+  // v15 added the typed-relationship tables (#175); fill them in for older
+  // backups. An empty vocabulary is fine — seedRelationshipTypes() re-adds the
+  // built-ins right after import, exactly as seedTemplates does.
+  14: (d) => ({
+    ...d,
+    relationshipTypes: asArray(d.relationshipTypes),
+    relationships: asArray(d.relationships),
+  }),
 }
 
 /**
@@ -230,13 +247,15 @@ export function parseBackup(
       scenes: asArray(data.scenes).length,
       plotlines: asArray(data.plotlines).length,
       beats: asArray(data.beats).length,
+      relationshipTypes: asArray(data.relationshipTypes).length,
+      relationships: asArray(data.relationships).length,
     },
   }
 }
 
 export async function exportAll(): Promise<string> {
   const [pages, maps, pins, regions, templates, calendars, events, images, docLinks,
-    books, chapters, scenes, plotlines, beats, allMeta] = await Promise.all([
+    books, chapters, scenes, plotlines, beats, relationshipTypes, relationships, allMeta] = await Promise.all([
     db.pages.toArray(),
     db.maps.toArray(),
     db.pins.toArray(),
@@ -251,6 +270,8 @@ export async function exportAll(): Promise<string> {
     db.scenes.toArray(),
     db.plotlines.toArray(),
     db.beats.toArray(),
+    db.relationshipTypes.toArray(),
+    db.relationships.toArray(),
     db.meta.toArray(),
   ])
   // Only the portable meta rows travel; device-local bookkeeping stays home.
@@ -273,6 +294,8 @@ export async function exportAll(): Promise<string> {
     scenes,
     plotlines,
     beats,
+    relationshipTypes,
+    relationships,
     meta,
   })
 }
@@ -285,7 +308,7 @@ export async function exportAll(): Promise<string> {
  *  tables untouched rather than clearing them. */
 export async function exportSnapshot(): Promise<string> {
   const [pages, templates, calendars, events, docLinks, books, chapters, scenes,
-    plotlines, beats, allMeta] = await Promise.all([
+    plotlines, beats, relationshipTypes, relationships, allMeta] = await Promise.all([
     db.pages.toArray(),
     db.templates.toArray(),
     db.calendars.toArray(),
@@ -296,6 +319,8 @@ export async function exportSnapshot(): Promise<string> {
     db.scenes.toArray(),
     db.plotlines.toArray(),
     db.beats.toArray(),
+    db.relationshipTypes.toArray(),
+    db.relationships.toArray(),
     db.meta.toArray(),
   ])
   const meta = allMeta.filter((m) => !LOCAL_ONLY_META_KEYS.includes(m.key))
@@ -317,6 +342,8 @@ export async function exportSnapshot(): Promise<string> {
     scenes,
     plotlines,
     beats,
+    relationshipTypes,
+    relationships,
     meta,
   })
 }
@@ -383,6 +410,16 @@ function sanitizeBackup(data: BackupData): BackupData {
         (l) => pageIds.has(l.pageId) && pageIds.has(l.documentId),
       )
     })(),
+    // Drop relationship edges whose endpoints aren't in this backup's page set —
+    // an untrusted or hand-edited backup could carry dangling ids, and a
+    // half-resolvable relationship renders as a blank row. The `note` is plain
+    // text rendered as text (React-escaped), so it needs no HTML sanitizing.
+    relationships: (() => {
+      const pageIds = new Set(asArray(data.pages).map((p) => p.id))
+      return asArray(data.relationships).filter(
+        (r) => pageIds.has(r.fromId) && pageIds.has(r.toId),
+      )
+    })(),
     // Meta values are arbitrary JSON rendered only as React text (settings,
     // home config, graph prefs) — no HTML sink, so no sanitizing. Do drop
     // malformed rows (bulkPut would throw on a non-string key) and the
@@ -406,12 +443,12 @@ function sanitizeBackup(data: BackupData): BackupData {
 export async function importBackupInto(target: LoreDB, json: string): Promise<void> {
   const { data: parsed } = parseBackup(json) // throws before any clear(); migrated to the current shape
   const data = sanitizeBackup(parsed) // strip XSS from untrusted HTML before it touches the DB
-  await target.transaction('rw', [target.pages, target.maps, target.pins, target.regions, target.templates, target.calendars, target.events, target.images, target.docLinks, target.books, target.chapters, target.scenes, target.plotlines, target.beats, target.meta], async () => {
+  await target.transaction('rw', [target.pages, target.maps, target.pins, target.regions, target.templates, target.calendars, target.events, target.images, target.docLinks, target.books, target.chapters, target.scenes, target.plotlines, target.beats, target.relationshipTypes, target.relationships, target.meta], async () => {
     await Promise.all([
       target.pages.clear(), target.maps.clear(), target.pins.clear(), target.regions.clear(),
       target.templates.clear(), target.calendars.clear(), target.events.clear(), target.images.clear(),
       target.docLinks.clear(), target.books.clear(), target.chapters.clear(), target.scenes.clear(),
-      target.plotlines.clear(), target.beats.clear(),
+      target.plotlines.clear(), target.beats.clear(), target.relationshipTypes.clear(), target.relationships.clear(),
     ])
     await target.pages.bulkAdd(asArray(data.pages))
     await target.maps.bulkAdd(asArray(data.maps))
@@ -427,6 +464,8 @@ export async function importBackupInto(target: LoreDB, json: string): Promise<vo
     await target.scenes.bulkAdd(asArray(data.scenes))
     await target.plotlines.bulkAdd(asArray(data.plotlines))
     await target.beats.bulkAdd(asArray(data.beats))
+    await target.relationshipTypes.bulkAdd(asArray(data.relationshipTypes))
+    await target.relationships.bulkAdd(asArray(data.relationships))
     // Meta is MERGED (put over existing keys), not cleared-and-replaced: a
     // pre-v12 backup or snapshot carries no meta, and restoring one must not
     // wipe this world's settings/home config. Device-local keys were already
@@ -442,6 +481,7 @@ export async function importAll(json: string): Promise<void> {
   // Older backups have no templates / calendars — make sure the built-ins exist.
   await seedTemplates()
   await seedDefaultCalendar()
+  await seedRelationshipTypes()
   // Incoming pages may carry legacy inline body images; let the next startup
   // convert them to the by-ref model (#182).
   await db.meta.delete(BODY_IMAGES_MIGRATED_KEY)
@@ -461,13 +501,14 @@ export async function restoreSnapshotInto(target: LoreDB, json: string): Promise
   await target.transaction(
     'rw',
     [target.pages, target.templates, target.calendars, target.events, target.docLinks,
-      target.books, target.chapters, target.scenes, target.plotlines, target.beats, target.meta],
+      target.books, target.chapters, target.scenes, target.plotlines, target.beats,
+      target.relationshipTypes, target.relationships, target.meta],
     async () => {
       await Promise.all([
         target.pages.clear(), target.templates.clear(), target.calendars.clear(),
         target.events.clear(), target.docLinks.clear(), target.books.clear(),
         target.chapters.clear(), target.scenes.clear(), target.plotlines.clear(),
-        target.beats.clear(),
+        target.beats.clear(), target.relationshipTypes.clear(), target.relationships.clear(),
       ])
       await target.pages.bulkAdd(asArray(data.pages))
       await target.templates.bulkAdd(asArray(data.templates))
@@ -479,6 +520,8 @@ export async function restoreSnapshotInto(target: LoreDB, json: string): Promise
       await target.scenes.bulkAdd(asArray(data.scenes))
       await target.plotlines.bulkAdd(asArray(data.plotlines))
       await target.beats.bulkAdd(asArray(data.beats))
+      await target.relationshipTypes.bulkAdd(asArray(data.relationshipTypes))
+      await target.relationships.bulkAdd(asArray(data.relationships))
       await target.meta.bulkPut(asArray(data.meta))
     },
   )
@@ -489,6 +532,7 @@ export async function restoreSnapshot(json: string): Promise<void> {
   // An older snapshot may predate a built-in type/calendar — make sure they exist.
   await seedTemplates()
   await seedDefaultCalendar()
+  await seedRelationshipTypes()
   // A pre-#182 snapshot's page bodies may hold inline images; re-convert on next start.
   await db.meta.delete(BODY_IMAGES_MIGRATED_KEY)
 }
