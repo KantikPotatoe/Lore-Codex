@@ -13,6 +13,7 @@ import {
   type TemplateItem,
 } from '../db'
 import ConfirmDialog from '../components/ConfirmDialog'
+import RelationshipTypesPanel from '../components/RelationshipTypesPanel'
 
 export default function TemplatesRoute() {
   const templates = useLiveQuery(() => templateRepo.listByName(), [])
@@ -311,6 +312,8 @@ export default function TemplatesRoute() {
           </section>
         )}
       </div>
+
+      <RelationshipTypesPanel />
 
       <ConfirmDialog
         open={pendingDelete !== null}
