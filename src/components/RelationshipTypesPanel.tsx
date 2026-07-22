@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { relationshipRepo, TYPE_COLORS, type RelationshipGroup, type RelationshipType } from '../db'
+import { isSymmetric } from '../relations'
 import ConfirmDialog from './ConfirmDialog'
 
 const GROUPS: RelationshipGroup[] = ['kin', 'faction', 'org', 'social', 'other']
@@ -47,7 +48,7 @@ export default function RelationshipTypesPanel() {
               aria-label="Inverse label"
               onChange={(e) => relationshipRepo.updateType(t.id, { inverse: e.target.value })}
             />
-            {t.label.trim().toLowerCase() === t.inverse.trim().toLowerCase() && (
+            {isSymmetric(t) && (
               <span className="reltypes-symmetric">symmetric</span>
             )}
             <select
