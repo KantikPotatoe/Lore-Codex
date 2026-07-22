@@ -283,8 +283,11 @@ export default function LoreSelectorRoute() {
             to restore. If you have a backup file for one of these, use Import World above.
           </p>
           <ul>
-            {lost.map((w) => (
-              <li key={w.id}>
+            {lost.map((w, i) => (
+              // Keyed by id+index like the offer list above: parseDiskRegistry
+              // does not dedupe, and registry.json is hand-editable, so two
+              // entries can share an id.
+              <li key={`${w.id}-${i}`}>
                 <span className="recovery-name">{w.name}</span>
                 <span className="recovery-meta">no copy on disk</span>
               </li>

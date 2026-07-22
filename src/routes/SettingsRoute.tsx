@@ -123,9 +123,14 @@ export default function SettingsRoute() {
     if (!isTauri()) return
     let cancelled = false
     const read = () => {
-      readRegistryMirror().then((r) => {
-        if (!cancelled) setIndexReadable(parseDiskRegistry(r).ok)
-      })
+      readRegistryMirror()
+        .then((r) => {
+          if (!cancelled) setIndexReadable(parseDiskRegistry(r).ok)
+        })
+        // Only reachable if the dynamic plugin-fs import itself fails. Treat it
+        // as "cannot read the index", which is what this readout exists to
+        // report — never leave it stuck on the last good value.
+        .catch(() => { if (!cancelled) setIndexReadable(false) })
     }
     read()
     const id = setInterval(read, 5000)

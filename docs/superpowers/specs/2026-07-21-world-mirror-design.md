@@ -280,13 +280,29 @@ No changes to the fake-indexeddb foundation; no new test environment.
 
 ## Exit criterion
 
-Deleting the entire WebView2 profile loses at most one **floor window** of
-edits, not one quiet window: `MIRROR_FLOOR_MS` is 5 minutes (the minimum gap
-between two writes), on top of which `MIRROR_QUIET_MS` (30s) must also elapse
-before a write is even attempted. Worst case is therefore an unclean loss of
-up to roughly 5.5 minutes of edits, not "one quiet-window" (~30s) as this
-section originally and incorrectly stated. The next launch offers every
-mirrored world back from disk regardless of how much was lost.
+An unclean loss (crash, power cut, force-kill) costs **the floor window plus
+the length of the current unbroken editing burst**, and the second term is
+unbounded.
+
+`MIRROR_FLOOR_MS` (5 min) is the minimum gap between writes, and
+`MIRROR_QUIET_MS` (30s) of quiet must elapse before a write is attempted at
+all. That quiet window is the sharp edge: `shouldMirror` returns false while
+`now - lastChangeAt < MIRROR_QUIET_MS`, and `PageRoute` writes content after
+500ms, so an author typing steadily slides `lastChangeAt` forward on every
+poll and **no mirror write fires for the whole session**. Forty-five minutes
+of unbroken drafting, then a power cut, loses forty-five minutes — not 5.5.
+
+This section has now understated the bound twice: first as "one quiet-window"
+(~30s), then as "roughly 5.5 minutes". Both assumed a bursty editor who pauses.
+
+`flushWorldMirror` on a clean close is what actually bounds a long session, and
+it is unconditional for that reason. A *clean* quit therefore loses nothing.
+The next launch offers every mirrored world back from disk regardless.
+
+Closing the gap for unclean losses would mean a hard ceiling — force a write
+when `lastMirrorAt` is old enough, regardless of quiet — which is deliberately
+**not** done here: it is new cadence logic, and this feature has twice shipped
+a Critical introduced by a late fix. Tracked as a follow-up instead.
 
 ## Out of scope
 
