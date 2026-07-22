@@ -41,4 +41,13 @@ describe('PagePicker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Bob' }))
     expect(onChange).toHaveBeenCalledWith(['p2'])
   })
+
+  it('excludeIds keeps a page out of the suggestion list entirely', async () => {
+    await seedPage('p1', 'Alice')
+    await seedPage('p2', 'Alicia')
+    render(<PagePicker value={[]} onChange={() => {}} excludeIds={['p1']} />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Ali' } })
+    expect(await screen.findByRole('button', { name: 'Alicia' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Alice' })).toBeNull()
+  })
 })

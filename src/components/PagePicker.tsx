@@ -8,6 +8,9 @@ interface PagePickerProps {
   multiple?: boolean
   category?: string
   placeholder?: string
+  /** Ids to leave out of the suggestion list entirely — e.g. the page being
+   *  edited, so it can't be picked as its own relationship target. */
+  excludeIds?: string[]
 }
 
 const NO_PAGES: LorePage[] = []
@@ -15,17 +18,18 @@ const NO_PAGES: LorePage[] = []
 /** Id-based wiki-page reference control. Mirrors RefField's look (.ref-* classes)
  *  but stores page ids (rename-safe) and can select any page type. */
 export default function PagePicker({
-  value, onChange, multiple = true, category, placeholder = 'Add page…',
+  value, onChange, multiple = true, category, placeholder = 'Add page…', excludeIds,
 }: PagePickerProps) {
   const [query, setQuery] = useState('')
   const pages = useLiveQuery(() => pageRepo.listByTitle(), []) ?? NO_PAGES
   const byId = new Map(pages.map((p) => [p.id, p]))
   const selected = new Set(value)
+  const excluded = new Set(excludeIds)
 
   const q = query.trim().toLowerCase()
   const matches = q
     ? pages
-        .filter((p) => !selected.has(p.id) && p.title.toLowerCase().includes(q))
+        .filter((p) => !selected.has(p.id) && !excluded.has(p.id) && p.title.toLowerCase().includes(q))
         .filter((p) => !category || p.category === category)
         .slice(0, 8)
     : []

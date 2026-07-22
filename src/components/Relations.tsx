@@ -64,13 +64,19 @@ function AddRelation({ page }: { page: LorePage }) {
   const [typeId, setTypeId] = useState('')
   const [target, setTarget] = useState<string[]>([])
   const [note, setNote] = useState('')
+  const [refused, setRefused] = useState(false)
 
   const effectiveType = typeId || types[0]?.id || ''
   const canAdd = effectiveType !== '' && target.length > 0
 
   async function add() {
     if (!canAdd) return
-    await relationshipRepo.add(page.id, target[0], effectiveType, note.trim())
+    const id = await relationshipRepo.add(page.id, target[0], effectiveType, note.trim())
+    if (id === null) {
+      setRefused(true)
+      return
+    }
+    setRefused(false)
     setTarget([])
     setNote('')
   }
@@ -93,6 +99,7 @@ function AddRelation({ page }: { page: LorePage }) {
         onChange={setTarget}
         multiple={false}
         placeholder="Find a page…"
+        excludeIds={[page.id]}
       />
       <input
         className="infobox-value-input relations-note-input"
@@ -103,6 +110,9 @@ function AddRelation({ page }: { page: LorePage }) {
       <button className="mini-btn" disabled={!canAdd} onClick={add}>
         ＋ Add
       </button>
+      {refused && (
+        <span className="relations-add-msg">Already recorded, or not a valid target.</span>
+      )}
     </div>
   )
 }
