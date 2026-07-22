@@ -254,6 +254,18 @@ async function write(now: number): Promise<void> {
   // mirror if the ids happened to coincide, or under the wrong filename
   // entirely — exactly the corruption the atomic write exists to prevent.
   const loreId = activeLoreId
+  // The invariant: the mirror only ever writes for a world the app knows it
+  // has. A relaunch after storage eviction rebinds `db` to an empty database
+  // under 'default' and App.tsx's startup effect immediately seeds it
+  // (templates, a default calendar) — which the change probe above correctly
+  // sees as "changed". Without this check that seeded-empty export would
+  // rename over a perfectly good worlds/default.lore the instant the poll or
+  // close-flush fires, while the recovery panel is still offering the real
+  // file back. bootstrapDefaultLore() deliberately does not create a registry
+  // row for a world it didn't seed, so "absent from the registry" is exactly
+  // the signal this state leaves behind — checked here, not at each caller,
+  // so no future poll/flush path can forget it.
+  if (!(await registry.lores.get(loreId))) return
   try {
     const json = await exportAll()
     // I3: a poll can begin, pass the entry guard, and still be mid-`exportAll()`

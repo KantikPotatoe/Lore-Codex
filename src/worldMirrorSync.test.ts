@@ -66,6 +66,20 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
+// Every test in this file is about the poll/floor/quiet/suspend/health logic
+// for a world the app already knows about — the "registry has no row for
+// activeLoreId" case (the post-eviction Critical, #174) is deliberately NOT
+// this file's concern: it can't be, since this file mocks './db' wholesale,
+// and that mock is exactly what let that bug through review twice (see
+// worldMirrorSync.realdb.test.ts, which drives a real Dexie DB instead). So
+// every test here runs against a registered 'default' world by default;
+// `put` (not `add`) so a test that wants a specific name can override it.
+async function registerActiveLore(overrides: Partial<{ name: string }> = {}) {
+  await registry.lores.put({
+    id: 'default', name: 'Test World', banner: null, createdAt: 1, updatedAt: 1, ...overrides,
+  })
+}
+
 beforeEach(async () => {
   vi.clearAllMocks()
   resetWorldMirrorStateForTests()
@@ -80,6 +94,7 @@ beforeEach(async () => {
     vi.mocked(t.count).mockResolvedValue(0)
   }
   await registry.lores.clear()
+  await registerActiveLore()
 })
 
 describe('maybeMirrorWorld', () => {
@@ -185,9 +200,7 @@ describe('withMirroringSuspended', () => {
 
 describe('stamping the registry index after a real mirror write (#174 second bug)', () => {
   it('stamps mirroredAt for the mirrored world after writeWorldMirror succeeds', async () => {
-    await registry.lores.add({
-      id: 'default', name: 'My World', banner: null, createdAt: 1, updatedAt: 1,
-    })
+    await registerActiveLore({ name: 'My World' })
     vi.mocked(latestChangeTime).mockResolvedValue(SETTLED)
 
     await maybeMirrorWorld(NOW)
@@ -206,6 +219,28 @@ describe('stamping the registry index after a real mirror write (#174 second bug
     await maybeMirrorWorld(NOW)
 
     expect(writeRegistryMirror).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// I5 (#174, round 2) — the mirror must refuse to write for a world the
+// registry doesn't know about. See worldMirrorSync.realdb.test.ts for the
+// real-Dexie reproduction of the actual post-eviction defect this closes;
+// these two are the mocked-suite complement, isolating just the guard.
+// ---------------------------------------------------------------------------
+describe('I5: refuses to mirror a world absent from the registry', () => {
+  it('maybeMirrorWorld does not write when activeLoreId has no registry row', async () => {
+    await registry.lores.clear() // undo this file's default beforeEach seed
+    vi.mocked(latestChangeTime).mockResolvedValue(SETTLED)
+    await maybeMirrorWorld(NOW)
+    expect(writeWorldMirror).not.toHaveBeenCalled()
+  })
+
+  it('flushWorldMirror does not write when activeLoreId has no registry row, even with content', async () => {
+    await registry.lores.clear()
+    vi.mocked(countAll).mockResolvedValue({ ...ZERO_COUNTS, pages: 1 })
+    await flushWorldMirror(NOW)
+    expect(writeWorldMirror).not.toHaveBeenCalled()
   })
 })
 
