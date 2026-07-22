@@ -374,3 +374,67 @@ describe('LoreSelectorRoute — recovery panel', () => {
     expect(screen.queryByText(/found on disk/i)).toBeNull()
   })
 })
+
+// #174 task r3, item 4: a world named in the index with mirroredAt: null and
+// absent from the registry has no .lore file at all — nothing to restore —
+// but silently dropping it from view means the app knows the names of the
+// worlds it just lost and says nothing.
+describe('never-mirrored worlds (#174 task r3, item 4)', () => {
+  async function settleDiskRead() {
+    await waitFor(() => expect(readRegistryMirror).toHaveBeenCalled())
+    const pending = vi.mocked(readRegistryMirror).mock.results[0]?.value
+    await act(async () => {
+      await pending
+    })
+  }
+
+  it('lists a never-mirrored world separately, with no Restore button', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'ghost', name: 'Unmirrored World', mirroredAt: null, appVersion: null }]),
+    })
+    render(<LoreSelectorRoute />)
+
+    expect(await screen.findByText(/lost, with no copy on disk/i)).toBeTruthy()
+    expect(screen.getByText('Unmirrored World')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /restore/i })).toBeNull()
+    // Never mixed into the recoverable-worlds panel.
+    expect(screen.queryByText(/found on disk/i)).toBeNull()
+  })
+
+  it('stays hidden when there is nothing never-mirrored', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'absent' })
+    render(<LoreSelectorRoute />)
+    await settleDiskRead()
+    expect(screen.queryByText(/lost, with no copy on disk/i)).toBeNull()
+  })
+
+  it('separates a mixed disk index into recoverable and never-mirrored sections', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([
+        { id: 'recoverable', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' },
+        { id: 'ghost', name: 'Unmirrored World', mirroredAt: null, appVersion: null },
+      ]),
+    })
+    render(<LoreSelectorRoute />)
+
+    expect(await screen.findByText(/found on disk/i)).toBeTruthy()
+    expect(await screen.findByText(/lost, with no copy on disk/i)).toBeTruthy()
+    expect(screen.getByText('Aethel')).toBeTruthy()
+    expect(screen.getByText('Unmirrored World')).toBeTruthy()
+    // Exactly one Restore button — for the recoverable world only.
+    expect(screen.getAllByRole('button', { name: /restore/i })).toHaveLength(1)
+  })
+
+  it('does not offer a never-mirrored world whose registry entry already exists', async () => {
+    vi.mocked(listLores).mockResolvedValue([world({ id: 'ghost' })])
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'ghost', name: 'Ghost', mirroredAt: null, appVersion: null }]),
+    })
+    render(<LoreSelectorRoute />)
+    await settleDiskRead()
+    expect(screen.queryByText(/lost, with no copy on disk/i)).toBeNull()
+  })
+})

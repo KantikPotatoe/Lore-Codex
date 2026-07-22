@@ -2150,6 +2150,15 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .recovery-name { font-weight: 600; color: var(--ink); }
 .recovery-meta { color: var(--ink-faint); font-size: 14px; margin-right: auto; }
 
+/* Worlds known by name but never mirrored (#174 task r3, item 4) — nothing to
+   restore, so this is deliberately calmer than .recovery-panel: a plain
+   border, no accent, no button. This is a statement of fact, not a call to
+   action or a warning to react to. */
+.recovery-panel--lost {
+  border-left-color: var(--border);
+}
+.recovery-panel--lost .recovery-name { color: var(--ink-dim); }
+
 /* --- Timeline ------------------------------------------------------------- */
 .timeline-page { display: flex; flex-direction: column; height: 100%; }
 .timeline-toolbar {

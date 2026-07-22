@@ -23,10 +23,11 @@ import {
 import { exportAsHtml } from '../htmlExport'
 import { getSettings, updateSettings, DEFAULT_SETTINGS, type LoreSettings } from '../settings'
 import { deleteLore, currentLoreId } from '../lores'
-import { openTextFile, isTauri, pickDirectory, appVersion } from '../platform'
+import { openTextFile, isTauri, pickDirectory, appVersion, readRegistryMirror } from '../platform'
 import { useSharedUpdateCheck } from '../UpdateCheckContext'
 import { getAppSettings, updateAppSettings, DEFAULT_APP_SETTINGS, SPELLCHECK_LANGS, type AppSettings } from '../appSettings'
 import { withMirroringSuspended, getMirrorHealth, mirrorFilePath, type MirrorHealth } from '../worldMirrorSync'
+import { parseDiskRegistry } from '../worldRecovery'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function SettingsRoute() {
@@ -103,6 +104,32 @@ export default function SettingsRoute() {
     read()
     const id = setInterval(read, 5000)
     return () => clearInterval(id)
+  }, [])
+
+  // World-index readability (#174 task r3, item 3): every registry.json
+  // writer (syncRegistryMirror/dropFromRegistryMirror/stampRegistryMirrored)
+  // correctly refuses to write when the disk read comes back unreadable —
+  // but a refusal that never surfaces means `mirroredAt` freezes, new worlds
+  // never enter the index, and the mirror-health block above still reports a
+  // healthy "Last written N ago" (it only tracks writeWorldMirror outcomes,
+  // not whether that write's stamp into the index actually landed). Polled
+  // on the same cadence as mirror health, for the same reason: a write
+  // landing in the background, or the index becoming readable/unreadable
+  // between renders, must not leave a stale readout for the rest of the
+  // visit. Display-only — this route never writes registry.json, so
+  // degrading `ok: false` to a plain boolean here is safe (worldRecovery.ts).
+  const [indexReadable, setIndexReadable] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (!isTauri()) return
+    let cancelled = false
+    const read = () => {
+      readRegistryMirror().then((r) => {
+        if (!cancelled) setIndexReadable(parseDiskRegistry(r).ok)
+      })
+    }
+    read()
+    const id = setInterval(read, 5000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [])
 
   async function handleBackup() {
@@ -378,6 +405,13 @@ export default function SettingsRoute() {
           {desktop && mirrorHealth?.lastError && (
             <span className="settings-hint-danger">
               Last write failed {timeAgo(mirrorHealth.lastError.at)}: {mirrorHealth.lastError.message}
+            </span>
+          )}
+          {desktop && indexReadable === false && (
+            <span className="settings-hint-danger">
+              The world index (registry.json) can't be read right now, so nothing new can be
+              recorded into it — mirrors keep being written, but new or updated worlds won't be
+              findable from them, and the durability net is effectively off until this is fixed.
             </span>
           )}
         </div>

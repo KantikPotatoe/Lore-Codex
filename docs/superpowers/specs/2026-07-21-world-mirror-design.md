@@ -249,9 +249,21 @@ read only the world currently open. "Auto-mirrored per-world" therefore means
 precisely: **the active world's mirror is kept fresh; the others are as fresh
 as you last left them.** That is sufficient — a world you are not in is a world
 you are not editing — but it is a property worth stating rather than
-discovering. `switchLore()` already reloads the page to rebind, and the close
+discovering.
+
+**Correction (#174 task r3):** this section originally claimed "the close
 flush runs before that reload, so switching worlds leaves a current mirror
-behind.
+behind." That is false, and was never true. `switchLore()` calls
+`window.location.reload()` directly — a client-side navigation, not a window
+close — and does not call `flushWorldMirror()` anywhere in its path. Tauri's
+`CloseRequested` event, which is what actually triggers the close flush in
+`App.tsx`, does not fire on a same-window reload. So a world switched away
+from mid-quiet-window (before the poll's floor/quiet timers next allow a
+write) leaves its mirror exactly as stale as it was at the last successful
+poll — not "current". This is a known gap, not a designed guarantee; see the
+Deferred list in `2026-07-22-world-mirror-fixes-2.md` ("`switchLore` does not
+flush, so a world visited for under one poll interval is never mirrored on
+that visit").
 
 ## Testing
 
@@ -268,8 +280,13 @@ No changes to the fake-indexeddb foundation; no new test environment.
 
 ## Exit criterion
 
-Deleting the entire WebView2 profile loses at most one quiet-window of edits,
-and the next launch offers every world back from disk.
+Deleting the entire WebView2 profile loses at most one **floor window** of
+edits, not one quiet window: `MIRROR_FLOOR_MS` is 5 minutes (the minimum gap
+between two writes), on top of which `MIRROR_QUIET_MS` (30s) must also elapse
+before a write is even attempted. Worst case is therefore an unclean loss of
+up to roughly 5.5 minutes of edits, not "one quiet-window" (~30s) as this
+section originally and incorrectly stated. The next launch offers every
+mirrored world back from disk regardless of how much was lost.
 
 ## Out of scope
 

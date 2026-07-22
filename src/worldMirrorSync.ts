@@ -32,6 +32,19 @@ let lastMirrorAt = 0
 // lift the guard early.
 let suspendDepth = 0
 
+// Monotonic counter, incremented every time a suspension cycle *completes*
+// (withMirroringSuspended's finally, whether nested or not). `suspendDepth`
+// alone answers "is a suspension active right now" — which is the wrong
+// question for write()'s post-export recheck, because a suspension can be
+// raised AND fully lowered while the export was in flight, leaving
+// suspendDepth back at 0 by the time the recheck runs even though the export
+// straddled someone else's clear()/bulkAdd. write() captures this value
+// before exportAll() and compares it after: any change at all — regardless
+// of whether suspendDepth is currently >0 — means at least one suspend cycle
+// happened during the export, so the payload must be treated as torn. (#174
+// task r3, item 1.)
+let suspendEpoch = 0
+
 // Coalesces overlapping runs, exactly as maybeTakeSnapshot() does — the App
 // start effect double-invokes under StrictMode in dev, and a poll can land on
 // top of a close-flush.
@@ -179,6 +192,7 @@ async function hasMirrorableContent(): Promise<boolean> {
 export function resetWorldMirrorStateForTests(): void {
   lastMirrorAt = 0
   suspendDepth = 0
+  suspendEpoch = 0
   inFlight = null
   lastKnownCounts = null
   countedChangeAt = 0
@@ -212,6 +226,7 @@ export async function withMirroringSuspended<T>(fn: () => Promise<T>): Promise<T
     return await fn()
   } finally {
     suspendDepth--
+    suspendEpoch++
   }
 }
 
@@ -269,18 +284,27 @@ async function write(now: number): Promise<void> {
   // so no future poll/flush path can forget it.
   if (!(await registry.lores.get(loreId))) return
   try {
+    // I3 / task r3 item 1: a poll can begin, pass the entry guard, and still
+    // be mid-`exportAll()` when `withMirroringSuspended` raises the guard for
+    // an import — `exportAll` is 15 independent `toArray()` calls, not one
+    // transaction, so it can itself straddle `importAll`'s `clear()`/`bulkAdd`.
+    // That already-running export may therefore hold a torn snapshot by the
+    // time it resolves. Capturing the epoch here, before the export starts,
+    // is what makes the recheck below catch a suspension that is raised AND
+    // fully lowered while the export is in flight — `suspendDepth > 0` alone
+    // would miss that case, because by the time the recheck runs the depth is
+    // back at 0 even though the export straddled someone else's clear/bulkAdd.
+    const epochAtStart = suspendEpoch
     const json = await exportAll()
-    // I3: a poll can begin, pass the entry guard, and still be mid-`exportAll()`
-    // when `withMirroringSuspended` raises the guard for an import — `exportAll`
-    // is 15 independent `toArray()` calls, not one transaction, so it can itself
-    // straddle `importAll`'s `clear()`/`bulkAdd`. That already-running export may
-    // therefore hold a torn snapshot by the time it resolves. Re-checking here,
-    // immediately before the disk write, is what actually matters: a torn export
-    // that never reaches disk is harmless, but one that does can rename a
-    // half-imported world over a good mirror. (withMirroringSuspended's own
-    // await-inFlight keeps this rare in practice — see there — but only this
-    // recheck makes it *safe* regardless.)
-    if (suspendDepth > 0) return
+    // Re-checking here, immediately before the disk write, is what actually
+    // matters: a torn export that never reaches disk is harmless, but one
+    // that does can rename a half-imported world over a good mirror.
+    // (withMirroringSuspended's own await-inFlight keeps this rare in
+    // practice — see there — but only this recheck makes it *safe*
+    // regardless.) Either condition alone is enough to abort: suspendDepth
+    // catches a suspension still active right now; the epoch comparison
+    // catches one that started and finished entirely during the export.
+    if (suspendDepth > 0 || suspendEpoch !== epochAtStart) return
     const wrote = await writeWorldMirror(loreId, json)
     // Only stamp on a real write. In the browser the seam reports false, and
     // recording a mirror time there would tell the policy a mirror exists when

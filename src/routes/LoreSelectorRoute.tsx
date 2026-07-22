@@ -15,7 +15,7 @@ import {
 } from '../lores'
 import { parseBackup, type BackupCounts } from '../db'
 import { openTextFile, readRegistryMirror, readWorldMirror } from '../platform'
-import { parseDiskRegistry, plannedRecovery, type RecoverableWorld } from '../worldRecovery'
+import { parseDiskRegistry, plannedRecovery, neverMirrored, type RecoverableWorld } from '../worldRecovery'
 import { timeAgo } from '../backup'
 import { compressImage } from '../imageUtils'
 import { getAppSettings, shouldOpenLastWorld } from '../appSettings'
@@ -118,6 +118,11 @@ export default function LoreSelectorRoute() {
   // setState-in-effect): the offer is a pure function of the disk read and
   // the live registry list.
   const recoverable = diskWorlds && loresRaw ? plannedRecovery(diskWorlds, loresRaw) : []
+  // Worlds the disk index still names but that were never actually mirrored
+  // (#174 task r3, item 4) — no .lore file exists, so there is nothing to
+  // restore, but silently hiding them would mean the app knows the names of
+  // the worlds it just lost and says nothing about it.
+  const lost = diskWorlds && loresRaw ? neverMirrored(diskWorlds, loresRaw) : []
 
   async function handleCreate() {
     setCreating(true)
@@ -256,6 +261,32 @@ export default function LoreSelectorRoute() {
                 >
                   {restoring === w.id ? 'Restoring…' : 'Restore'}
                 </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Worlds the disk index remembers by name but that were never actually
+          mirrored (#174 task r3, item 4) — no .lore file exists, so there is
+          nothing to restore. Kept calm and factual, and deliberately styled
+          as neither a warning nor a recovery offer: there is no button here
+          because a Restore control would only ever fail. */}
+      {lost.length > 0 && (
+        <section className="recovery-panel recovery-panel--lost" aria-labelledby="lost-heading">
+          <h2 id="lost-heading">
+            {lost.length} world{lost.length === 1 ? '' : 's'} lost, with no copy on disk
+          </h2>
+          <p>
+            These worlds were known on this computer but existed before mirroring started, or
+            were never open long enough to be mirrored — no copy survived here. There is nothing
+            to restore. If you have a backup file for one of these, use Import World above.
+          </p>
+          <ul>
+            {lost.map((w) => (
+              <li key={w.id}>
+                <span className="recovery-name">{w.name}</span>
+                <span className="recovery-meta">no copy on disk</span>
               </li>
             ))}
           </ul>

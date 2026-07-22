@@ -105,7 +105,26 @@ export async function importLoreFromBackup(name: string, json: string, id?: stri
     // registerLore() just created this row fresh (see its doc comment) — it
     // never pre-existed.
     await registry.lores.delete(newId)
-    await Dexie.delete(dbNameFor(newId))
+    // The DATABASE, by contrast, is only safe to delete when `id` was omitted
+    // (#174 task r3, item 2). When `id` is omitted, `registerLore` minted a
+    // fresh `crypto.randomUUID()` that could not have named any existing
+    // database — this call created it, so deleting it on rollback removes
+    // only the half-imported data this call itself wrote.
+    //
+    // When `id` IS supplied, the caller is `restoreWorld` (LoreSelectorRoute)
+    // reusing a disk entry's original id for identity — and with id reuse,
+    // restoring e.g. 'default' after an eviction targets the id `db` is
+    // ALREADY bound to (the live, currently-open database), not a fresh one.
+    // `Dexie.delete` on a live database's name deletes the underlying
+    // IndexedDB out from under the open connection unconditionally — Dexie
+    // then silently reopens it empty on the next access, with no error
+    // reaching any reader: live queries just report an empty world, and this
+    // page-life's `seedTemplates()` has already run so it won't re-seed
+    // either. A failed restore must leave the live world exactly as it was
+    // before the click, not erase it.
+    if (id === undefined) {
+      await Dexie.delete(dbNameFor(newId))
+    }
     // The ON-DISK index entry is a different story (#174 I-A). When `id` is
     // omitted, registerLore() minted a fresh uuid and registerLore()'s own
     // syncRegistryMirror() above wrote THAT id into the on-disk index for the

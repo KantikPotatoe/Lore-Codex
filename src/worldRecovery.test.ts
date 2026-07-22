@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseDiskRegistry, serializeDiskRegistry, plannedRecovery, REGISTRY_FORMAT_VERSION } from './worldRecovery'
+import { parseDiskRegistry, serializeDiskRegistry, plannedRecovery, neverMirrored, REGISTRY_FORMAT_VERSION } from './worldRecovery'
 import type { DiskRegistryRead } from './worldRecovery'
 
 const ok = (text: string): DiskRegistryRead => ({ status: 'ok', text })
@@ -153,5 +153,45 @@ describe('plannedRecovery', () => {
       { id: 'c', name: 'Gamma', mirroredAt: null, appVersion: null },
     ]
     expect(plannedRecovery(withUnmirrored, []).map((w) => w.id)).toEqual(['a', 'b'])
+  })
+})
+
+// #174 task r3, item 4: the complement of plannedRecovery — worlds the index
+// names but never actually mirrored, so there is nothing to restore, but the
+// app must not pretend it never knew about them.
+describe('neverMirrored', () => {
+  const disk = [
+    { id: 'a', name: 'Alpha', mirroredAt: 1, appVersion: '1.0.0' },
+    { id: 'c', name: 'Gamma', mirroredAt: null, appVersion: null },
+  ]
+
+  it('offers a disk-only entry with no mirror', () => {
+    expect(neverMirrored(disk, []).map((w) => w.id)).toEqual(['c'])
+  })
+
+  it('excludes a disk-only entry that DOES have a mirror (that is plannedRecovery\'s job)', () => {
+    expect(neverMirrored(disk, []).map((w) => w.id)).not.toContain('a')
+  })
+
+  it('excludes an entry already known to the registry, mirrored or not', () => {
+    expect(neverMirrored(disk, [{ id: 'c' }])).toEqual([])
+  })
+
+  it('offers nothing when the disk is empty', () => {
+    expect(neverMirrored([], [{ id: 'a' }])).toEqual([])
+  })
+
+  it('partitions with plannedRecovery: every disk entry absent from the registry lands in exactly one of the two', () => {
+    const mixed = [
+      { id: 'a', name: 'Alpha', mirroredAt: 1, appVersion: '1.0.0' },
+      { id: 'b', name: 'Beta', mirroredAt: 2, appVersion: '1.0.0' },
+      { id: 'c', name: 'Gamma', mirroredAt: null, appVersion: null },
+    ]
+    const known = [{ id: 'a' }] // 'a' is known; 'b' and 'c' are absent from the registry
+    const recoverable = plannedRecovery(mixed, known).map((w) => w.id)
+    const lost = neverMirrored(mixed, known).map((w) => w.id)
+    expect(recoverable).toEqual(['b'])
+    expect(lost).toEqual(['c'])
+    expect([...recoverable, ...lost].sort()).toEqual(['b', 'c'])
   })
 })

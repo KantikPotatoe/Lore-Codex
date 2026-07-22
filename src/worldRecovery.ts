@@ -167,3 +167,27 @@ export function plannedRecovery(
   const seen = new Set(known.map((l) => l.id))
   return disk.filter((w) => !seen.has(w.id) && w.mirroredAt !== null)
 }
+
+/**
+ * Worlds the on-disk index still names, are absent from the registry DB, but
+ * were never actually mirrored (`mirroredAt === null`) — so there is no
+ * `.lore` file to restore from. `plannedRecovery` (above) filters these out
+ * deliberately (a restore click would always fail), which is correct for
+ * "what can we offer to restore" but wrong for "what should the user be
+ * told": silently dropping them from view means an eviction can wipe out
+ * worlds the app *knows by name* were lost, with the recovery panel saying
+ * nothing about them at all (#174 task r3, item 4). This is the complement:
+ * together `plannedRecovery` and `neverMirrored` partition every disk entry
+ * absent from the registry into "recoverable" and "known but gone for good".
+ *
+ * The data really is unrecoverable — there is no repair for this one, only
+ * honesty about it. Callers must not offer a Restore control for these; it
+ * would only ever fail.
+ */
+export function neverMirrored(
+  disk: RecoverableWorld[],
+  known: { id: string }[],
+): RecoverableWorld[] {
+  const seen = new Set(known.map((l) => l.id))
+  return disk.filter((w) => !seen.has(w.id) && w.mirroredAt === null)
+}

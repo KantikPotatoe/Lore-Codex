@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import Dexie from 'dexie'
 import type { DiskRegistryRead } from './worldRecovery'
 
 // A stateful fake of the on-disk index, not just a call-counting stub: the
@@ -45,7 +46,7 @@ vi.mock('./db', async (importOriginal) => ({
 import { readRegistryMirror, writeRegistryMirror } from './platform'
 import { registry } from './registryDb'
 import { syncRegistryMirror, registerLore, deleteLore, importLoreFromBackup } from './lores'
-import { CURRENT_SCHEMA_VERSION } from './db'
+import { CURRENT_SCHEMA_VERSION, db, activeLoreId } from './db'
 
 function worldsOf(json: string | null): Array<Record<string, unknown>> {
   if (!json) return []
@@ -249,6 +250,79 @@ describe('importLoreFromBackup — restore path (id supplied) preserves a surviv
     // must still be rolled back — that half of the original rollback logic
     // stays correct on the recovery path too.
     expect(await registry.lores.get('default')).toBeUndefined()
+  })
+})
+
+// #174 task r3, item 2. This is what worldMirrorSync.realdb.test.ts's opening
+// comment demands: a real, live LoreDB, not a mock. `Dexie.delete()` is the
+// one call in this whole rollback whose damage a fixture cannot represent —
+// deleting a mocked `db` object proves nothing, because a mock has no
+// underlying IndexedDB for a sibling Dexie connection to silently reopen
+// empty. Only a real `fake-indexeddb` database, read back through the SAME
+// `db` singleton the rest of the app uses, can show the failure: live reads
+// reporting an empty world with no error anywhere.
+describe('importLoreFromBackup — rollback must not delete a database it did not create (#174 task r3, item 2)', () => {
+  it('id reuse targeting the live db: a failed restore leaves the live world\'s data intact and never calls Dexie.delete', async () => {
+    // `activeLoreId` is this test file's fresh, key-less localStorage default
+    // — the exact post-eviction state ("storage wiped, currentLoreId() falls
+    // back to 'default'") the whole feature exists for, and the exact
+    // scenario restoreWorld's id-reuse targets (LoreSelectorRoute.tsx).
+    expect(activeLoreId).toBe('default')
+
+    // Real, live data in the bound `db` singleton — standing in for "the
+    // world the user is mid-restore on, which already has its own content
+    // (or, per the post-eviction case, was already re-seeded by App.tsx)".
+    await db.pages.clear()
+    await db.pages.add({
+      id: 'live-page', title: 'Live Page', category: 'note', updatedAt: Date.now(),
+    } as never)
+    expect(await db.pages.count()).toBe(1)
+
+    const deleteSpy = vi.spyOn(Dexie, 'delete')
+    const json = JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, pages: [] })
+
+    // importBackupInto is mocked (module-level, top of this file) to always
+    // throw — restoreWorld's real caller passes the disk entry's own id
+    // ('default' here), so registerLore's `id` param is NOT omitted, and the
+    // rollback must therefore skip Dexie.delete entirely.
+    await expect(importLoreFromBackup('Aethel', json, 'default')).rejects.toThrow('import failed')
+
+    expect(deleteSpy).not.toHaveBeenCalled()
+
+    // The bug this guards against: an unconditional
+    // `Dexie.delete(dbNameFor('default'))` deletes the underlying IndexedDB
+    // out from under the live `db` connection. Dexie then silently reopens
+    // it empty on the very next access — no error anywhere, live queries
+    // just report an empty world. Reading through the SAME singleton the
+    // rest of the app reads through is what makes this assertion
+    // meaningful; a fresh `new LoreDB(...)` here would not observe the live
+    // connection's state at all.
+    expect(await db.pages.count()).toBe(1)
+    const page = await db.pages.get('live-page')
+    expect(page?.title).toBe('Live Page')
+
+    deleteSpy.mockRestore()
+  })
+
+  it('control: with no id supplied (a fresh uuid this call actually created), rollback still deletes that database', async () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(
+      'fresh-ghost-uuid' as `${string}-${string}-${string}-${string}-${string}`,
+    )
+    const deleteSpy = vi.spyOn(Dexie, 'delete')
+    const json = JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, pages: [] })
+
+    // This id was never live — nothing in the app was reading it — so
+    // deleting it is exactly the intended, harmless cleanup the original
+    // rollback logic was written for. Proves the fix is a guard, not a
+    // silent no-op that happens to also pass the test above: the delete
+    // still actually runs on the path it's meant for.
+    await expect(importLoreFromBackup('Ghost', json)).rejects.toThrow('import failed')
+
+    expect(deleteSpy).toHaveBeenCalledTimes(1)
+    const { dbNameFor } = await import('./loreId')
+    expect(deleteSpy).toHaveBeenCalledWith(dbNameFor('fresh-ghost-uuid'))
+
+    deleteSpy.mockRestore()
   })
 })
 

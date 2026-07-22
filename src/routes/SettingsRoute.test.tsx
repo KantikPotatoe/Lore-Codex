@@ -20,6 +20,10 @@ vi.mock('../platform', () => ({
   appVersion: vi.fn(async () => null),
   checkForUpdate: vi.fn(async () => null), // reached via useUpdateCheck in the Updates section
   isTauri: () => false, // the suite runs as the browser build
+  // Gated behind isTauri() in SettingsRoute (#174 task r3, item 3) — never
+  // actually called in this browser-mode suite, but the named import must
+  // resolve to something.
+  readRegistryMirror: vi.fn(async () => ({ status: 'absent' })),
 }))
 
 // Both restore branches of confirmImport must run inside the mirror
