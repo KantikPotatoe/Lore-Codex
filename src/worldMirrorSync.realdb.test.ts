@@ -243,7 +243,9 @@ describe('a long unbroken writing session is still mirrored (#233)', () => {
   it('writes nothing until the ceiling, then exactly once, then respects the floor', async () => {
     const start = Date.now()
 
-    // Nine minutes of unbroken typing at the real 30s poll cadence.
+    // 18 polls at the real 30s poll cadence (t = 0 ... 510_000), i.e. 8.5
+    // minutes of unbroken typing -- one poll short of nine minutes, since the
+    // ceiling tick below lands 90s (three poll intervals) after the last one.
     for (let t = 0; t < 9 * 60_000; t += MIRROR_POLL_MS) {
       await typeThenPoll(start + t)
     }
@@ -252,11 +254,34 @@ describe('a long unbroken writing session is still mirrored (#233)', () => {
     expect(writeWorldMirror).not.toHaveBeenCalled()
 
     // The ceiling elapses. This is the write that #233 says never happens.
-    await typeThenPoll(start + MIRROR_MAX_STALE_MS)
+    const ceiling = start + MIRROR_MAX_STALE_MS
+    await typeThenPoll(ceiling)
     expect(writeWorldMirror).toHaveBeenCalledTimes(1)
 
-    // And the floor still applies afterwards: the next tick must not write.
-    await typeThenPoll(start + MIRROR_MAX_STALE_MS + MIRROR_POLL_MS)
+    // And the floor still applies afterwards. This tick must land on the
+    // floor line specifically, not the quiet-window line above it: a change
+    // written via typeThenPoll is always 500ms old, which never clears the
+    // 30s quiet window, so a naive "poll again soon" tick would return false
+    // there and prove nothing about the floor (mutating floorMs to 0 would
+    // leave it green). Instead write a settled change -- 1s after the
+    // ceiling write, so by the time we poll it is 59s old, past MIRROR_QUIET_MS
+    // (30s) -- and poll 60s after the ceiling write, i.e. only 60s since
+    // lastMirrorAt, short of MIRROR_FLOOR_MS (5 min). That makes `stale` false
+    // (60s < 10min) and the quiet check pass (59s > 30s), so the floor check
+    // (`now - lastMirrorAt >= floorMs`, 60_000 >= 300_000 -- false) is the only
+    // line that can produce this result.
+    await db.pages.put({
+      id: PAGE_ID,
+      title: 'Aethelred',
+      titleLc: 'aethelred',
+      category: 'Character',
+      content: '<p>drafting</p>',
+      summary: '',
+      tags: [],
+      createdAt: ceiling - 60 * 60_000,
+      updatedAt: ceiling + 1_000,
+    })
+    await maybeMirrorWorld(ceiling + 60_000)
     expect(writeWorldMirror).toHaveBeenCalledTimes(1)
   })
 })
