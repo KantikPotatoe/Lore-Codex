@@ -1008,11 +1008,15 @@ describe('typed relationships in backups (#175)', () => {
   it('drops edges whose endpoints are not in the backup page set', async () => {
     const crafted = JSON.stringify({
       schemaVersion: 15,
-      pages: [{ id: 'uther', title: 'Uther', category: 'Character',
-        content: '', summary: '', tags: [], createdAt: 1, updatedAt: 1 }],
+      pages: [
+        { id: 'uther', title: 'Uther', category: 'Character',
+          content: '', summary: '', tags: [], createdAt: 1, updatedAt: 1 },
+        { id: 'arthur', title: 'Arthur', category: 'Character',
+          content: '', summary: '', tags: [], createdAt: 1, updatedAt: 1 },
+      ],
       relationshipTypes: [], meta: [],
       relationships: [
-        { id: 'ok', fromId: 'uther', toId: 'uther', typeId: 't', note: '', createdAt: 1 },
+        { id: 'ok', fromId: 'uther', toId: 'arthur', typeId: 't', note: '', createdAt: 1 },
         { id: 'dangling', fromId: 'uther', toId: 'ghost', typeId: 't', note: '', createdAt: 1 },
       ],
     })
