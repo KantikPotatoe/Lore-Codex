@@ -84,13 +84,23 @@ export default function App() {
   useEffect(() => {
     installStorageErrorListener() // surface IndexedDB quota/eviction write failures
     installTabSyncListener(activeLoreId) // freeze on another tab's import/delete of this world
-    bootstrapDefaultLore()
+    // bootstrapDefaultLore() now READS worlds/registry.json (#174 C2: an empty
+    // registry only means "seed a default" when the disk index doesn't also
+    // name a recoverable world) and syncRegistryMirror() WRITES it below.
+    // Chaining the reconciliation off bootstrap's own promise — rather than
+    // firing both from independent effects — makes that read-then-write order
+    // explicit instead of leaving it to accidental effect-registration order,
+    // which async work inside each effect could reshuffle anyway.
+    const bootstrapped = bootstrapDefaultLore()
     requestPersistentStorage()
     seedTemplates()
     seedDefaultCalendar()
     // Convert any legacy inline body images to the by-ref model (#182 phase 2),
     // then snapshot — runs once per world (guarded by a meta flag), idempotent.
     migrateInlineBodyImages().finally(() => maybeTakeSnapshot())
+    if (isTauri()) {
+      void bootstrapped.then(() => syncRegistryMirror())
+    }
   }, [])
 
   // Keep the search index in sync as any searchable table changes. installSearchIndex
@@ -108,17 +118,6 @@ export default function App() {
   useEffect(() => {
     if (!isTauri()) return
     return startMirrorLoop()
-  }, [])
-
-  // Reconcile worlds/registry.json on every launch (#174). The per-CRUD
-  // refreshes in lores.ts cannot cover this: bootstrapDefaultLore returns early
-  // once `lore-bootstrapped` is set, which it already is for every existing
-  // install — so a single-world user who never renames anything would otherwise
-  // have their .lore files mirrored faithfully and no index naming them, and
-  // recovery would find nothing.
-  useEffect(() => {
-    if (!isTauri()) return
-    void syncRegistryMirror()
   }, [])
 
   // Desktop only: finish a backup before the window closes. Everything is read

@@ -65,6 +65,58 @@ describe('bootstrapDefaultLore', () => {
     await Promise.all([bootstrapDefaultLore(), bootstrapDefaultLore()])
     expect(await listLores()).toHaveLength(1)
   })
+
+  // #174 C2: deleting the WebView2 profile wipes localStorage (BOOTSTRAPPED_KEY)
+  // right along with the registry DB. Without a recovery-aware guard, bootstrap
+  // re-adds { id: 'default' } here, and plannedRecovery's set-difference then
+  // filters the real disk mirror out as "already known" — the panel never
+  // renders, and the file holding everything the user wrote sits unreferenced
+  // on disk. This is the eviction case end to end.
+  describe('the eviction case (#174 C2)', () => {
+    it('does not seed a default world when the disk index names a real mirror, and leaves it offered for recovery', async () => {
+      const diskEntry = { id: 'default', name: 'Aethel', mirroredAt: 1000, appVersion: '1.3.0' }
+      vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([diskEntry]))
+
+      await bootstrapDefaultLore()
+
+      const lores = await listLores()
+      expect(lores).toHaveLength(0) // no default world silently recreated
+      expect(plannedRecovery([diskEntry], lores)).toEqual([diskEntry]) // still offered
+    })
+
+    it('seeds normally when the only disk entry has no mirror behind it (nothing to restore)', async () => {
+      vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([
+        { id: 'default', name: 'Aethel', mirroredAt: null, appVersion: null },
+      ]))
+
+      await bootstrapDefaultLore()
+
+      const lores = await listLores()
+      expect(lores).toHaveLength(1)
+      expect(lores[0].id).toBe('default')
+    })
+
+    it('still seeds on a genuine first run (no on-disk index at all)', async () => {
+      vi.mocked(readRegistryMirror).mockResolvedValue(null)
+
+      await bootstrapDefaultLore()
+
+      const lores = await listLores()
+      expect(lores).toHaveLength(1)
+      expect(lores[0].id).toBe('default')
+    })
+
+    // The brief's browser guarantee: readRegistryMirror() resolves null in the
+    // browser (asserted directly in platform.test.ts), so parseDiskRegistry(null)
+    // is always [] there and this whole check is inert — identical to before #174.
+    it('browser path (readRegistryMirror resolving null) behaves exactly like a first run', async () => {
+      vi.mocked(readRegistryMirror).mockResolvedValue(null)
+
+      await bootstrapDefaultLore()
+
+      expect(await listLores()).toHaveLength(1)
+    })
+  })
 })
 
 describe('registerLore', () => {

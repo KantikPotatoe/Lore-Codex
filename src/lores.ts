@@ -173,6 +173,23 @@ async function doBootstrapDefaultLore(): Promise<void> {
     return
   }
 
+  // An empty registry is normally a genuine first run. But deleting the
+  // WebView2 profile takes localStorage with it too, so BOOTSTRAPPED_KEY is
+  // gone right along with the registry — and without this check, seeding
+  // 'default' right here would register the id the eviction wiped, and
+  // plannedRecovery's set-difference would then filter the real disk mirror
+  // out as "already known", never offering it back (#174 C2). Ask the on-disk
+  // index (readRegistryMirror resolves null in the browser, so this check is
+  // inert there) whether it names a world with an actual .lore file behind
+  // it (mirroredAt !== null — an entry can be on disk with no file, just a
+  // registry-only record `syncRegistryMirror` wrote before anything was
+  // mirrored, and there is nothing to restore from that). If so, this is a
+  // lost-store, not a first run: leave the registry empty (and the flag
+  // unset, so this check runs again next launch too) for the lore selector's
+  // recovery panel to offer the world back instead of silently recreating it.
+  const disk = parseDiskRegistry(await readRegistryMirror())
+  if (disk.some((w) => w.mirroredAt !== null)) return
+
   // Only read the legacy home-config title when db.ts is pointing at 'lore-app'.
   // If the active lore is already set to something else, skip the title migration.
   let name = 'My World'
