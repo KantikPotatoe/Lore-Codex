@@ -50,10 +50,21 @@ vi.mock('./lores', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./lores')>()),
   syncRegistryMirror: vi.fn(async () => {}),
 }))
+// I5: the ordering test needs backupOnExit itself to be a spy (to record when
+// it ran relative to the mirror flush) while keeping shouldBackupOnExit and
+// latestChangeTime's *other* callers real — this is the same module the
+// 'shouldBackupOnExit' pure-function describe block below imports directly.
+vi.mock('./backup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./backup')>()),
+  backupOnExit: vi.fn(async () => true),
+  latestChangeTime: vi.fn(async () => 0),
+}))
 
 import { onCloseRequested, isTauri } from './platform'
 import { flushWorldMirror, startMirrorLoop } from './worldMirrorSync'
 import { syncRegistryMirror } from './lores'
+import { backupOnExit, latestChangeTime } from './backup'
+import { updateAppSettings } from './appSettings'
 import App from './App'
 
 describe('App — close handler', () => {
@@ -109,6 +120,44 @@ describe('App — close handler', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// #174 I5: the mirror is the atomic, durable write; backupOnExit's is direct
+// and truncatable by its own doc comment above. Two full exportAll()s share
+// one 5s budget, so whichever runs second is the one a tight budget cuts —
+// this pins that the mirror goes first, not backupOnExit.
+describe('App — close handler order (#174 I5)', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    vi.mocked(isTauri).mockReturnValue(false)
+    await registry.appMeta.clear()
+  })
+  afterEach(() => cleanup())
+
+  it('flushes the world mirror before writing the exit backup', async () => {
+    const order: string[] = []
+    vi.mocked(flushWorldMirror).mockImplementation(async () => {
+      order.push('mirror')
+    })
+    vi.mocked(backupOnExit).mockImplementation(async () => {
+      order.push('backup')
+      return true
+    })
+    // shouldBackupOnExit(enabled, lastBackup, latestChange) must actually
+    // decide to back up, or backupOnExit is never called and the ordering
+    // assertion below would pass vacuously.
+    await updateAppSettings({ backupOnExit: true })
+    vi.mocked(latestChangeTime).mockResolvedValue(123) // > 0, no prior backup ⇒ due
+
+    render(createElement(MemoryRouter, { initialEntries: ['/'] }, createElement(App)))
+    await screen.findByText('Lore Codex')
+    await waitFor(() => expect(onCloseRequested).toHaveBeenCalled())
+    const handler = vi.mocked(onCloseRequested).mock.calls[0][0]
+
+    await handler()
+
+    expect(order).toEqual(['mirror', 'backup'])
   })
 })
 

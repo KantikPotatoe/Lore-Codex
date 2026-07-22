@@ -5,6 +5,7 @@ vi.mock('./platform', () => ({
   writeWorldMirror: vi.fn(async () => true),
   readRegistryMirror: vi.fn(async () => null),
   writeRegistryMirror: vi.fn(async () => true),
+  WORLDS_DIR: 'worlds',
 }))
 
 // activeLoreId is fixed at 'default' — distinct from currentLoreId's mocked
@@ -46,6 +47,9 @@ import {
   flushWorldMirror,
   withMirroringSuspended,
   resetWorldMirrorStateForTests,
+  startMirrorLoop,
+  getMirrorHealth,
+  mirrorFilePath,
 } from './worldMirrorSync'
 
 const NOW = 1_000_000_000
@@ -386,5 +390,90 @@ describe('I3: suspension raised mid-flight aborts the write before it commits', 
 
     await suspended
     expect(importStarted).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// I4 — a rejected write must land in mirror health, not vanish as an
+// unhandled rejection off the fire-and-forget poll loop.
+// ---------------------------------------------------------------------------
+describe('I4: mirror health', () => {
+  it('reports never-written health before any write has happened', () => {
+    // The freshly-launched-app reading: no success, no error. Distinct from a
+    // failure — Settings must not word this as something having gone wrong.
+    expect(getMirrorHealth()).toEqual({ lastSuccessAt: null, lastError: null })
+  })
+
+  it('records a failed write instead of leaving it unhandled', async () => {
+    vi.mocked(latestChangeTime).mockResolvedValue(SETTLED)
+    vi.mocked(writeWorldMirror).mockRejectedValue(new Error('disk full'))
+
+    await expect(maybeMirrorWorld(NOW)).rejects.toThrow('disk full')
+
+    expect(getMirrorHealth()).toEqual({
+      lastSuccessAt: null,
+      lastError: { message: 'disk full', at: NOW },
+    })
+  })
+
+  it('clears the recorded error once a later write succeeds', async () => {
+    vi.mocked(latestChangeTime).mockResolvedValue(SETTLED)
+    vi.mocked(writeWorldMirror).mockRejectedValueOnce(new Error('disk full'))
+    await expect(maybeMirrorWorld(NOW)).rejects.toThrow('disk full')
+    expect(getMirrorHealth().lastError).not.toBeNull()
+
+    vi.mocked(writeWorldMirror).mockResolvedValue(true)
+    // Past the floor from the (failed) attempt at NOW — lastMirrorAt was never
+    // set by that attempt, so this is due regardless, but keep it realistic.
+    await maybeMirrorWorld(NOW + MIRROR_FLOOR_MS + MIRROR_QUIET_MS + 2)
+
+    expect(getMirrorHealth()).toEqual({
+      lastSuccessAt: NOW + MIRROR_FLOOR_MS + MIRROR_QUIET_MS + 2,
+      lastError: null,
+    })
+  })
+
+  it('does not record a health change when the seam merely reports no write (browser path)', async () => {
+    // writeWorldMirror resolving false (the browser, where there is no
+    // filesystem to mirror to) is not a failure — nothing should land in
+    // lastError for it.
+    vi.mocked(latestChangeTime).mockResolvedValue(SETTLED)
+    vi.mocked(writeWorldMirror).mockResolvedValue(false)
+
+    await maybeMirrorWorld(NOW)
+
+    expect(getMirrorHealth()).toEqual({ lastSuccessAt: null, lastError: null })
+  })
+
+  it('the poll loop catches a rejected write instead of leaving it unhandled', async () => {
+    vi.mocked(latestChangeTime).mockResolvedValue(SETTLED)
+    vi.mocked(writeWorldMirror).mockRejectedValue(new Error('permission denied'))
+
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
+    const stop = startMirrorLoop()
+    try {
+      const tick = setIntervalSpy.mock.calls[0][0] as () => void
+      // A rejection from the tick's void-called promise must never escape as
+      // an unhandled rejection — if it did, this test process would report
+      // one regardless of the assertion below.
+      tick()
+      await vi.waitFor(() => {
+        expect(getMirrorHealth().lastError?.message).toBe('permission denied')
+      })
+    } finally {
+      stop()
+      setIntervalSpy.mockRestore()
+    }
+  })
+})
+
+describe('mirrorFilePath', () => {
+  it('places the mirror under worlds/<loreId>.lore', () => {
+    expect(mirrorFilePath('some-world')).toBe('worlds/some-world.lore')
+  })
+
+  it('defaults to the bound active world', () => {
+    // activeLoreId is mocked to 'default' at the top of this file.
+    expect(mirrorFilePath()).toBe('worlds/default.lore')
   })
 })

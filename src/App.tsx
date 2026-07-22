@@ -53,6 +53,15 @@ import { startMirrorLoop, flushWorldMirror } from './worldMirrorSync'
 // backupOnExit's own write is still direct and still truncatable — moving it
 // to the same atomic idiom is a small follow-up now that fs:allow-rename is
 // granted, but it stays out of this change.
+//
+// Ordering within the race (#174 I5): the mirror flushes FIRST. Both do a
+// full exportAll() of a world that can be tens of megabytes of data-URLs —
+// two full serializations, sequentially, inside one 5s budget — so whichever
+// runs second is the one the timeout is most likely to cut. That ordering
+// used to put backupOnExit first, which is backwards on the merits: its write
+// is the direct, truncatable one (see above), while the mirror commits by
+// rename and is the actual durability net. If the budget runs out, it should
+// be backupOnExit's write that's sacrificed, not the mirror's.
 function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
   return Promise.race([promise, new Promise<void>((resolve) => setTimeout(resolve, ms))])
 }
@@ -129,17 +138,17 @@ export default function App() {
     onCloseRequested(async () => {
       await withTimeout(
         (async () => {
+          // Mirror first (#174 I5) — see the ordering note above. Inside the
+          // same race on purpose: it's worth up to the remaining budget, but
+          // an app you cannot quit is never acceptable. A truncated mirror is
+          // impossible regardless — writeWorldMirror commits by rename, so a
+          // timeout mid-write leaves the previous mirror intact.
+          await flushWorldMirror()
           const { backupOnExit: enabled } = await getAppSettings()
           const lastBackup = (await getMeta<number>(LAST_BACKUP_KEY)) ?? null
           if (shouldBackupOnExit(enabled, lastBackup, await latestChangeTime())) {
             await backupOnExit()
           }
-          // Inside the same race on purpose: the mirror is worth up to the
-          // remaining budget, but an app you cannot quit is never acceptable.
-          // A truncated mirror is impossible regardless — writeWorldMirror
-          // commits by rename, so a timeout mid-write leaves the previous
-          // mirror intact.
-          await flushWorldMirror()
         })(),
         5000,
       )

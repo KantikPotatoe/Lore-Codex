@@ -2502,6 +2502,16 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   max-width: 60ch;
 }
 .settings-field.is-disabled { opacity: 0.55; }
+/* A problem line under a settings-field's hint (e.g. a failed world-mirror
+   write, #174 I4) — its own row so --danger's color isn't washed out by
+   .settings-hint's opacity, which would defeat the point of using it. */
+.settings-hint-danger {
+  grid-column: 1;
+  grid-row: 3;
+  font-size: 12px;
+  color: var(--danger);
+  max-width: 60ch;
+}
 
 /* A form field inside a ConfirmDialog (e.g. the import-world wizard's name
    field) — simple stacked layout, label above a full-width input. Deliberately

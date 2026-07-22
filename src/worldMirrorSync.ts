@@ -14,7 +14,7 @@
 
 import { exportAll, activeLoreId, db, countAll } from './db'
 import { latestChangeTime } from './backup'
-import { writeWorldMirror, readRegistryMirror, writeRegistryMirror } from './platform'
+import { writeWorldMirror, readRegistryMirror, writeRegistryMirror, WORLDS_DIR } from './platform'
 import { shouldMirror, MIRROR_POLL_MS } from './worldMirror'
 import { parseDiskRegistry } from './worldRecovery'
 import { markWorldMirrored } from './worldIndex'
@@ -34,6 +34,55 @@ let suspendDepth = 0
 // start effect double-invokes under StrictMode in dev, and a poll can land on
 // top of a close-flush.
 let inFlight: Promise<void> | null = null
+
+// ---------------------------------------------------------------------------
+// Mirror health (#174 I4)
+// ---------------------------------------------------------------------------
+//
+// Before this, a rejected write became an unhandled promise rejection off
+// startMirrorLoop's fire-and-forget interval, and installStorageErrorListener
+// only recognises IndexedDB quota/eviction shapes — a Tauri filesystem error
+// (permission denied, disk full, a path outside the granted scope) matches
+// neither and vanished silently. A mirror that has never once succeeded then
+// looks exactly like one working perfectly, right up until the moment the
+// user actually needs it. This state is the fix: the last time a write
+// actually landed on disk, and the most recent failure since then, so
+// Settings has something honest to show.
+
+/** Epoch ms of the last write that actually committed to disk, or `null` if
+ *  none has this page-life. Deliberately not persisted, like `lastMirrorAt`
+ *  above — a fresh launch reporting "never" until the first real write is the
+ *  correct and expected reading, not a regression to explain away. */
+let lastSuccessAt: number | null = null
+
+/** The most recent write failure, cleared the next time a write succeeds —
+ *  this reports *current* health, not a running incident log. `null` means no
+ *  failure since the last success (or ever, this page-life). */
+let lastError: { message: string; at: number } | null = null
+
+export interface MirrorHealth {
+  lastSuccessAt: number | null
+  lastError: { message: string; at: number } | null
+}
+
+/** Current mirror health, for a status readout (Settings). A plain accessor
+ *  rather than a subscription: callers that want it live (as Settings does)
+ *  poll it on an interval, the same idiom `appVersion()` already uses there
+ *  for a one-shot read. */
+export function getMirrorHealth(): MirrorHealth {
+  return { lastSuccessAt, lastError }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+/** Where the active world's mirror lives, relative to the app's data folder —
+ *  for display only (Settings). Takes `loreId` as a parameter, defaulted to
+ *  the bound world, so it stays testable without touching module state. */
+export function mirrorFilePath(loreId: string = activeLoreId): string {
+  return `${WORLDS_DIR}/${loreId}.lore`
+}
 
 // ---------------------------------------------------------------------------
 // Mirror-specific change probe (#174 follow-up: I2)
@@ -131,6 +180,8 @@ export function resetWorldMirrorStateForTests(): void {
   inFlight = null
   lastKnownCounts = null
   countedChangeAt = 0
+  lastSuccessAt = null
+  lastError = null
 }
 
 /**
@@ -203,25 +254,38 @@ async function write(now: number): Promise<void> {
   // mirror if the ids happened to coincide, or under the wrong filename
   // entirely — exactly the corruption the atomic write exists to prevent.
   const loreId = activeLoreId
-  const json = await exportAll()
-  // I3: a poll can begin, pass the entry guard, and still be mid-`exportAll()`
-  // when `withMirroringSuspended` raises the guard for an import — `exportAll`
-  // is 15 independent `toArray()` calls, not one transaction, so it can itself
-  // straddle `importAll`'s `clear()`/`bulkAdd`. That already-running export may
-  // therefore hold a torn snapshot by the time it resolves. Re-checking here,
-  // immediately before the disk write, is what actually matters: a torn export
-  // that never reaches disk is harmless, but one that does can rename a
-  // half-imported world over a good mirror. (withMirroringSuspended's own
-  // await-inFlight keeps this rare in practice — see there — but only this
-  // recheck makes it *safe* regardless.)
-  if (suspendDepth > 0) return
-  const wrote = await writeWorldMirror(loreId, json)
-  // Only stamp on a real write. In the browser the seam reports false, and
-  // recording a mirror time there would tell the policy a mirror exists when
-  // none does.
-  if (wrote) {
-    lastMirrorAt = now
-    await stampRegistryMirrored(loreId, now)
+  try {
+    const json = await exportAll()
+    // I3: a poll can begin, pass the entry guard, and still be mid-`exportAll()`
+    // when `withMirroringSuspended` raises the guard for an import — `exportAll`
+    // is 15 independent `toArray()` calls, not one transaction, so it can itself
+    // straddle `importAll`'s `clear()`/`bulkAdd`. That already-running export may
+    // therefore hold a torn snapshot by the time it resolves. Re-checking here,
+    // immediately before the disk write, is what actually matters: a torn export
+    // that never reaches disk is harmless, but one that does can rename a
+    // half-imported world over a good mirror. (withMirroringSuspended's own
+    // await-inFlight keeps this rare in practice — see there — but only this
+    // recheck makes it *safe* regardless.)
+    if (suspendDepth > 0) return
+    const wrote = await writeWorldMirror(loreId, json)
+    // Only stamp on a real write. In the browser the seam reports false, and
+    // recording a mirror time there would tell the policy a mirror exists when
+    // none does.
+    if (wrote) {
+      lastMirrorAt = now
+      lastSuccessAt = now
+      lastError = null // a fresh success supersedes whatever failed before it
+      await stampRegistryMirrored(loreId, now)
+    }
+  } catch (err) {
+    // I4: record it before letting it propagate. `run()`'s caller decides how
+    // to handle the rejection (flushWorldMirror is awaited inside App.tsx's
+    // already-caught close race; startMirrorLoop's fire-and-forget poll adds
+    // its own `.catch()` below) — but either way, the failure must land here
+    // first, or a mirror that has never once succeeded is indistinguishable
+    // from one working perfectly until recovery day.
+    lastError = { message: errorMessage(err), at: now }
+    throw err
   }
 }
 
@@ -260,6 +324,11 @@ async function stampRegistryMirrored(id: string, at: number): Promise<void> {
  * `flushWorldMirror()` for the close-time backstop.
  */
 export function startMirrorLoop(): () => void {
-  const id = setInterval(() => { void maybeMirrorWorld() }, MIRROR_POLL_MS)
+  const id = setInterval(() => {
+    // I4: write() (above) already recorded a failure into mirror health
+    // before rethrowing — this `.catch()` exists only so a fire-and-forget
+    // poll tick can't turn that rethrow into an unhandled promise rejection.
+    void maybeMirrorWorld().catch(() => {})
+  }, MIRROR_POLL_MS)
   return () => clearInterval(id)
 }

@@ -26,7 +26,7 @@ import { deleteLore, currentLoreId } from '../lores'
 import { openTextFile, isTauri, pickDirectory, appVersion } from '../platform'
 import { useSharedUpdateCheck } from '../UpdateCheckContext'
 import { getAppSettings, updateAppSettings, DEFAULT_APP_SETTINGS, SPELLCHECK_LANGS, type AppSettings } from '../appSettings'
-import { withMirroringSuspended } from '../worldMirrorSync'
+import { withMirroringSuspended, getMirrorHealth, mirrorFilePath, type MirrorHealth } from '../worldMirrorSync'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function SettingsRoute() {
@@ -88,6 +88,21 @@ export default function SettingsRoute() {
 
   useEffect(() => {
     isStoragePersisted().then(setPersisted)
+  }, [])
+
+  // World-mirror health (#174 I4): getMirrorHealth() is a plain accessor over
+  // module state, not a live subscription — poll it while this page is open
+  // so a write landing in the background (the 30s cadence, or a close-flush
+  // from a previous session) doesn't leave a stale readout on screen for the
+  // rest of the visit. Desktop-only: the mirror never runs in the browser, so
+  // there is nothing to poll there.
+  const [mirrorHealth, setMirrorHealth] = useState<MirrorHealth | null>(null)
+  useEffect(() => {
+    if (!isTauri()) return
+    const read = () => setMirrorHealth(getMirrorHealth())
+    read()
+    const id = setInterval(read, 5000)
+    return () => clearInterval(id)
   }, [])
 
   async function handleBackup() {
@@ -348,6 +363,23 @@ export default function SettingsRoute() {
                 : 'Pick a cloud-synced folder and “Back up now” will open there — one click instead of navigating every time.'
               : 'Desktop app only. Browsers always save to their own downloads folder.'}
           </span>
+        </div>
+
+        <div className={`settings-field${desktop ? '' : ' is-disabled'}`}>
+          <span className="settings-label">World file</span>
+          <span>{desktop ? mirrorFilePath() : '—'}</span>
+          <span className="settings-hint">
+            {desktop
+              ? mirrorHealth?.lastSuccessAt
+                ? `An always-current copy of this world, kept automatically inside the app's data folder as a durability net if the browser storage is ever lost. Last written ${timeAgo(mirrorHealth.lastSuccessAt)}.`
+                : "An always-current copy of this world, kept automatically inside the app's data folder as a durability net if the browser storage is ever lost. Last written: never — expected right after launch, before the first quiet moment; it writes on its own as you keep editing."
+              : 'Desktop app only. A browser has no filesystem to mirror to.'}
+          </span>
+          {desktop && mirrorHealth?.lastError && (
+            <span className="settings-hint-danger">
+              Last write failed {timeAgo(mirrorHealth.lastError.at)}: {mirrorHealth.lastError.message}
+            </span>
+          )}
         </div>
 
         {isTauri() ? (

@@ -27,6 +27,11 @@ vi.mock('../platform', () => ({
 // away, so the wrapped call still actually executes against the real db.
 vi.mock('../worldMirrorSync', () => ({
   withMirroringSuspended: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+  // Desktop-only in the UI (this suite runs isTauri: () => false throughout),
+  // so these are never actually called here — see
+  // SettingsRoute.mirrorHealth.test.tsx for the desktop-mode readout itself.
+  getMirrorHealth: vi.fn(() => ({ lastSuccessAt: null, lastError: null })),
+  mirrorFilePath: vi.fn(() => 'worlds/default.lore'),
 }))
 
 afterEach(() => {
