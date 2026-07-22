@@ -3,15 +3,21 @@
 // world is lores.ts's, and deciding what to offer is this module's.
 
 import { isValidLoreId } from './worldMirror'
+import type { WorldIndexEntry } from './worldIndex'
 
-/** A world found on disk that the registry DB does not know about. */
-export interface RecoverableWorld {
-  id: string
-  name: string
-  /** When the index was last written; null if the file predates the field. */
-  mirroredAt: number | null
-  appVersion: string | null
-}
+/**
+ * A world found on disk that the registry DB does not know about.
+ *
+ * Same shape as `WorldIndexEntry` (src/worldIndex.ts) — both describe one row
+ * of `worlds/registry.json`. Kept as an alias rather than a second,
+ * independently-typed interface: worldIndex.ts owns the canonical on-disk row
+ * (it's what `mergeWorldIndex`/`markWorldMirrored` produce and what
+ * `syncRegistryMirror` writes), and `parseDiskRegistry` below hands its output
+ * straight to `mergeWorldIndex` with no conversion step. Two near-identical
+ * interfaces here would only be free to drift from the shape actually
+ * persisted to disk.
+ */
+export type RecoverableWorld = WorldIndexEntry
 
 /**
  * Parse `<app-data>/worlds/registry.json`.
@@ -51,17 +57,22 @@ export function parseDiskRegistry(text: string | null): RecoverableWorld[] {
 }
 
 /**
- * Which worlds to offer restoring: those present on disk and absent from the
- * registry DB.
+ * Which worlds to offer restoring: those present on disk, absent from the
+ * registry DB, and actually mirrored.
  *
  * A deleted world is absent from both — `deleteLore` moves its `.lore` into
  * `worlds/trash/` and re-indexes — so a deliberate deletion is never
  * resurrected by this.
+ *
+ * `mirroredAt === null` means the index knows the world's name (the registry
+ * added it, `mergeWorldIndex` recorded it unmirrored) but no `.lore` file was
+ * ever written for it. There is nothing to restore from — offering it would
+ * produce a click that always fails with "That world file could not be read."
  */
 export function plannedRecovery(
   disk: RecoverableWorld[],
   known: { id: string }[],
 ): RecoverableWorld[] {
   const seen = new Set(known.map((l) => l.id))
-  return disk.filter((w) => !seen.has(w.id))
+  return disk.filter((w) => !seen.has(w.id) && w.mirroredAt !== null)
 }

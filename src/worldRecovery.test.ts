@@ -67,4 +67,15 @@ describe('plannedRecovery', () => {
   it('offers nothing when the disk is empty', () => {
     expect(plannedRecovery([], [{ id: 'a' }])).toEqual([])
   })
+
+  // Second bug in #174: mirroredAt was stamped for every world at index-write
+  // time even though only the active world is ever mirrored. An entry with no
+  // .lore file on disk must never be offered — restoring it can only fail.
+  it('excludes an entry with no mirror, even when unknown to the registry', () => {
+    const withUnmirrored = [
+      ...disk,
+      { id: 'c', name: 'Gamma', mirroredAt: null, appVersion: null },
+    ]
+    expect(plannedRecovery(withUnmirrored, []).map((w) => w.id)).toEqual(['a', 'b'])
+  })
 })

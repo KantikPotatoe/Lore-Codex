@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+vi.mock('./platform', () => ({
+  readRegistryMirror: vi.fn(async () => null),
+  writeRegistryMirror: vi.fn(async () => true),
+  trashWorldMirror: vi.fn(async () => true),
+}))
+
 import {
   registry,
   bootstrapDefaultLore,
@@ -6,13 +13,19 @@ import {
   getLore,
   registerLore,
   importLoreFromBackup,
+  syncRegistryMirror,
+  deleteLore,
 } from './lores'
+import { readRegistryMirror, writeRegistryMirror } from './platform'
 import { LoreDB, CURRENT_SCHEMA_VERSION } from './db'
 import { dbNameFor } from './loreId'
 
 beforeEach(async () => {
   localStorage.clear()
   await registry.lores.clear()
+  vi.clearAllMocks()
+  vi.mocked(readRegistryMirror).mockResolvedValue(null)
+  vi.mocked(writeRegistryMirror).mockResolvedValue(true)
 })
 
 describe('bootstrapDefaultLore', () => {
@@ -94,5 +107,57 @@ describe('importLoreFromBackup — the migration wizard core', () => {
     const before = (await listLores()).length
     await expect(importLoreFromBackup('Broken', 'not json')).rejects.toThrow()
     expect((await listLores()).length).toBe(before)
+  })
+})
+
+// #174 C1: the on-disk index must be a union of disk + registry, never a
+// replacement — a replacement erases, on the launch right after an eviction,
+// the only pointers to the .lore files that survived the eviction.
+describe('syncRegistryMirror — the index is a union, never a replacement (#174 C1)', () => {
+  it('keeps a world known only to disk when the registry is empty (the eviction case)', async () => {
+    // registry.lores is empty (beforeEach clears it) — this is exactly the
+    // state right after an eviction: the registry DB is gone, but the
+    // on-disk index (and the .lore files it names) survived.
+    vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([
+      { id: 'evicted', name: 'Aethel', mirroredAt: 1000, appVersion: '1.3.0' },
+    ]))
+
+    await syncRegistryMirror()
+
+    expect(writeRegistryMirror).toHaveBeenCalledTimes(1)
+    const written = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls[0][0] as string)
+    expect(written).toEqual([
+      { id: 'evicted', name: 'Aethel', mirroredAt: 1000, appVersion: '1.3.0' },
+    ])
+  })
+
+  it('adds a registry-only world alongside whatever is already on disk', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([
+      { id: 'evicted', name: 'Aethel', mirroredAt: 1000, appVersion: '1.3.0' },
+    ]))
+    await registry.lores.add({
+      id: 'fresh', name: 'Fresh World', banner: null, createdAt: 1, updatedAt: 1,
+    })
+
+    await syncRegistryMirror()
+
+    const written = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls[0][0] as string)
+    expect(written.map((w: { id: string }) => w.id).sort()).toEqual(['evicted', 'fresh'])
+  })
+})
+
+describe('deleteLore', () => {
+  it('drops the deleted world from the on-disk index (the only way an entry leaves it)', async () => {
+    const id = await registerLore('Doomed World') // not the active lore, so no reload fires
+    vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([
+      { id, name: 'Doomed World', mirroredAt: 500, appVersion: '1.0.0' },
+      { id: 'untouched', name: 'Other World', mirroredAt: 10, appVersion: '1.0.0' },
+    ]))
+    vi.mocked(writeRegistryMirror).mockClear()
+
+    await deleteLore(id)
+
+    const written = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls.at(-1)![0] as string)
+    expect(written.map((w: { id: string }) => w.id)).toEqual(['untouched'])
   })
 })

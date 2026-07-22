@@ -5,12 +5,22 @@
 // The decision of *when* to write lives in the pure worldMirror.ts; the
 // decision of *how* lives in platform.ts. This file owns only the state
 // between them.
+//
+// It also reads the registry DB directly (`registry.lores.get`) to look up
+// the mirrored world's name when stamping the on-disk index after a write —
+// the same allowlist entry drops the REGISTRY_BAN for this file too (see
+// eslint.config.js), and going through lores.ts for one field would add a
+// dependency this module doesn't otherwise need.
 
 import { exportAll } from './db'
 import { latestChangeTime } from './backup'
 import { currentLoreId } from './loreId'
-import { writeWorldMirror } from './platform'
+import { writeWorldMirror, readRegistryMirror, writeRegistryMirror } from './platform'
 import { shouldMirror, MIRROR_POLL_MS } from './worldMirror'
+import { parseDiskRegistry } from './worldRecovery'
+import { markWorldMirrored } from './worldIndex'
+import { registry } from './registryDb'
+import pkg from '../package.json'
 
 // When the active world was last mirrored, this page-life. Deliberately not
 // persisted: a fresh launch then mirrors once shortly after start if anything
@@ -80,12 +90,39 @@ function run(now: number): Promise<void> {
 }
 
 async function write(now: number): Promise<void> {
+  const loreId = currentLoreId()
   const json = await exportAll()
-  const wrote = await writeWorldMirror(currentLoreId(), json)
+  const wrote = await writeWorldMirror(loreId, json)
   // Only stamp on a real write. In the browser the seam reports false, and
   // recording a mirror time there would tell the policy a mirror exists when
   // none does.
-  if (wrote) lastMirrorAt = now
+  if (wrote) {
+    lastMirrorAt = now
+    await stampRegistryMirrored(loreId, now)
+  }
+}
+
+/**
+ * Record this write in the on-disk index (#174's second bug). The spec
+ * claimed `mirroredAt` was already stamped at write time; it was not — it was
+ * stamped for every world on every `syncRegistryMirror()` call, which is not
+ * the same claim. This is the one and only place a real mirror write happens,
+ * so it is the one and only place `mirroredAt` may become non-null.
+ *
+ * Best-effort, like `syncRegistryMirror`/`dropFromRegistryMirror` in
+ * lores.ts: a stamp that fails to write must not fail the mirror write it is
+ * recording, and must not throw into the polling loop.
+ */
+async function stampRegistryMirrored(id: string, at: number): Promise<void> {
+  try {
+    const [lore, diskText] = await Promise.all([registry.lores.get(id), readRegistryMirror()])
+    const name = lore?.name ?? id
+    const onDisk = parseDiskRegistry(diskText)
+    const index = markWorldMirrored(onDisk, id, name, at, pkg.version)
+    await writeRegistryMirror(JSON.stringify(index))
+  } catch {
+    // Best-effort — see syncRegistryMirror in lores.ts.
+  }
 }
 
 /**

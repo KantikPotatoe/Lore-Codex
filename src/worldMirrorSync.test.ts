@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MIRROR_QUIET_MS, MIRROR_FLOOR_MS } from './worldMirror'
 
-vi.mock('./platform', () => ({ writeWorldMirror: vi.fn(async () => true) }))
+vi.mock('./platform', () => ({
+  writeWorldMirror: vi.fn(async () => true),
+  readRegistryMirror: vi.fn(async () => null),
+  writeRegistryMirror: vi.fn(async () => true),
+}))
 vi.mock('./db', () => ({ exportAll: vi.fn(async () => '{"pages":[]}') }))
 vi.mock('./backup', () => ({ latestChangeTime: vi.fn(async () => 0) }))
 vi.mock('./loreId', () => ({ currentLoreId: () => 'default' }))
 
-import { writeWorldMirror } from './platform'
+import { writeWorldMirror, readRegistryMirror, writeRegistryMirror } from './platform'
 import { exportAll } from './db'
 import { latestChangeTime } from './backup'
+import { registry } from './registryDb'
 import {
   maybeMirrorWorld,
   flushWorldMirror,
@@ -19,11 +24,14 @@ import {
 const NOW = 1_000_000_000
 const SETTLED = NOW - MIRROR_QUIET_MS - 1
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
   resetWorldMirrorStateForTests()
   vi.mocked(writeWorldMirror).mockResolvedValue(true)
   vi.mocked(exportAll).mockResolvedValue('{"pages":[]}')
+  vi.mocked(readRegistryMirror).mockResolvedValue(null)
+  vi.mocked(writeRegistryMirror).mockResolvedValue(true)
+  await registry.lores.clear()
 })
 
 describe('maybeMirrorWorld', () => {
@@ -116,5 +124,31 @@ describe('withMirroringSuspended', () => {
     ).rejects.toThrow('bad backup')
     await maybeMirrorWorld(NOW)
     expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('stamping the registry index after a real mirror write (#174 second bug)', () => {
+  it('stamps mirroredAt for the mirrored world after writeWorldMirror succeeds', async () => {
+    await registry.lores.add({
+      id: 'default', name: 'My World', banner: null, createdAt: 1, updatedAt: 1,
+    })
+    vi.mocked(latestChangeTime).mockResolvedValue(SETTLED)
+
+    await maybeMirrorWorld(NOW)
+
+    expect(writeRegistryMirror).toHaveBeenCalledTimes(1)
+    const written = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls[0][0])
+    expect(written).toEqual([
+      { id: 'default', name: 'My World', mirroredAt: NOW, appVersion: expect.any(String) },
+    ])
+  })
+
+  it('does not stamp the index when the seam reports no write (browser path)', async () => {
+    vi.mocked(writeWorldMirror).mockResolvedValue(false)
+    vi.mocked(latestChangeTime).mockResolvedValue(SETTLED)
+
+    await maybeMirrorWorld(NOW)
+
+    expect(writeRegistryMirror).not.toHaveBeenCalled()
   })
 })

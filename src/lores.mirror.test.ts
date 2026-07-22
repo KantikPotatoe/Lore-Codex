@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('./platform', () => ({
+  readRegistryMirror: vi.fn(async () => null),
   writeRegistryMirror: vi.fn(async () => true),
   trashWorldMirror: vi.fn(async () => true),
 }))
@@ -12,18 +13,24 @@ vi.mock('./db', async (importOriginal) => ({
   }),
 }))
 
-import { writeRegistryMirror, trashWorldMirror } from './platform'
+import { readRegistryMirror, writeRegistryMirror, trashWorldMirror } from './platform'
 import { registry } from './registryDb'
 import { syncRegistryMirror, registerLore, deleteLore, importLoreFromBackup } from './lores'
 import { CURRENT_SCHEMA_VERSION } from './db'
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  vi.mocked(readRegistryMirror).mockResolvedValue(null)
+  vi.mocked(writeRegistryMirror).mockResolvedValue(true)
   await registry.lores.clear()
 })
 
 describe('syncRegistryMirror', () => {
-  it('writes every world with its name and freshness metadata', async () => {
+  // #174 second bug: mirroredAt must NEVER be stamped for a world that has
+  // not actually been mirrored — only a real mirror write may set it
+  // (worldMirrorSync.ts's markWorldMirrored). A registry-only world with no
+  // disk entry yet is exactly that case.
+  it('writes a registry-only world with mirroredAt: null (nothing has been mirrored yet)', async () => {
     await registry.lores.add({
       id: 'default', name: 'Aethel', banner: null, createdAt: 1, updatedAt: 2,
     })
@@ -34,9 +41,7 @@ describe('syncRegistryMirror', () => {
     expect(parsed).toHaveLength(1)
     expect(parsed[0].id).toBe('default')
     expect(parsed[0].name).toBe('Aethel')
-    // Displayed in the restore panel, so the user knows how fresh a world is.
-    expect(typeof parsed[0].mirroredAt).toBe('number')
-    expect(typeof parsed[0].appVersion).toBe('string')
+    expect(parsed[0].mirroredAt).toBeNull()
   })
 
   it('omits the banner image bytes', async () => {

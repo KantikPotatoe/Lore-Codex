@@ -2,7 +2,9 @@ import Dexie from 'dexie'
 import { CURRENT_LORE_KEY, currentLoreId, dbNameFor } from './loreId'
 import { broadcastWorldChange } from './tabSync'
 import { registry, type Lore } from './registryDb'
-import { writeRegistryMirror, trashWorldMirror } from './platform'
+import { writeRegistryMirror, readRegistryMirror, trashWorldMirror } from './platform'
+import { parseDiskRegistry } from './worldRecovery'
+import { mergeWorldIndex, dropWorldFromIndex, type WorldIndexEntry } from './worldIndex'
 import pkg from '../package.json'
 
 // The registry DB now lives in registryDb.ts so `appSettings.ts` can reach it
@@ -78,11 +80,15 @@ export async function importLoreFromBackup(name: string, json: string): Promise<
     // Roll the registry entry back so a failed import leaves no ghost world.
     await registry.lores.delete(id)
     await Dexie.delete(dbNameFor(id))
-    // Re-sync so the index doesn't keep advertising an id the registry no
-    // longer knows about until some unrelated CRUD happens to refresh it.
-    // Best-effort (syncRegistryMirror swallows its own failures), so this
+    // registerLore()'s syncRegistryMirror() above already wrote this id into
+    // the on-disk index (mirroredAt: null, since nothing was ever mirrored for
+    // it). The index is now a union that never rebuilds from the registry, so
+    // merely re-syncing would NOT remove it — a plain syncRegistryMirror()
+    // call would resurrect this ghost forever as "known only to disk". It
+    // must be dropped explicitly, the same way deleteLore does.
+    // Best-effort (dropFromRegistryMirror swallows its own failures), so this
     // cannot mask or replace the original error being rethrown below.
-    await syncRegistryMirror()
+    await dropFromRegistryMirror(id)
     throw err
   } finally {
     target.close()
@@ -109,7 +115,10 @@ export async function deleteLore(id: string): Promise<void> {
   // reversed and the process died between the two steps, registry.json would
   // advertise a world whose file is gone.
   await trashWorldMirror(id, mirrorStamp())
-  await syncRegistryMirror()
+  // A plain syncRegistryMirror() (union) would NOT remove this id: the merge
+  // never rebuilds from the registry, so an entry only disappears when
+  // something explicitly drops it. Deletion is that explicit drop.
+  await dropFromRegistryMirror(id)
   if (isActive) {
     localStorage.removeItem(CURRENT_LORE_KEY)
     // Reload to re-initialize the db singleton; land on the lore selector.
@@ -162,29 +171,48 @@ async function doBootstrapDefaultLore(): Promise<void> {
  * find world files with a single read of a known path instead of a directory
  * listing (which would need an fs permission this app does not grant).
  *
+ * Read-merge-write, NEVER a replacement: the registry DB is the volatile
+ * store this whole feature exists to survive, so rebuilding the index from it
+ * would erase, on the very launch after an eviction, the pointers to the
+ * `.lore` files that survived. `mergeWorldIndex` (src/worldIndex.ts) is a
+ * union of what's on disk and what the registry knows; an entry leaves only
+ * through an explicit drop (see `dropFromRegistryMirror`, used by
+ * `deleteLore` and the `importLoreFromBackup` rollback).
+ *
  * Banners are deliberately omitted: the index is read on every launch, and a
  * data-URL banner per world would be megabytes of startup cost for nothing a
  * recovery decision needs. `mirroredAt`/`appVersion` are shown in the restore
- * panel so the user can see how fresh each recoverable world is.
+ * panel so the user can see how fresh each recoverable world is — and are
+ * never invented here; only a real mirror write may stamp them
+ * (`worldMirrorSync.ts`, via `markWorldMirrored`).
  *
  * Best-effort: a failure here must never break world CRUD, which is the
  * user's actual action.
  */
 export async function syncRegistryMirror(): Promise<void> {
   try {
-    const lores = await listLores()
-    const now = Date.now()
-    const index = lores.map((l) => ({
-      id: l.id,
-      name: l.name,
-      createdAt: l.createdAt,
-      updatedAt: l.updatedAt,
-      mirroredAt: now,
-      appVersion: pkg.version,
-    }))
+    const [lores, diskText] = await Promise.all([listLores(), readRegistryMirror()])
+    const onDisk = parseDiskRegistry(diskText)
+    const known = lores.map((l) => ({ id: l.id, name: l.name }))
+    const index = mergeWorldIndex({ onDisk, known, appVersion: pkg.version })
     await writeRegistryMirror(JSON.stringify(index))
   } catch {
     // A world that cannot be indexed is still a world the user just made.
+  }
+}
+
+/**
+ * Drop one world from the on-disk index. The only way an entry leaves
+ * `registry.json` — `syncRegistryMirror`'s union never removes anything on
+ * its own. Best-effort, like `syncRegistryMirror`: a deletion is the user's
+ * real action and must succeed even if this doesn't.
+ */
+async function dropFromRegistryMirror(id: string): Promise<void> {
+  try {
+    const onDisk: WorldIndexEntry[] = parseDiskRegistry(await readRegistryMirror())
+    await writeRegistryMirror(JSON.stringify(dropWorldFromIndex(onDisk, id)))
+  } catch {
+    // Best-effort — see syncRegistryMirror.
   }
 }
 
