@@ -99,18 +99,34 @@ export async function importLoreFromBackup(name: string, json: string, id?: stri
   try {
     await importBackupInto(target, json)
   } catch (err) {
-    // Roll the registry entry back so a failed import leaves no ghost world.
+    // Roll the registry DB row back so a failed import leaves no ghost world.
+    // This part is always correct regardless of caller: plannedRecovery only
+    // ever offers ids absent from the registry, so on the recovery path too,
+    // registerLore() just created this row fresh (see its doc comment) — it
+    // never pre-existed.
     await registry.lores.delete(newId)
     await Dexie.delete(dbNameFor(newId))
-    // registerLore()'s syncRegistryMirror() above already wrote this id into
-    // the on-disk index (mirroredAt: null, since nothing was ever mirrored for
-    // it). The index is now a union that never rebuilds from the registry, so
-    // merely re-syncing would NOT remove it — a plain syncRegistryMirror()
-    // call would resurrect this ghost forever as "known only to disk". It
-    // must be dropped explicitly, the same way deleteLore does.
+    // The ON-DISK index entry is a different story (#174 I-A). When `id` is
+    // omitted, registerLore() minted a fresh uuid and registerLore()'s own
+    // syncRegistryMirror() above wrote THAT id into the on-disk index for the
+    // first time (mirroredAt: null, since nothing was ever mirrored for it) —
+    // a ghost that only this call created, and only this call should clean up
+    // (a plain syncRegistryMirror() union would never remove it, so it must be
+    // dropped explicitly, the same way deleteLore does).
+    //
+    // But when `id` IS supplied, the caller is restoreWorld (LoreSelectorRoute):
+    // the disk entry pre-existed this call, with a real mirroredAt pointing at
+    // an actual, good `.lore` file written in some earlier session —
+    // registerLore()'s sync only merged it, never created it. Dropping it here
+    // would delete the only pointer to that surviving file; nothing else ever
+    // enumerates the worlds/ directory, so it would become permanently
+    // unrecoverable while the file itself sits untouched on disk. Only drop
+    // in the ghost-cleanup case this rollback was originally written for.
     // Best-effort (dropFromRegistryMirror swallows its own failures), so this
     // cannot mask or replace the original error being rethrown below.
-    await dropFromRegistryMirror(newId)
+    if (id === undefined) {
+      await dropFromRegistryMirror(newId)
+    }
     throw err
   } finally {
     target.close()

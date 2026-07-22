@@ -4,6 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import LoreSelectorRoute from './LoreSelectorRoute'
 import { openTextFile, readRegistryMirror, readWorldMirror } from '../platform'
 import { importLoreFromBackup, switchLore, listLores, type Lore } from '../lores'
+import { withMirroringSuspended } from '../worldMirrorSync'
 import { CURRENT_LORE_KEY } from '../loreId'
 
 // The wizard is the first-run migration path from the browser version (desktop
@@ -27,6 +28,13 @@ vi.mock('../lores', () => ({
   deleteLore: vi.fn(),
   setLoreBanner: vi.fn(),
   importLoreFromBackup: vi.fn(async () => 'new-world-id'),
+}))
+
+// #174 task 3, I-B: restoreWorld must suspend mirroring for the duration of
+// its import (id reuse means it can target the active db). Calls its `fn`
+// through by default, like every other consumer of this seam mocks it.
+vi.mock('../worldMirrorSync', () => ({
+  withMirroringSuspended: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }))
 
 vi.mock('../appSettings', async (importOriginal) => ({
@@ -331,6 +339,26 @@ describe('LoreSelectorRoute — recovery panel', () => {
     await waitFor(() =>
       expect(importLoreFromBackup).toHaveBeenCalledWith('Aethel', '{"pages":[]}', 'lost'),
     )
+  })
+
+  // #174 task 3, I-B: id reuse means a restore can target the ACTIVE database
+  // (e.g. restoring 'default' after an eviction that reset currentLoreId()
+  // back to 'default'), and importBackupInto is a clear()-then-bulkAdd
+  // transaction — exactly the mid-import hazard withMirroringSuspended
+  // exists to guard, the same as SettingsRoute's import/restore-snapshot
+  // branches already do.
+  it('suspends mirroring for the duration of the restore', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'lost', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' }]),
+    })
+    vi.mocked(readWorldMirror).mockResolvedValue('{"pages":[]}')
+    render(<LoreSelectorRoute />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /restore/i }))
+
+    await waitFor(() => expect(importLoreFromBackup).toHaveBeenCalled())
+    expect(withMirroringSuspended).toHaveBeenCalled()
   })
 
   it('does not offer a world whose registry entry already exists', async () => {

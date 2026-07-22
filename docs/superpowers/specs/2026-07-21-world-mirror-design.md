@@ -225,10 +225,22 @@ gets a dedicated test: a mirror write attempted mid-import (or mid-restore)
 must be dropped, not queued and flushed afterwards against the intermediate
 state.
 
-The lore selector's `importLoreFromBackup` needs no such guard: it imports via
-`importBackupInto(target, json)` into a *newly registered, not-yet-active*
-world's DB, never the active one, so it cannot produce a half-exported active
-world for a mirror write to capture.
+**Correction (#174 task 3, I-B):** this section originally claimed the lore
+selector's `importLoreFromBackup` needed no such guard, on the premise that it
+always imports into a *newly registered, not-yet-active* world's DB, never the
+active one. Id reuse on the recovery path (`restoreWorld` passing the disk
+entry's own id, so a recovered world keeps its identity instead of being
+re-registered under a fresh uuid) invalidated that premise: restoring a world
+whose id matches the currently-bound `db` — e.g. `'default'` after an eviction
+that also reset `currentLoreId()` back to `'default'` — targets the *active*
+database. `importBackupInto` is the same clear()-then-bulkAdd transaction
+described above, so a mirror write landing mid-restore is exactly the hazard
+this section exists to prevent. `restoreWorld` now wraps its call to
+`importLoreFromBackup` in `withMirroringSuspended`, the same guard
+`SettingsRoute`'s import/restore-snapshot branches use. A stale safety
+rationale is worse than none — this correction is left in place next to the
+original claim, rather than silently editing it away, so a future reader who
+remembers the old claim finds the correction instead of nothing.
 
 ## Active world only
 

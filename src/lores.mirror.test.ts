@@ -217,6 +217,41 @@ describe('importLoreFromBackup — rollback drops the disk-only ghost entry (#17
   })
 })
 
+describe('importLoreFromBackup — restore path (id supplied) preserves a surviving disk pointer on failure (#174 task 3, I-A)', () => {
+  it('keeps the pre-existing disk entry when the caller supplies the id, but still rethrows', async () => {
+    // Seed the on-disk index with a world entry that already has a real
+    // mirroredAt — exactly what an earlier session's mirror write leaves
+    // behind, and exactly what plannedRecovery reads to offer a Restore
+    // button in LoreSelectorRoute. The registry DB deliberately does NOT
+    // know this id yet — that absence is what makes it "recoverable" at all;
+    // registerLore() below is what will (transiently) add it.
+    mirrorDisk.text = JSON.stringify({
+      version: 1,
+      worlds: [{ id: 'default', name: 'Aethel', mirroredAt: 5000, appVersion: '1.3.0' }],
+    })
+    const json = JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, pages: [] })
+
+    // importBackupInto is mocked (module-level) to always throw — the
+    // QuotaExceededError case a just-evicted machine is prone to.
+    await expect(importLoreFromBackup('Aethel', json, 'default')).rejects.toThrow('import failed')
+
+    // The surviving pointer must still be on disk with its real mirroredAt
+    // untouched — dropping it would strand the actual .lore file with
+    // nothing able to find it again (recovery only ever reads the index,
+    // never lists the directory).
+    const finalWorlds = worldsOf(mirrorDisk.text)
+    const entry = finalWorlds.find((w) => w.id === 'default')
+    expect(entry).toBeDefined()
+    expect(entry?.mirroredAt).toBe(5000)
+
+    // The registry DB row, in contrast, WAS created fresh by this very call
+    // (plannedRecovery only ever offers ids absent from the registry) and
+    // must still be rolled back — that half of the original rollback logic
+    // stays correct on the recovery path too.
+    expect(await registry.lores.get('default')).toBeUndefined()
+  })
+})
+
 // #174 Defect 2: syncRegistryMirror, dropFromRegistryMirror (via deleteLore)
 // and stampRegistryMirrored (worldMirrorSync.ts, not reachable from lores.ts
 // alone) are three independent read-modify-write sequences against the same

@@ -98,6 +98,28 @@ describe('App — close handler', () => {
     expect(flushWorldMirror).toHaveBeenCalled()
   })
 
+  // #174 task 3, I-E: write() (worldMirrorSync.ts) rethrows after recording
+  // the failure into mirror health. Left uncaught here, that rejection would
+  // abort the whole close-handler IIFE, skipping getAppSettings/
+  // shouldBackupOnExit/backupOnExit below it — so a persistent disk-full or
+  // permission failure would silently take out BOTH safety nets, while
+  // Settings' status readout (fed separately by write()'s own recording)
+  // reports only the mirror one.
+  it('still runs the exit backup when the mirror flush rejects', async () => {
+    vi.mocked(flushWorldMirror).mockRejectedValue(new Error('disk full'))
+    await updateAppSettings({ backupOnExit: true })
+    vi.mocked(latestChangeTime).mockResolvedValue(123) // > 0, no prior backup ⇒ due
+
+    render(createElement(MemoryRouter, { initialEntries: ['/'] }, createElement(App)))
+    await screen.findByText('Lore Codex')
+    await waitFor(() => expect(onCloseRequested).toHaveBeenCalled())
+    const handler = vi.mocked(onCloseRequested).mock.calls[0][0]
+
+    await handler()
+
+    expect(backupOnExit).toHaveBeenCalled()
+  })
+
   it('resolves even when the mirror flush hangs past the 5s close budget', async () => {
     // Finding 3: pin that flushWorldMirror() runs *inside* withTimeout's race,
     // not after it — a hung write must never leave the window unclosable.

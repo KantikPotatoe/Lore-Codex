@@ -143,7 +143,16 @@ export default function App() {
           // an app you cannot quit is never acceptable. A truncated mirror is
           // impossible regardless — writeWorldMirror commits by rename, so a
           // timeout mid-write leaves the previous mirror intact.
-          await flushWorldMirror()
+          //
+          // Caught, not awaited bare (#174 task 3, I-E): write() (worldMirrorSync.ts)
+          // already records the failure into mirror health, then rethrows, before
+          // this line ever sees it — Settings' status readout is fed by that
+          // recording, not by this catch. An uncaught rejection here would abort
+          // this whole async IIFE, skipping everything below: a persistent
+          // disk-full or permission failure would silently take out the exit
+          // backup too, on top of the mirror, leaving the user with neither net
+          // and Settings reporting only the one it can see.
+          await flushWorldMirror().catch(() => {})
           const { backupOnExit: enabled } = await getAppSettings()
           const lastBackup = (await getMeta<number>(LAST_BACKUP_KEY)) ?? null
           if (shouldBackupOnExit(enabled, lastBackup, await latestChangeTime())) {

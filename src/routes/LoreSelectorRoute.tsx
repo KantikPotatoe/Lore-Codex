@@ -20,6 +20,7 @@ import { timeAgo } from '../backup'
 import { compressImage } from '../imageUtils'
 import { getAppSettings, shouldOpenLastWorld } from '../appSettings'
 import { CURRENT_LORE_KEY } from '../loreId'
+import { withMirroringSuspended } from '../worldMirrorSync'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
 
@@ -161,7 +162,18 @@ export default function LoreSelectorRoute() {
       // disk entry — real mirroredAt, still absent from the registry —
       // satisfying plannedRecovery forever, offering the same restore again
       // on every launch (see importLoreFromBackup's doc comment).
-      await importLoreFromBackup(world.name, json, world.id)
+      //
+      // withMirroringSuspended (#174 I-B): id reuse means restoring a world
+      // whose id matches the currently-bound `db` (e.g. 'default' after an
+      // eviction that also reset currentLoreId() to 'default') targets the
+      // ACTIVE database, not a fresh, not-yet-active one — importBackupInto
+      // is a clear()-then-bulkAdd transaction, and a poll or close-time mirror
+      // write landing between those two steps would capture a half-imported
+      // world and rename it over the very mirror this restore is reading
+      // from. Same hazard SettingsRoute's import/restore-snapshot branches
+      // already guard against; this call site needs the identical guard now
+      // that it can also target the active world.
+      await withMirroringSuspended(() => importLoreFromBackup(world.name, json, world.id))
       setDiskWorlds((prev) => prev?.filter((w) => w.id !== world.id) ?? null)
     } catch (err) {
       setNotice(err instanceof Error ? err.message : 'That world could not be restored.')
