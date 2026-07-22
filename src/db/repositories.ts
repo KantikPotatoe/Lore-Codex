@@ -49,6 +49,23 @@ import {
   type NewEventData,
 } from './calendar'
 import { listBooks, listChapters, listScenesForBook, listPlotlines, listBeats } from './manuscript'
+import {
+  seedRelationshipTypes,
+  getRelationshipTypes,
+  createRelationshipType,
+  updateRelationshipType,
+  deleteRelationshipType,
+  resetRelationshipType,
+  countRelationshipsOfType,
+  type NewRelationshipType,
+} from './relationshipTypes'
+import {
+  addRelationship,
+  updateRelationshipNote,
+  removeRelationship,
+  getRelationsFor,
+  type PageRelation,
+} from './relationships'
 import type {
   LorePage,
   MapPin,
@@ -62,6 +79,7 @@ import type {
   Scene,
   Plotline,
   Beat,
+  RelationshipType,
 } from './types'
 
 /** A change to a stored record: either a partial patch or a mutator run against
@@ -297,4 +315,46 @@ export const manuscriptRepo: ManuscriptRepository = {
 
   listPlotlinesForBook: listPlotlines,
   listBeatsForBook: listBeats,
+}
+
+// ---------------------------------------------------------------------------
+// Typed relationships (#175)
+// ---------------------------------------------------------------------------
+
+export interface RelationshipRepository {
+  /** The vocabulary, in display order. */
+  listTypes(): Promise<RelationshipType[]>
+  createType(input: NewRelationshipType): Promise<string>
+  updateType(
+    id: string,
+    changes: Partial<Omit<RelationshipType, 'id' | 'builtin'>>,
+  ): Promise<void>
+  /** Deletes a custom type and cascades its relationships. Built-ins refused. */
+  removeType(id: string): Promise<void>
+  resetType(id: string): Promise<void>
+  /** How many relationships use a type — for the delete confirmation. */
+  countOfType(id: string): Promise<number>
+  seedTypes(): Promise<void>
+
+  /** Every relationship touching a page, from that page's point of view. */
+  listFor(pageId: string): Promise<PageRelation[]>
+  /** Returns the new row id, or null when refused (self / duplicate / bad type). */
+  add(fromId: string, toId: string, typeId: string, note?: string): Promise<string | null>
+  updateNote(id: string, note: string): Promise<void>
+  remove(id: string): Promise<void>
+}
+
+export const relationshipRepo: RelationshipRepository = {
+  listTypes: getRelationshipTypes,
+  createType: createRelationshipType,
+  updateType: updateRelationshipType,
+  removeType: deleteRelationshipType,
+  resetType: resetRelationshipType,
+  countOfType: countRelationshipsOfType,
+  seedTypes: seedRelationshipTypes,
+
+  listFor: getRelationsFor,
+  add: addRelationship,
+  updateNote: updateRelationshipNote,
+  remove: removeRelationship,
 }

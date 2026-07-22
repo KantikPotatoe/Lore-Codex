@@ -78,7 +78,7 @@ export async function deletePage(id: string): Promise<void> {
   // or all roll back — a mid-sequence failure can't leave orphaned images or refs
   // pointing at a deleted page. Every store that holds a pageId ref is cleaned so
   // no dangling id survives to resolve as "This page doesn't exist".
-  await db.transaction('rw', [db.pages, db.images, db.pins, db.docLinks, db.regions, db.events, db.scenes], async () => {
+  await db.transaction('rw', [db.pages, db.images, db.pins, db.docLinks, db.regions, db.events, db.scenes, db.relationships], async () => {
     await db.pages.delete(id)
     // Remove this page's gallery images so no orphans are left behind.
     await db.images.where('pageId').equals(id).delete()
@@ -108,6 +108,11 @@ export async function deletePage(id: string): Promise<void> {
     // Drop document-attachment edges on either endpoint (owning page or document).
     await db.docLinks.where('pageId').equals(id).delete()
     await db.docLinks.where('documentId').equals(id).delete()
+    // Drop typed relationships on either endpoint. Unlike pins/regions/events —
+    // which keep the row and null its pageId — a relationship IS the pair, so a
+    // half-dangling edge has nothing left to mean.
+    await db.relationships.where('fromId').equals(id).delete()
+    await db.relationships.where('toId').equals(id).delete()
   })
 }
 

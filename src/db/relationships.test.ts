@@ -125,3 +125,15 @@ describe('removeRelationship', () => {
     expect(await getRelationsFor('uther')).toEqual([])
   })
 })
+
+describe('deletePage cascade', () => {
+  it('drops relationships on both endpoints', async () => {
+    const { deletePage } = await import('./pages')
+    await addRelationship('uther', 'arthur', 'parent-of') // arthur is the `to`
+    await addRelationship('arthur', 'igraine', 'sibling-of') // arthur is the `from`
+
+    await deletePage('arthur')
+
+    expect(await db.relationships.count()).toBe(0)
+  })
+})
