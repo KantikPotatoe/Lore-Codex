@@ -171,7 +171,7 @@ let countedChangeAt = 0
  * next actual diff, so a counted-only change can still settle and pass the
  * quiet window on a later poll.
  *
- * What this still cannot see: an in-place EDIT to a row on one of the 9
+ * What this still cannot see: an in-place EDIT to a row on one of the 11
  * counted tables — renaming a pin's label, rewriting a plotline's beat text,
  * moving a map pin's coordinates, tweaking a saved setting's value in place —
  * changes no count and touches no index, so it is invisible between two

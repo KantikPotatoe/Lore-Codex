@@ -343,4 +343,44 @@ describe('typed relationships are visible to the change probe (#175)', () => {
     await maybeMirrorWorld(detectedAt + MIRROR_QUIET_MS + 1_000)
     expect(writeWorldMirror).toHaveBeenCalledTimes(2)
   })
+
+  // The test above only ever moves db.relationships. If 'relationshipTypes'
+  // were dropped from COUNTED_TABLES while 'relationships' stayed, that test
+  // would still pass — nothing in it isolates the *type* table. This case
+  // mutates ONLY db.relationshipTypes (no db.relationships row is touched)
+  // so it can only pass if relationshipTypes itself is counted.
+  it('notices a relationshipType added when no timestamped table changed', async () => {
+    const start = Date.now()
+
+    // A page edited an hour ago: there is content to export, and the quiet
+    // window is comfortably satisfied so the poll is free to write.
+    await db.pages.put({
+      id: 'uther', title: 'Uther', titleLc: 'uther', category: 'Character',
+      content: '<p>x</p>', summary: '', tags: [],
+      createdAt: start - 60 * 60_000, updatedAt: start - 60 * 60_000,
+    })
+
+    // First poll: establishes the baseline counts and writes once.
+    await maybeMirrorWorld(start)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+
+    // Add ONLY a relationship TYPE. No table with an updatedAt/createdAt
+    // index moves, and db.relationships itself is never touched here.
+    await db.relationshipTypes.add({
+      id: 'parent-of', label: 'Parent of', inverse: 'Child of',
+      color: '#a35d3f', group: 'kin', order: 0, builtin: false,
+    })
+
+    // Same detect-then-write shape as above: the poll that first observes
+    // the count diff stamps countedChangeAt with its own `now`, so it must
+    // decline to write (quiet window reads zero against its own detection).
+    const detectedAt = start + MIRROR_FLOOR_MS + 1_000
+    await maybeMirrorWorld(detectedAt)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+
+    // Once the quiet window has elapsed since that detection, the poll must
+    // write again — proving relationshipTypes alone drove the mirror.
+    await maybeMirrorWorld(detectedAt + MIRROR_QUIET_MS + 1_000)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(2)
+  })
 })
