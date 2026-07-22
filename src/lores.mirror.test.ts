@@ -1,8 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// A stateful fake of the on-disk index, not just a call-counting stub: the
+// whole point of this file is the union-vs-drop distinction (#174), and a
+// mock where readRegistryMirror always resolves null can't tell "removed the
+// entry" from "never wrote it" — every test would pass whether the code drops
+// a ghost entry or merely re-syncs over it. mirrorDisk holds what was last
+// "written"; readRegistryMirror hands that back. vi.hoisted() is required
+// because vi.mock() factories are hoisted above regular imports/consts.
+const mirrorDisk = vi.hoisted(() => ({ text: null as string | null }))
+
 vi.mock('./platform', () => ({
-  readRegistryMirror: vi.fn(async () => null),
-  writeRegistryMirror: vi.fn(async () => true),
+  readRegistryMirror: vi.fn(async () => mirrorDisk.text),
+  writeRegistryMirror: vi.fn(async (json: string) => {
+    mirrorDisk.text = json
+    return true
+  }),
   trashWorldMirror: vi.fn(async () => true),
 }))
 
@@ -19,9 +31,20 @@ import { syncRegistryMirror, registerLore, deleteLore, importLoreFromBackup } fr
 import { CURRENT_SCHEMA_VERSION } from './db'
 
 beforeEach(async () => {
-  vi.clearAllMocks()
-  vi.mocked(readRegistryMirror).mockResolvedValue(null)
-  vi.mocked(writeRegistryMirror).mockResolvedValue(true)
+  vi.clearAllMocks() // clears call history, NOT a mockImplementation override from a prior test
+  mirrorDisk.text = null
+  // Re-assert the stateful implementations every test: the "trashes before
+  // re-indexing" test below overrides writeRegistryMirror/trashWorldMirror
+  // with its own mockImplementation to observe call order, and clearAllMocks()
+  // does not undo that — without this, every test after it would silently
+  // stop updating mirrorDisk, and the union-vs-drop assertions would pass
+  // vacuously again.
+  vi.mocked(readRegistryMirror).mockImplementation(async () => mirrorDisk.text)
+  vi.mocked(writeRegistryMirror).mockImplementation(async (json: string) => {
+    mirrorDisk.text = json
+    return true
+  })
+  vi.mocked(trashWorldMirror).mockImplementation(async () => true)
   await registry.lores.clear()
 })
 
@@ -103,17 +126,27 @@ describe('deleteLore', () => {
   })
 })
 
-describe('importLoreFromBackup — rollback re-syncs the index (#174)', () => {
-  it('re-syncs the index after rolling back a failed import, and rethrows the original error', async () => {
+describe('importLoreFromBackup — rollback drops the disk-only ghost entry (#174)', () => {
+  it('leaves no entry for the rolled-back world in the on-disk index, and rethrows the original error', async () => {
     const json = JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, pages: [] })
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(
+      'doomed-uuid' as `${string}-${string}-${string}-${string}-${string}`,
+    )
 
     await expect(importLoreFromBackup('Doomed Import', json)).rejects.toThrow('import failed')
 
-    // registerLore's own sync (writing the new id in), then the rollback's
-    // re-sync (writing it back out) — both must happen, or the index is
-    // left advertising an id the registry no longer knows about.
+    // registerLore's own sync writes the new id into the disk index first
+    // (mirroredAt: null, since nothing was ever mirrored). By the time the
+    // rollback runs, the registry entry is already deleted, so a plain
+    // syncRegistryMirror() (a union) would keep this id — union semantics
+    // only ever ADD or update entries from the registry's "known" set, never
+    // remove ones the registry no longer has. Only an explicit drop can
+    // remove it. This is what a stateless readRegistryMirror() mock (always
+    // resolving null) could never catch: this assertion needs the disk to
+    // actually remember what was written.
     expect(vi.mocked(writeRegistryMirror).mock.calls.length).toBeGreaterThanOrEqual(2)
-    const lastJson = vi.mocked(writeRegistryMirror).mock.calls.at(-1)![0]
-    expect(lastJson).not.toContain('Doomed Import')
+    const finalDisk = JSON.parse(mirrorDisk.text ?? '[]') as Array<{ id: string; name: string }>
+    expect(finalDisk.find((e) => e.id === 'doomed-uuid')).toBeUndefined()
+    expect(finalDisk).toEqual([])
   })
 })

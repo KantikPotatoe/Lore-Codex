@@ -19,6 +19,7 @@ import {
 import { readRegistryMirror, writeRegistryMirror } from './platform'
 import { LoreDB, CURRENT_SCHEMA_VERSION } from './db'
 import { dbNameFor } from './loreId'
+import { plannedRecovery } from './worldRecovery'
 
 beforeEach(async () => {
   localStorage.clear()
@@ -107,6 +108,40 @@ describe('importLoreFromBackup — the migration wizard core', () => {
     const before = (await listLores()).length
     await expect(importLoreFromBackup('Broken', 'not json')).rejects.toThrow()
     expect((await listLores()).length).toBe(before)
+  })
+})
+
+// #174 Finding 1: a restore must keep the world's original id, or the disk
+// entry it came from — real mirroredAt, still absent from the registry once
+// a fresh uuid is minted — keeps satisfying plannedRecovery forever, and the
+// panel offers (and duplicates) the same world on every launch.
+describe('importLoreFromBackup — restoring a world reuses its original id (#174)', () => {
+  it('registers the restored world under the id passed in, not a fresh uuid', async () => {
+    const json = JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, pages: [] })
+
+    const id = await importLoreFromBackup('Recovered World', json, 'original-id')
+
+    expect(id).toBe('original-id')
+    expect((await getLore('original-id'))?.name).toBe('Recovered World')
+
+    await new LoreDB(dbNameFor('original-id')).delete()
+  })
+
+  it('is no longer offered by plannedRecovery once restored', async () => {
+    const json = JSON.stringify({ schemaVersion: CURRENT_SCHEMA_VERSION, pages: [] })
+    const diskEntry = { id: 'original-id', name: 'Recovered World', mirroredAt: 500, appVersion: '1.0.0' }
+
+    // Before restoring: the disk entry is offered (absent from the registry).
+    expect(plannedRecovery([diskEntry], await listLores())).toEqual([diskEntry])
+
+    await importLoreFromBackup('Recovered World', json, 'original-id')
+
+    // After restoring under the SAME id: the registry now knows it, so the
+    // very same disk entry is filtered out — no more offering it back.
+    expect(plannedRecovery([diskEntry], await listLores())).toEqual([])
+
+    const target = new LoreDB(dbNameFor('original-id'))
+    await target.delete()
   })
 })
 

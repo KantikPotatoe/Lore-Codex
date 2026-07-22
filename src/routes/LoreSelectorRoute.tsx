@@ -148,7 +148,12 @@ export default function LoreSelectorRoute() {
       if (!json) throw new Error('That world file could not be read.')
       // parseBackup runs inside importLoreFromBackup and throws before any
       // world is registered, so a corrupt mirror leaves nothing behind.
-      await importLoreFromBackup(world.name, json)
+      // Reuse the disk entry's own id: a recovered world IS the world, so it
+      // keeps its identity and its file. A fresh id here would leave this
+      // disk entry — real mirroredAt, still absent from the registry —
+      // satisfying plannedRecovery forever, offering the same restore again
+      // on every launch (see importLoreFromBackup's doc comment).
+      await importLoreFromBackup(world.name, json, world.id)
       setDiskWorlds((prev) => prev?.filter((w) => w.id !== world.id) ?? null)
     } catch (err) {
       setNotice(err instanceof Error ? err.message : 'That world could not be restored.')

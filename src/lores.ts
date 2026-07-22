@@ -42,19 +42,28 @@ export function getLore(id: string): Promise<Lore | undefined> {
 
 /** Add a world to the registry WITHOUT switching to it. Returns the new id.
  *  The migration wizard needs this split: it must fill the new world's DB
- *  before switchLore() reloads the page. */
-export async function registerLore(name: string): Promise<string> {
-  const id = crypto.randomUUID()
+ *  before switchLore() reloads the page.
+ *
+ *  `id` is optional and defaults to a fresh `crypto.randomUUID()` — every
+ *  existing caller (the import wizard, `createLore`) is unaffected. It exists
+ *  for `importLoreFromBackup`'s recovery path: a world restored from its disk
+ *  mirror must keep its original id (see that function's doc comment) rather
+ *  than minting a new one, which would leave the original disk entry an
+ *  unclaimed, forever-recoverable ghost. `registry.lores.add()` throws on a
+ *  duplicate key, so a caller that (incorrectly) reuses a live id fails
+ *  atomically here — nothing is half-added. */
+export async function registerLore(name: string, id?: string): Promise<string> {
+  const loreId = id ?? crypto.randomUUID()
   const now = Date.now()
   await registry.lores.add({
-    id,
+    id: loreId,
     name: name.trim() || 'Untitled World',
     banner: null,
     createdAt: now,
     updatedAt: now,
   })
   await syncRegistryMirror()
-  return id
+  return loreId
 }
 
 export async function createLore(name = 'Untitled World'): Promise<void> {
@@ -68,18 +77,31 @@ export async function createLore(name = 'Untitled World'): Promise<void> {
  * world behind. The caller decides whether to switchLore(id) afterwards.
  * Built-ins missing from old backups are seeded by the App start effect once
  * the world is switched to.
+ *
+ * `id` is optional and, when omitted, `registerLore` mints a fresh one — the
+ * import wizard's existing call sites are unaffected. `restoreWorld`
+ * (LoreSelectorRoute) passes the disk entry's own id: a recovered world IS
+ * the world, so it must keep its identity rather than being re-registered
+ * under a new uuid. Minting a fresh id there would leave the original disk
+ * entry — real `mirroredAt`, still absent from the registry — satisfying
+ * `plannedRecovery` forever, offering the same restore on every launch and
+ * minting a duplicate world on every click. Reusing the id is safe:
+ * `plannedRecovery` only ever offers entries absent from the registry, so
+ * `registry.lores.add()` inside `registerLore` cannot collide with a live
+ * world — and if it somehow did (e.g. two disk entries sharing an id), the
+ * add() throws before any DB is touched, so nothing is half-created.
  */
-export async function importLoreFromBackup(name: string, json: string): Promise<string> {
+export async function importLoreFromBackup(name: string, json: string, id?: string): Promise<string> {
   const { importBackupInto, parseBackup, LoreDB } = await import('./db')
   parseBackup(json) // throws on an invalid file before anything is created
-  const id = await registerLore(name)
-  const target = new LoreDB(dbNameFor(id))
+  const newId = await registerLore(name, id)
+  const target = new LoreDB(dbNameFor(newId))
   try {
     await importBackupInto(target, json)
   } catch (err) {
     // Roll the registry entry back so a failed import leaves no ghost world.
-    await registry.lores.delete(id)
-    await Dexie.delete(dbNameFor(id))
+    await registry.lores.delete(newId)
+    await Dexie.delete(dbNameFor(newId))
     // registerLore()'s syncRegistryMirror() above already wrote this id into
     // the on-disk index (mirroredAt: null, since nothing was ever mirrored for
     // it). The index is now a union that never rebuilds from the registry, so
@@ -88,12 +110,12 @@ export async function importLoreFromBackup(name: string, json: string): Promise<
     // must be dropped explicitly, the same way deleteLore does.
     // Best-effort (dropFromRegistryMirror swallows its own failures), so this
     // cannot mask or replace the original error being rethrown below.
-    await dropFromRegistryMirror(id)
+    await dropFromRegistryMirror(newId)
     throw err
   } finally {
     target.close()
   }
-  return id
+  return newId
 }
 
 export async function renameLore(id: string, name: string): Promise<void> {

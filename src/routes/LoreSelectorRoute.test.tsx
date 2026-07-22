@@ -311,8 +311,12 @@ describe('LoreSelectorRoute — recovery panel', () => {
 
     // Nothing is written without this click, and the restore reuses the
     // migration wizard's path rather than a second import implementation.
+    // It must pass the disk entry's own id ('lost') — not omit it — or the
+    // restored world gets a fresh uuid and the original disk entry (still
+    // absent from the registry) keeps satisfying plannedRecovery forever,
+    // offering the same restore again on every launch (#174).
     await waitFor(() =>
-      expect(importLoreFromBackup).toHaveBeenCalledWith('Aethel', '{"pages":[]}'),
+      expect(importLoreFromBackup).toHaveBeenCalledWith('Aethel', '{"pages":[]}', 'lost'),
     )
   })
 
