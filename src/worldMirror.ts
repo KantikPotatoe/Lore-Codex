@@ -12,7 +12,8 @@ export const MIRROR_QUIET_MS = 30_000
 export const MIRROR_FLOOR_MS = 5 * 60_000
 
 /** How often the shell re-evaluates the policy. Each evaluation costs six
- *  indexed boundary reads (`latestChangeTime`), not a table scan. */
+ *  indexed boundary reads plus nine row counts (worldMirrorSync's
+ *  mirrorChangeTime), not a table scan. */
 export const MIRROR_POLL_MS = 30_000
 
 /** Whether a lore id is safe to use as a filename.
@@ -27,12 +28,15 @@ export function isValidLoreId(id: string): boolean {
 
 /** Whether the active world's mirror should be rewritten now.
  *
- *  There is deliberately no dirty flag: `lastChangeAt` comes from
- *  `latestChangeTime()`, which sees every table, so no future edit path can
- *  forget to mark the world dirty. Non-finite and future timestamps count as
- *  due — the same guard `updater.ts`'s `shouldCheck` carries, and for the same
- *  reason: a corrupted or rolled-back clock must never disable durability
- *  silently and indefinitely. */
+ *  There is deliberately no dirty flag: `lastChangeAt` comes from the
+ *  caller's change probe (`worldMirrorSync.ts`'s `mirrorChangeTime`, which
+ *  combines `latestChangeTime()`'s six indexed reads with row counts for the
+ *  tables that have neither — see its doc for exactly what that can and can't
+ *  see), so no future edit path needs a hook of its own to mark the world
+ *  dirty. Non-finite and future timestamps count as due — the same guard
+ *  `updater.ts`'s `shouldCheck` carries, and for the same reason: a corrupted
+ *  or rolled-back clock must never disable durability silently and
+ *  indefinitely. */
 export function shouldMirror(args: {
   lastChangeAt: number
   lastMirrorAt: number

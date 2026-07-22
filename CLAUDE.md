@@ -201,11 +201,22 @@ timeout can never leave a truncated file where a good mirror was.
 `worldMirror.ts` is pure (`shouldMirror`: a quiet window so writes fall between
 editing bursts, an interval floor so a long session doesn't rewrite tens of MB
 every 30s, and the non-finite/future-timestamp guards `shouldCheck` carries).
-**There is no dirty flag** — `worldMirrorSync.ts` polls `latestChangeTime()`
-(six indexed boundary reads), which sees every table, so map-only and
-manuscript-only sessions are covered and no future edit path can forget to opt
-in. `lastMirrorAt` is module state, not persisted: a launch mirrors once if
-anything changed since the file was written. The poll loop (`startMirrorLoop`,
+**There is no dirty flag** — `worldMirrorSync.ts` polls a mirror-specific
+`mirrorChangeTime()`, *not* `latestChangeTime()` (that function sees only 6 of
+the 15 tables `exportAll()` writes — pages, maps, events, calendars, images,
+scenes — and `BackupBanner`/`backupOnExit` depend on exactly that shape, so it
+stays as-is). `mirrorChangeTime()` combines those same six indexed reads with
+a `count()` on each of the other nine (pins, regions, templates, docLinks,
+books, chapters, plotlines, beats, meta), so an add or delete on any of them
+registers even with no timestamp to read — map-only, plotline-only and
+settings-only sessions are covered this way, not because it sees every table:
+an in-place edit to a row on one of those nine (no timestamp, no count change)
+is still invisible between two polls, and `maps`/`calendars` still don't
+notice an edit to an existing row either, only an add. `flushWorldMirror()` on
+window close is the deliberate backstop for that gap — it writes whenever the
+world has *any* content, unconditionally, not only when something changed
+since the last mirror. `lastMirrorAt` is module state, not persisted: a launch
+mirrors once if anything changed since the file was written. The poll loop (`startMirrorLoop`,
 wired in `App.tsx`) is **gated on `isTauri()`**, not left to the seam's
 browser no-op: a mirror attempt calls `exportAll()` *before* reaching the seam,
 and the browser no-op never advances `lastMirrorAt` — so an ungated loop would
