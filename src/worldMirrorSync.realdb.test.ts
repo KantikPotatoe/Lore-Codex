@@ -244,7 +244,7 @@ describe('a long unbroken writing session is still mirrored (#233)', () => {
     const start = Date.now()
 
     // 18 polls at the real 30s poll cadence (t = 0 ... 510_000), i.e. 8.5
-    // minutes of unbroken typing -- one poll short of nine minutes, since the
+    // minutes of unbroken typing — one poll short of nine minutes, since the
     // ceiling tick below lands 90s (three poll intervals) after the last one.
     for (let t = 0; t < 9 * 60_000; t += MIRROR_POLL_MS) {
       await typeThenPoll(start + t)
@@ -263,12 +263,12 @@ describe('a long unbroken writing session is still mirrored (#233)', () => {
     // written via typeThenPoll is always 500ms old, which never clears the
     // 30s quiet window, so a naive "poll again soon" tick would return false
     // there and prove nothing about the floor (mutating floorMs to 0 would
-    // leave it green). Instead write a settled change -- 1s after the
+    // leave it green). Instead write a settled change — 1s after the
     // ceiling write, so by the time we poll it is 59s old, past MIRROR_QUIET_MS
-    // (30s) -- and poll 60s after the ceiling write, i.e. only 60s since
+    // (30s) — and poll 60s after the ceiling write, i.e. only 60s since
     // lastMirrorAt, short of MIRROR_FLOOR_MS (5 min). That makes `stale` false
     // (60s < 10min) and the quiet check pass (59s > 30s), so the floor check
-    // (`now - lastMirrorAt >= floorMs`, 60_000 >= 300_000 -- false) is the only
+    // (`now - lastMirrorAt >= floorMs`, 60_000 >= 300_000 — false) is the only
     // line that can produce this result.
     await db.pages.put({
       id: PAGE_ID,

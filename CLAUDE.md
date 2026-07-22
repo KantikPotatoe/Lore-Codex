@@ -234,12 +234,13 @@ those six indexed reads with a `count()` on each of the other nine, so an add
 or delete registers even with no timestamp to read. It is **not** complete: an
 in-place edit to a row on those nine is invisible between polls, and
 `maps`/`calendars` notice an add but not an edit. `flushWorldMirror()` on close
-is the deliberate backstop for all of it — unconditional, writing whenever the world
-has any content. `lastMirrorAt` is module state, not persisted. The poll loop
-(`startMirrorLoop`) is **gated on `isTauri()`**, not left to the seam's browser
-no-op: a mirror attempt calls `exportAll()` *before* reaching the seam, and the
-no-op never advances `lastMirrorAt`, so an ungated loop would re-serialize the
-whole database every 30s for the life of a browser session and discard it.
+is the deliberate backstop for all of it — unconditional, writing whenever the
+world has any content. `lastMirrorAt` is module state, not persisted. The poll
+loop (`startMirrorLoop`) is **gated on `isTauri()`**, not left to the seam's
+browser no-op: a mirror attempt calls `exportAll()` *before* reaching the seam,
+and the no-op never advances `lastMirrorAt`, so an ungated loop would
+re-serialize the whole database every 30s for the life of a browser session and
+discard it.
 
 **The load-bearing guard: `write()` refuses when `activeLoreId` has no row in
 the registry DB.** Without it, the recovery launch is a data-loss mechanism —
