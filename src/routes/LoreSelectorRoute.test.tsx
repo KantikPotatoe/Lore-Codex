@@ -14,7 +14,7 @@ import { CURRENT_LORE_KEY } from '../loreId'
 vi.mock('../platform', () => ({
   openTextFile: vi.fn(),
   isTauri: () => false,
-  readRegistryMirror: vi.fn(async () => null),
+  readRegistryMirror: vi.fn(async () => ({ status: 'absent' })),
   readWorldMirror: vi.fn(async () => null),
 }))
 
@@ -49,7 +49,7 @@ afterEach(() => {
   // clearAllMocks() clears calls but NOT implementations, so a mockResolvedValue
   // set by one test would leak into the next. Put the world list back to empty.
   vi.mocked(listLores).mockResolvedValue([])
-  vi.mocked(readRegistryMirror).mockResolvedValue(null)
+  vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'absent' })
   vi.mocked(readWorldMirror).mockResolvedValue(null)
 })
 
@@ -285,25 +285,38 @@ describe('LoreSelectorRoute — recovery panel', () => {
   }
 
   it('stays hidden when there is nothing on disk to recover', async () => {
-    vi.mocked(readRegistryMirror).mockResolvedValue(null)
+    vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'absent' })
+    render(<LoreSelectorRoute />)
+    await settleDiskRead()
+    expect(screen.queryByText(/found on disk/i)).toBeNull()
+  })
+
+  // #174 Defect 1: an unreadable index (not absent) must also stay hidden —
+  // this route never writes, so degrading to "offer nothing" here is safe
+  // (unlike the writers in lores.ts / worldMirrorSync.ts, which must refuse
+  // to write instead).
+  it('stays hidden when the disk index is unreadable', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'error' })
     render(<LoreSelectorRoute />)
     await settleDiskRead()
     expect(screen.queryByText(/found on disk/i)).toBeNull()
   })
 
   it('offers worlds present on disk but missing from the registry', async () => {
-    vi.mocked(readRegistryMirror).mockResolvedValue(
-      JSON.stringify([{ id: 'lost', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' }]),
-    )
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'lost', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' }]),
+    })
     render(<LoreSelectorRoute />)
     expect(await screen.findByText(/found on disk/i)).toBeTruthy()
     expect(screen.getByText('Aethel')).toBeTruthy()
   })
 
   it('restores a world through the existing import path', async () => {
-    vi.mocked(readRegistryMirror).mockResolvedValue(
-      JSON.stringify([{ id: 'lost', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' }]),
-    )
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'lost', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' }]),
+    })
     vi.mocked(readWorldMirror).mockResolvedValue('{"pages":[]}')
     render(<LoreSelectorRoute />)
 
@@ -324,9 +337,10 @@ describe('LoreSelectorRoute — recovery panel', () => {
     // Make the disk entry's id match a world listLores already reports, so
     // plannedRecovery filters it out and the panel stays hidden.
     vi.mocked(listLores).mockResolvedValue([world({ id: 'default' })])
-    vi.mocked(readRegistryMirror).mockResolvedValue(
-      JSON.stringify([{ id: 'default', name: 'Aethel' }]),
-    )
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'default', name: 'Aethel' }]),
+    })
     render(<LoreSelectorRoute />)
     await settleDiskRead()
     expect(screen.queryByText(/found on disk/i)).toBeNull()

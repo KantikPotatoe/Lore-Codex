@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   saveFile, openTextFile, writeAppData, isTauri, checkForUpdate, appVersion,
   writeWorldMirror, readWorldMirror, writeRegistryMirror, readRegistryMirror, trashWorldMirror,
+  withRegistryMirrorLock,
 } from './platform'
 
 // The platform seam (desktop transition Phase 0): every capability that
@@ -15,6 +16,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
   writeFile: vi.fn(),
   writeTextFile: vi.fn(),
   readTextFile: vi.fn(),
+  exists: vi.fn(async () => true),
   mkdir: vi.fn(async () => {}),
   rename: vi.fn(),
   BaseDirectory: { AppData: 13 },
@@ -23,7 +25,7 @@ vi.mock('@tauri-apps/plugin-updater', () => ({ check: vi.fn() }))
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn() }))
 
 import { save, open } from '@tauri-apps/plugin-dialog'
-import { writeFile, writeTextFile, readTextFile, mkdir, rename } from '@tauri-apps/plugin-fs'
+import { writeFile, writeTextFile, readTextFile, exists, mkdir, rename } from '@tauri-apps/plugin-fs'
 import { check } from '@tauri-apps/plugin-updater'
 import { getVersion } from '@tauri-apps/api/app'
 
@@ -318,11 +320,14 @@ describe('writeWorldMirror', () => {
     expect(await writeWorldMirror('default', '{"pages":[]}')).toBe(true)
 
     // The rename is the commit point: a torn write must never land on the
-    // real file, so the temp write has to come first.
-    expect(order).toEqual([
-      'write:worlds/default.lore.tmp',
-      'rename:worlds/default.lore.tmp->worlds/default.lore',
-    ])
+    // real file, so the temp write has to come first. The tmp path carries a
+    // unique suffix per call (belt-and-braces against two overlapping writers
+    // to the same target, #174 Defect 2) — pinned by pattern, not an exact
+    // literal, but write and rename must agree on that exact path.
+    expect(order).toHaveLength(2)
+    expect(order[0]).toMatch(/^write:worlds\/default\.lore\.tmp-.+$/)
+    const tmpPath = order[0].slice('write:'.length)
+    expect(order[1]).toBe(`rename:${tmpPath}->worlds/default.lore`)
   })
 
   it('refuses a lore id that could escape the worlds folder', async () => {
@@ -381,7 +386,7 @@ describe('readWorldMirror', () => {
 describe('registry mirror', () => {
   it('is a no-op in the browser', async () => {
     expect(await writeRegistryMirror('[]')).toBe(false)
-    expect(await readRegistryMirror()).toBeNull()
+    expect(await readRegistryMirror()).toEqual({ status: 'absent' })
   })
 
   it('writes atomically, like a world mirror', async () => {
@@ -391,10 +396,10 @@ describe('registry mirror', () => {
     vi.mocked(rename).mockImplementation(async (a, b) => { order.push(`rename:${String(a)}->${String(b)}`) })
 
     expect(await writeRegistryMirror('[]')).toBe(true)
-    expect(order).toEqual([
-      'write:worlds/registry.json.tmp',
-      'rename:worlds/registry.json.tmp->worlds/registry.json',
-    ])
+    expect(order).toHaveLength(2)
+    expect(order[0]).toMatch(/^write:worlds\/registry\.json\.tmp-.+$/)
+    const tmpPath = order[0].slice('write:'.length)
+    expect(order[1]).toBe(`rename:${tmpPath}->worlds/registry.json`)
   })
 
   it('awaits the temp write before committing the rename', async () => {
@@ -415,10 +420,86 @@ describe('registry mirror', () => {
     expect(rename).toHaveBeenCalledOnce()
   })
 
-  it('returns null when there is no registry on disk', async () => {
+  // #174 Defect 1: 'absent' and 'error' must be reported distinctly — a
+  // caller doing read-modify-write treats them very differently (absent is
+  // safe to write over; error must refuse the write).
+  it("reports 'absent' when the file genuinely does not exist", async () => {
     enterTauri()
-    vi.mocked(readTextFile).mockRejectedValue(new Error('ENOENT'))
-    expect(await readRegistryMirror()).toBeNull()
+    vi.mocked(exists).mockResolvedValue(false)
+    expect(await readRegistryMirror()).toEqual({ status: 'absent' })
+    expect(readTextFile).not.toHaveBeenCalled()
+  })
+
+  it("reports 'ok' with the text when the file exists and reads cleanly", async () => {
+    enterTauri()
+    vi.mocked(exists).mockResolvedValue(true)
+    vi.mocked(readTextFile).mockResolvedValue('[]')
+    expect(await readRegistryMirror()).toEqual({ status: 'ok', text: '[]' })
+  })
+
+  it("reports 'error' — not 'absent' — when the file exists but the read fails", async () => {
+    enterTauri()
+    vi.mocked(exists).mockResolvedValue(true)
+    vi.mocked(readTextFile).mockRejectedValue(new Error('EACCES: permission denied'))
+    expect(await readRegistryMirror()).toEqual({ status: 'error' })
+  })
+
+  it("reports 'error' — not 'absent' — when existence itself cannot be determined", async () => {
+    enterTauri()
+    vi.mocked(exists).mockRejectedValue(new Error('sharing violation'))
+    expect(await readRegistryMirror()).toEqual({ status: 'error' })
+    expect(readTextFile).not.toHaveBeenCalled()
+  })
+})
+
+describe('withRegistryMirrorLock', () => {
+  // #174 Defect 2: three independent read-modify-write sequences share
+  // registry.json; without serialization, two overlapping tasks can
+  // interleave their reads and writes. This pins the lock's own contract in
+  // isolation, ahead of the full read-modify-write proof in
+  // lores.mirror.test.ts.
+  it('runs queued tasks one at a time, in order', async () => {
+    const order: string[] = []
+    let releaseFirst: () => void = () => {}
+    const gate = new Promise<void>((resolve) => { releaseFirst = resolve })
+
+    const first = withRegistryMirrorLock(async () => {
+      order.push('first-start')
+      await gate
+      order.push('first-end')
+    })
+    const second = withRegistryMirrorLock(async () => {
+      order.push('second-start')
+    })
+
+    // Without the lock, `second` (synchronous once scheduled) would start
+    // immediately alongside `first`. With it, `second` cannot even begin
+    // until `first` resolves.
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(order).toEqual(['first-start'])
+
+    releaseFirst()
+    await Promise.all([first, second])
+    expect(order).toEqual(['first-start', 'first-end', 'second-start'])
+  })
+
+  it('advances the queue even when a task throws, so later tasks are not wedged', async () => {
+    await expect(withRegistryMirrorLock(async () => { throw new Error('boom') })).rejects.toThrow('boom')
+
+    let ran = false
+    await withRegistryMirrorLock(async () => { ran = true })
+    expect(ran).toBe(true)
+  })
+
+  it("returns each task's own outcome to its own caller", async () => {
+    const a = withRegistryMirrorLock(async () => 'a-result')
+    const b = withRegistryMirrorLock(async () => { throw new Error('b-failed') })
+    const c = withRegistryMirrorLock(async () => 'c-result')
+
+    await expect(a).resolves.toBe('a-result')
+    await expect(b).rejects.toThrow('b-failed')
+    await expect(c).resolves.toBe('c-result')
   })
 })
 

@@ -20,29 +20,110 @@ import type { WorldIndexEntry } from './worldIndex'
 export type RecoverableWorld = WorldIndexEntry
 
 /**
- * Parse `<app-data>/worlds/registry.json`.
+ * The seam's read outcome, BEFORE any content parsing.
  *
- * Every failure mode collapses to an empty list. This file sits on disk where
- * a half-written index, a hand-edit, or an older format could all show up, and
- * the consequence of a parse error must be "offer nothing" — never a crash in
- * the lore selector, which is the one route a user with a broken world can
- * still reach.
+ * Defined here rather than in platform.ts — the module that actually performs
+ * the read — because worldRecovery.ts must stay Tauri-free, and this is the
+ * vocabulary its own `parseDiskRegistry` (below) consumes; platform.ts's
+ * `readRegistryMirror()` imports this type (type-only, so no runtime edge is
+ * created) to shape its return value.
  *
- * Entries whose id could not safely name a file are dropped here rather than
- * at the filesystem, so a tampered index cannot even reach the seam.
+ * `'absent'` and `'error'` are NOT interchangeable, even though both used to
+ * collapse to the same `null` before #174 Defect 1: `'absent'` is a
+ * legitimate empty registry (first run, or the browser, which has no
+ * filesystem at all) and is safe for a caller to write over. `'error'` means
+ * a real file exists that could not be read right now — permission denied, a
+ * Windows sharing violation, a disk I/O failure — quite possibly on the very
+ * machine that just evicted its storage. Treating that as empty is how a
+ * transient read failure becomes a permanent, silent loss of every entry a
+ * read failure merely hid rather than actually erased.
  */
-export function parseDiskRegistry(text: string | null): RecoverableWorld[] {
-  if (!text) return []
+export type DiskRegistryRead =
+  | { status: 'ok'; text: string }
+  | { status: 'absent' }
+  | { status: 'error' }
+
+/**
+ * The on-disk envelope format `registry.json` is written in. Bumped only when
+ * the shape of an entry — or the envelope itself — changes in a way an older
+ * build cannot safely interpret.
+ */
+export const REGISTRY_FORMAT_VERSION = 1
+
+/**
+ * Outcome of parsing (not just reading) the disk index.
+ *
+ * `ok: false` covers the seam-level `'error'` above AND every content-level
+ * failure `parseDiskRegistry` can detect on its own: unparseable JSON, a
+ * top-level shape that is neither the legacy bare array nor a
+ * `{version, worlds}` envelope, or an envelope whose `version` is NEWER than
+ * this build understands (the live downgrade scenario the auto-updater
+ * creates — an older build has no way to know what a newer shape dropped or
+ * renamed, so it must never flatten it).
+ *
+ * Every WRITER (`syncRegistryMirror`/`dropFromRegistryMirror` in lores.ts,
+ * `stampRegistryMirrored` in worldMirrorSync.ts) must treat `ok: false` as
+ * "refuse to write" — a shrinking write must never follow a read/parse
+ * failure. A READ-ONLY display consumer (`LoreSelectorRoute`'s recovery
+ * panel) may still degrade `ok: false` to "offer nothing", exactly as a bare
+ * `[]` always has, because it never persists anything back to disk.
+ */
+export type ParsedDiskRegistry =
+  | { ok: true; entries: RecoverableWorld[] }
+  | { ok: false }
+
+/**
+ * Parse `<app-data>/worlds/registry.json`, given the seam's read outcome.
+ *
+ * Accepts both the legacy bare-array shape (everything written before the
+ * envelope existed) and the `{version, worlds}` envelope, migrating the
+ * former forward silently — `version` is treated as `REGISTRY_FORMAT_VERSION`
+ * for a bare array, since that's what every array-shaped file on disk today
+ * actually is. An envelope whose `version` is newer than
+ * `REGISTRY_FORMAT_VERSION` reports `ok: false` rather than being parsed
+ * partially or treated as empty (#174 Defect 3): this build cannot know what
+ * a newer shape means, and guessing "empty" is exactly the downgrade bug the
+ * envelope exists to prevent.
+ *
+ * Individual malformed entries within an otherwise well-formed list are
+ * dropped one at a time — a hand-edited or partially-written row shouldn't
+ * cost the rest of the file — which is a different, narrower tolerance than
+ * the whole-file-shape checks above.
+ */
+export function parseDiskRegistry(read: DiskRegistryRead): ParsedDiskRegistry {
+  if (read.status === 'error') return { ok: false }
+  if (read.status === 'absent') return { ok: true, entries: [] }
+
   let raw: unknown
   try {
-    raw = JSON.parse(text)
+    raw = JSON.parse(read.text)
   } catch {
-    return []
+    return { ok: false }
   }
-  if (!Array.isArray(raw)) return []
+
+  let list: unknown[]
+  if (Array.isArray(raw)) {
+    list = raw
+  } else if (raw !== null && typeof raw === 'object') {
+    const envelope = raw as Record<string, unknown>
+    if (
+      typeof envelope.version !== 'number' ||
+      !Number.isFinite(envelope.version) ||
+      !Array.isArray(envelope.worlds)
+    ) {
+      return { ok: false }
+    }
+    if (envelope.version > REGISTRY_FORMAT_VERSION) {
+      // A newer index this build does not understand. Must not be flattened.
+      return { ok: false }
+    }
+    list = envelope.worlds
+  } else {
+    return { ok: false }
+  }
 
   const out: RecoverableWorld[] = []
-  for (const entry of raw) {
+  for (const entry of list) {
     if (typeof entry !== 'object' || entry === null) continue
     const e = entry as Record<string, unknown>
     if (typeof e.id !== 'string' || !isValidLoreId(e.id)) continue
@@ -53,7 +134,17 @@ export function parseDiskRegistry(text: string | null): RecoverableWorld[] {
       appVersion: typeof e.appVersion === 'string' ? e.appVersion : null,
     })
   }
-  return out
+  return { ok: true, entries: out }
+}
+
+/**
+ * Serialize entries into the on-disk envelope. Paired with `parseDiskRegistry`
+ * above — every writer must go through this instead of hand-rolling
+ * `JSON.stringify(entries)`, or the file would regress to the bare-array
+ * shape `parseDiskRegistry` only still reads for backward compatibility.
+ */
+export function serializeDiskRegistry(entries: RecoverableWorld[]): string {
+  return JSON.stringify({ version: REGISTRY_FORMAT_VERSION, worlds: entries })
 }
 
 /**

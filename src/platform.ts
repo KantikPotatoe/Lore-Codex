@@ -12,6 +12,7 @@
 // `<a download>` outside this module.
 
 import { isValidLoreId } from './worldMirror'
+import type { DiskRegistryRead } from './worldRecovery'
 
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -334,7 +335,13 @@ async function atomicAppDataWrite(relativePath: string, json: string): Promise<v
       // Already exists — fine. A real permission failure surfaces on the write.
     })
   }
-  const tmpPath = `${relativePath}.tmp`
+  // A unique tmp path per call, not a fixed `${relativePath}.tmp` — belt-and-
+  // braces under `withRegistryMirrorLock`'s serialization (the actual fix for
+  // #174 Defect 2). Even if some future caller of this helper ever raced
+  // another write to the SAME target the way registry.json's three writers
+  // used to, two overlapping `writeTextFile` calls could no longer interleave
+  // into one corrupted tmp file for the first `rename` to commit as truth.
+  const tmpPath = `${relativePath}.tmp-${crypto.randomUUID()}`
   await writeTextFile(tmpPath, json, { baseDir: BaseDirectory.AppData })
   await rename(tmpPath, relativePath, {
     oldPathBaseDir: BaseDirectory.AppData,
@@ -390,15 +397,74 @@ export async function writeRegistryMirror(json: string): Promise<boolean> {
   return true
 }
 
-/** Read the mirrored world index; `null` in the browser or when absent. */
-export async function readRegistryMirror(): Promise<string | null> {
-  if (!isTauri()) return null
-  const { readTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+/**
+ * Read the mirrored world index.
+ *
+ * Distinguishes `'absent'` (no file yet — a legitimate empty registry, safe
+ * to write over) from `'error'` (a file exists but could not be read:
+ * permission denied, a Windows sharing violation, a disk I/O failure — quite
+ * possibly on the very machine that just evicted its storage). Before #174
+ * Defect 1 both collapsed to the same `null`, and a read-modify-write caller
+ * on that value would treat "I couldn't read this" as "there's nothing here"
+ * and write an empty (or registry-only) index over survivors it never
+ * actually looked at.
+ *
+ * `exists()` is checked FIRST, separately from `readTextFile()`, so a
+ * transient read failure on a file that verifiably exists can never be
+ * misreported as `'absent'` — and so a failure to even determine existence
+ * (also `'error'`) can't be either.
+ */
+export async function readRegistryMirror(): Promise<DiskRegistryRead> {
+  if (!isTauri()) return { status: 'absent' }
+  const { readTextFile, exists, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  let present: boolean
   try {
-    return await readTextFile(REGISTRY_MIRROR_PATH, { baseDir: BaseDirectory.AppData })
+    present = await exists(REGISTRY_MIRROR_PATH, { baseDir: BaseDirectory.AppData })
   } catch {
-    return null
+    return { status: 'error' }
   }
+  if (!present) return { status: 'absent' }
+  try {
+    const text = await readTextFile(REGISTRY_MIRROR_PATH, { baseDir: BaseDirectory.AppData })
+    return { status: 'ok', text }
+  } catch {
+    return { status: 'error' }
+  }
+}
+
+/**
+ * Serializes every registry.json read-modify-write across the app.
+ *
+ * Three independent call sites — `syncRegistryMirror`/`dropFromRegistryMirror`
+ * in lores.ts, `stampRegistryMirrored` in worldMirrorSync.ts — each read this
+ * file, merge, and write it back, with real `await`s between the read and the
+ * write. Left unserialized, two overlapping sequences interleave in two silent
+ * ways (all three writers swallow their own errors): a **lost update** — one
+ * sequence's read observes the disk before another's write lands, so the
+ * second write clobbers the first with stale data (e.g. a delete's drop
+ * undone by a concurrently in-flight mirror stamp, permanently resurrecting an
+ * entry whose `.lore` is already in `trash/`) — or a **torn commit** — two
+ * overlapping `writeTextFile` calls to the identical tmp path interleave their
+ * bytes, and the first `rename` commits the torn result, defeating the
+ * atomicity the whole mirror design rests on.
+ *
+ * Chaining every attempt through one promise turns "read, merge, write" back
+ * into a single atomic step from every caller's point of view: no read can
+ * observe a state some other still-in-flight write is about to replace. The
+ * chain advances regardless of whether a given task throws — one failed
+ * best-effort write must not wedge every later one behind a permanently
+ * rejected promise — but the real outcome (success or failure) still reaches
+ * that task's own caller through the returned promise.
+ */
+let registryMirrorQueue: Promise<unknown> = Promise.resolve()
+
+export function withRegistryMirrorLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = registryMirrorQueue.then(fn, fn)
+  registryMirrorQueue = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
 }
 
 /**

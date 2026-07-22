@@ -12,8 +12,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 vi.mock('./platform', () => ({
   writeWorldMirror: vi.fn(async () => true),
-  readRegistryMirror: vi.fn(async () => null),
+  readRegistryMirror: vi.fn(async () => ({ status: 'absent' })),
   writeRegistryMirror: vi.fn(async () => true),
+  withRegistryMirrorLock: (fn: () => Promise<unknown>) => fn(),
   WORLDS_DIR: 'worlds',
 }))
 

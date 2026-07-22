@@ -2,9 +2,9 @@ import Dexie from 'dexie'
 import { CURRENT_LORE_KEY, currentLoreId, dbNameFor } from './loreId'
 import { broadcastWorldChange } from './tabSync'
 import { registry, type Lore } from './registryDb'
-import { writeRegistryMirror, readRegistryMirror, trashWorldMirror } from './platform'
-import { parseDiskRegistry } from './worldRecovery'
-import { mergeWorldIndex, dropWorldFromIndex, type WorldIndexEntry } from './worldIndex'
+import { writeRegistryMirror, readRegistryMirror, trashWorldMirror, withRegistryMirrorLock } from './platform'
+import { parseDiskRegistry, serializeDiskRegistry } from './worldRecovery'
+import { mergeWorldIndex, dropWorldFromIndex } from './worldIndex'
 import pkg from '../package.json'
 
 // The registry DB now lives in registryDb.ts so `appSettings.ts` can reach it
@@ -179,16 +179,23 @@ async function doBootstrapDefaultLore(): Promise<void> {
   // 'default' right here would register the id the eviction wiped, and
   // plannedRecovery's set-difference would then filter the real disk mirror
   // out as "already known", never offering it back (#174 C2). Ask the on-disk
-  // index (readRegistryMirror resolves null in the browser, so this check is
-  // inert there) whether it names a world with an actual .lore file behind
+  // index (readRegistryMirror resolves 'absent' in the browser, so this check
+  // is inert there) whether it names a world with an actual .lore file behind
   // it (mirroredAt !== null — an entry can be on disk with no file, just a
   // registry-only record `syncRegistryMirror` wrote before anything was
   // mirrored, and there is nothing to restore from that). If so, this is a
   // lost-store, not a first run: leave the registry empty (and the flag
   // unset, so this check runs again next launch too) for the lore selector's
   // recovery panel to offer the world back instead of silently recreating it.
-  const disk = parseDiskRegistry(await readRegistryMirror())
-  if (disk.some((w) => w.mirroredAt !== null)) return
+  //
+  // An UNREADABLE index (parsed.ok === false — #174 Defect 1) gets the same
+  // "don't seed" treatment as a genuine disk-only world, not the "must be a
+  // first run" treatment: we cannot tell the difference from here, and
+  // seeding 'default' on a guess would risk exactly the id collision this
+  // whole check exists to prevent, the moment the index becomes readable
+  // again.
+  const parsed = parseDiskRegistry(await readRegistryMirror())
+  if (!parsed.ok || parsed.entries.some((w) => w.mirroredAt !== null)) return
 
   // Only read the legacy home-config title when db.ts is pointing at 'lore-app'.
   // If the active lore is already set to something else, skip the title migration.
@@ -227,32 +234,52 @@ async function doBootstrapDefaultLore(): Promise<void> {
  *
  * Best-effort: a failure here must never break world CRUD, which is the
  * user's actual action.
+ *
+ * Wrapped in `withRegistryMirrorLock` (#174 Defect 2): this is one of three
+ * independent read-modify-write sequences against the same `registry.json`
+ * (the other two are `dropFromRegistryMirror` below and
+ * `stampRegistryMirrored` in worldMirrorSync.ts), and without serialization
+ * two overlapping sequences can lose one's update or tear the shared tmp
+ * file — see the lock's doc in platform.ts.
+ *
+ * Refuses to write when the disk read is unreadable rather than absent
+ * (`!parsed.ok` — #174 Defect 1): a read failure must never be read as "the
+ * disk has nothing", or the union this function computes becomes a
+ * shrinking write that erases every disk-only entry the failed read merely
+ * hid from us.
  */
 export async function syncRegistryMirror(): Promise<void> {
-  try {
-    const [lores, diskText] = await Promise.all([listLores(), readRegistryMirror()])
-    const onDisk = parseDiskRegistry(diskText)
-    const known = lores.map((l) => ({ id: l.id, name: l.name }))
-    const index = mergeWorldIndex({ onDisk, known, appVersion: pkg.version })
-    await writeRegistryMirror(JSON.stringify(index))
-  } catch {
-    // A world that cannot be indexed is still a world the user just made.
-  }
+  await withRegistryMirrorLock(async () => {
+    try {
+      const [lores, diskRead] = await Promise.all([listLores(), readRegistryMirror()])
+      const parsed = parseDiskRegistry(diskRead)
+      if (!parsed.ok) return
+      const known = lores.map((l) => ({ id: l.id, name: l.name }))
+      const index = mergeWorldIndex({ onDisk: parsed.entries, known, appVersion: pkg.version })
+      await writeRegistryMirror(serializeDiskRegistry(index))
+    } catch {
+      // A world that cannot be indexed is still a world the user just made.
+    }
+  })
 }
 
 /**
  * Drop one world from the on-disk index. The only way an entry leaves
  * `registry.json` — `syncRegistryMirror`'s union never removes anything on
  * its own. Best-effort, like `syncRegistryMirror`: a deletion is the user's
- * real action and must succeed even if this doesn't.
+ * real action and must succeed even if this doesn't. Same lock, same
+ * refuse-to-write-on-unreadable guard — see `syncRegistryMirror` above.
  */
 async function dropFromRegistryMirror(id: string): Promise<void> {
-  try {
-    const onDisk: WorldIndexEntry[] = parseDiskRegistry(await readRegistryMirror())
-    await writeRegistryMirror(JSON.stringify(dropWorldFromIndex(onDisk, id)))
-  } catch {
-    // Best-effort — see syncRegistryMirror.
-  }
+  await withRegistryMirrorLock(async () => {
+    try {
+      const parsed = parseDiskRegistry(await readRegistryMirror())
+      if (!parsed.ok) return
+      await writeRegistryMirror(serializeDiskRegistry(dropWorldFromIndex(parsed.entries, id)))
+    } catch {
+      // Best-effort — see syncRegistryMirror.
+    }
+  })
 }
 
 /** A filename-safe timestamp for trashed mirrors, e.g. 2026-07-21_14-32. */

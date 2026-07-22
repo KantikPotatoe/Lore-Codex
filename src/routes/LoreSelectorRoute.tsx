@@ -100,7 +100,15 @@ export default function LoreSelectorRoute() {
   useEffect(() => {
     let cancelled = false
     readRegistryMirror()
-      .then((text) => { if (!cancelled) setDiskWorlds(parseDiskRegistry(text)) })
+      .then((read) => {
+        if (cancelled) return
+        const parsed = parseDiskRegistry(read)
+        // Display-only, never a write: an unreadable index degrades to
+        // "offer nothing" here, same as a bare-empty index always has. Only
+        // the writers (lores.ts / worldMirrorSync.ts) need to refuse on
+        // `!parsed.ok` — this route never persists anything back to disk.
+        setDiskWorlds(parsed.ok ? parsed.entries : [])
+      })
       .catch(() => { if (!cancelled) setDiskWorlds([]) })
     return () => { cancelled = true }
   }, [])

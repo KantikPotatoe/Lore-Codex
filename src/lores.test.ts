@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 vi.mock('./platform', () => ({
-  readRegistryMirror: vi.fn(async () => null),
+  readRegistryMirror: vi.fn(async () => ({ status: 'absent' })),
   writeRegistryMirror: vi.fn(async () => true),
   trashWorldMirror: vi.fn(async () => true),
+  withRegistryMirrorLock: (fn: () => Promise<unknown>) => fn(),
 }))
 
 import {
@@ -19,13 +20,28 @@ import {
 import { readRegistryMirror, writeRegistryMirror } from './platform'
 import { LoreDB, CURRENT_SCHEMA_VERSION } from './db'
 import { dbNameFor } from './loreId'
-import { plannedRecovery } from './worldRecovery'
+import { plannedRecovery, REGISTRY_FORMAT_VERSION } from './worldRecovery'
+import type { DiskRegistryRead } from './worldRecovery'
+
+/** Wrap a bare-array disk fixture (this file's existing style) in the ok/text
+ *  shape readRegistryMirror now returns. */
+function diskOk(worlds: unknown[]): DiskRegistryRead {
+  return { status: 'ok', text: JSON.stringify(worlds) }
+}
+const diskAbsent: DiskRegistryRead = { status: 'absent' }
+
+/** Unwrap what writeRegistryMirror was called with — always the
+ *  {version, worlds} envelope now (#174 Defect 3) — back to a plain array,
+ *  matching this file's existing array-shaped assertions. */
+function writtenWorlds(json: string): Array<{ id: string }> {
+  return (JSON.parse(json) as { worlds: Array<{ id: string }> }).worlds
+}
 
 beforeEach(async () => {
   localStorage.clear()
   await registry.lores.clear()
   vi.clearAllMocks()
-  vi.mocked(readRegistryMirror).mockResolvedValue(null)
+  vi.mocked(readRegistryMirror).mockResolvedValue(diskAbsent)
   vi.mocked(writeRegistryMirror).mockResolvedValue(true)
 })
 
@@ -75,7 +91,7 @@ describe('bootstrapDefaultLore', () => {
   describe('the eviction case (#174 C2)', () => {
     it('does not seed a default world when the disk index names a real mirror, and leaves it offered for recovery', async () => {
       const diskEntry = { id: 'default', name: 'Aethel', mirroredAt: 1000, appVersion: '1.3.0' }
-      vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([diskEntry]))
+      vi.mocked(readRegistryMirror).mockResolvedValue(diskOk([diskEntry]))
 
       await bootstrapDefaultLore()
 
@@ -85,7 +101,7 @@ describe('bootstrapDefaultLore', () => {
     })
 
     it('seeds normally when the only disk entry has no mirror behind it (nothing to restore)', async () => {
-      vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([
+      vi.mocked(readRegistryMirror).mockResolvedValue(diskOk([
         { id: 'default', name: 'Aethel', mirroredAt: null, appVersion: null },
       ]))
 
@@ -97,7 +113,7 @@ describe('bootstrapDefaultLore', () => {
     })
 
     it('still seeds on a genuine first run (no on-disk index at all)', async () => {
-      vi.mocked(readRegistryMirror).mockResolvedValue(null)
+      vi.mocked(readRegistryMirror).mockResolvedValue(diskAbsent)
 
       await bootstrapDefaultLore()
 
@@ -106,15 +122,28 @@ describe('bootstrapDefaultLore', () => {
       expect(lores[0].id).toBe('default')
     })
 
-    // The brief's browser guarantee: readRegistryMirror() resolves null in the
-    // browser (asserted directly in platform.test.ts), so parseDiskRegistry(null)
-    // is always [] there and this whole check is inert — identical to before #174.
-    it('browser path (readRegistryMirror resolving null) behaves exactly like a first run', async () => {
-      vi.mocked(readRegistryMirror).mockResolvedValue(null)
+    // The brief's browser guarantee: readRegistryMirror() resolves 'absent' in
+    // the browser (asserted directly in platform.test.ts), so
+    // parseDiskRegistry({status:'absent'}) is always an empty registry there
+    // and this whole check is inert — identical to before #174.
+    it("browser path (readRegistryMirror resolving 'absent') behaves exactly like a first run", async () => {
+      vi.mocked(readRegistryMirror).mockResolvedValue(diskAbsent)
 
       await bootstrapDefaultLore()
 
       expect(await listLores()).toHaveLength(1)
+    })
+
+    // #174 Defect 1: an UNREADABLE index (not absent) must not be treated as
+    // "safe to seed over" — we cannot tell from here whether it names a real
+    // mirror, and seeding 'default' on a guess risks the exact id collision
+    // this whole check exists to prevent.
+    it('does not seed a default world when the disk index is unreadable (not absent)', async () => {
+      vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'error' })
+
+      await bootstrapDefaultLore()
+
+      expect(await listLores()).toHaveLength(0)
     })
   })
 })
@@ -205,21 +234,21 @@ describe('syncRegistryMirror — the index is a union, never a replacement (#174
     // registry.lores is empty (beforeEach clears it) — this is exactly the
     // state right after an eviction: the registry DB is gone, but the
     // on-disk index (and the .lore files it names) survived.
-    vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([
+    vi.mocked(readRegistryMirror).mockResolvedValue(diskOk([
       { id: 'evicted', name: 'Aethel', mirroredAt: 1000, appVersion: '1.3.0' },
     ]))
 
     await syncRegistryMirror()
 
     expect(writeRegistryMirror).toHaveBeenCalledTimes(1)
-    const written = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls[0][0] as string)
+    const written = writtenWorlds(vi.mocked(writeRegistryMirror).mock.calls[0][0] as string)
     expect(written).toEqual([
       { id: 'evicted', name: 'Aethel', mirroredAt: 1000, appVersion: '1.3.0' },
     ])
   })
 
   it('adds a registry-only world alongside whatever is already on disk', async () => {
-    vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([
+    vi.mocked(readRegistryMirror).mockResolvedValue(diskOk([
       { id: 'evicted', name: 'Aethel', mirroredAt: 1000, appVersion: '1.3.0' },
     ]))
     await registry.lores.add({
@@ -228,15 +257,39 @@ describe('syncRegistryMirror — the index is a union, never a replacement (#174
 
     await syncRegistryMirror()
 
-    const written = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls[0][0] as string)
-    expect(written.map((w: { id: string }) => w.id).sort()).toEqual(['evicted', 'fresh'])
+    const written = writtenWorlds(vi.mocked(writeRegistryMirror).mock.calls[0][0] as string)
+    expect(written.map((w) => w.id).sort()).toEqual(['evicted', 'fresh'])
+  })
+
+  // #174 Defect 1: an unreadable disk index must not be treated as an empty
+  // one — the union computed here would then be a shrinking write, silently
+  // erasing the disk-only survivor a real read failure merely hid from us.
+  it('refuses to write when the disk index is unreadable', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'error' })
+
+    await syncRegistryMirror()
+
+    expect(writeRegistryMirror).not.toHaveBeenCalled()
+  })
+
+  it('writes the {version, worlds} envelope, not a bare array (#174 Defect 3)', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue(diskAbsent)
+    await registry.lores.add({
+      id: 'fresh', name: 'Fresh World', banner: null, createdAt: 1, updatedAt: 1,
+    })
+
+    await syncRegistryMirror()
+
+    const raw = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls[0][0] as string)
+    expect(raw.version).toBe(REGISTRY_FORMAT_VERSION)
+    expect(Array.isArray(raw.worlds)).toBe(true)
   })
 })
 
 describe('deleteLore', () => {
   it('drops the deleted world from the on-disk index (the only way an entry leaves it)', async () => {
     const id = await registerLore('Doomed World') // not the active lore, so no reload fires
-    vi.mocked(readRegistryMirror).mockResolvedValue(JSON.stringify([
+    vi.mocked(readRegistryMirror).mockResolvedValue(diskOk([
       { id, name: 'Doomed World', mirroredAt: 500, appVersion: '1.0.0' },
       { id: 'untouched', name: 'Other World', mirroredAt: 10, appVersion: '1.0.0' },
     ]))
@@ -244,7 +297,22 @@ describe('deleteLore', () => {
 
     await deleteLore(id)
 
-    const written = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls.at(-1)![0] as string)
-    expect(written.map((w: { id: string }) => w.id)).toEqual(['untouched'])
+    const written = writtenWorlds(vi.mocked(writeRegistryMirror).mock.calls.at(-1)![0] as string)
+    expect(written.map((w) => w.id)).toEqual(['untouched'])
+  })
+
+  // #174 Defect 1: same refusal as syncRegistryMirror — a delete's own real
+  // action (removing the world from the registry DB, trashing its .lore
+  // file) must still succeed, but the index update must not silently wipe
+  // whatever else was on disk when the read fails.
+  it('refuses to update the index when the disk read is unreadable, but still deletes the world', async () => {
+    const id = await registerLore('Doomed World')
+    vi.mocked(writeRegistryMirror).mockClear()
+    vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'error' })
+
+    await deleteLore(id)
+
+    expect(await getLore(id)).toBeUndefined() // the actual delete still happened
+    expect(writeRegistryMirror).not.toHaveBeenCalled()
   })
 })

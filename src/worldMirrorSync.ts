@@ -14,9 +14,11 @@
 
 import { exportAll, activeLoreId, db, countAll } from './db'
 import { latestChangeTime } from './backup'
-import { writeWorldMirror, readRegistryMirror, writeRegistryMirror, WORLDS_DIR } from './platform'
+import {
+  writeWorldMirror, readRegistryMirror, writeRegistryMirror, WORLDS_DIR, withRegistryMirrorLock,
+} from './platform'
 import { shouldMirror, MIRROR_POLL_MS } from './worldMirror'
-import { parseDiskRegistry } from './worldRecovery'
+import { parseDiskRegistry, serializeDiskRegistry } from './worldRecovery'
 import { markWorldMirrored } from './worldIndex'
 import { registry } from './registryDb'
 import pkg from '../package.json'
@@ -311,17 +313,25 @@ async function write(now: number): Promise<void> {
  * Best-effort, like `syncRegistryMirror`/`dropFromRegistryMirror` in
  * lores.ts: a stamp that fails to write must not fail the mirror write it is
  * recording, and must not throw into the polling loop.
+ *
+ * Wrapped in `withRegistryMirrorLock` and refuses to write on an unreadable
+ * disk index, for exactly the reasons `syncRegistryMirror` in lores.ts does
+ * (#174 Defects 1 and 2) — this is the third of the three writers that share
+ * `registry.json`.
  */
 async function stampRegistryMirrored(id: string, at: number): Promise<void> {
-  try {
-    const [lore, diskText] = await Promise.all([registry.lores.get(id), readRegistryMirror()])
-    const name = lore?.name ?? id
-    const onDisk = parseDiskRegistry(diskText)
-    const index = markWorldMirrored(onDisk, id, name, at, pkg.version)
-    await writeRegistryMirror(JSON.stringify(index))
-  } catch {
-    // Best-effort — see syncRegistryMirror in lores.ts.
-  }
+  await withRegistryMirrorLock(async () => {
+    try {
+      const [lore, diskRead] = await Promise.all([registry.lores.get(id), readRegistryMirror()])
+      const parsed = parseDiskRegistry(diskRead)
+      if (!parsed.ok) return
+      const name = lore?.name ?? id
+      const index = markWorldMirrored(parsed.entries, id, name, at, pkg.version)
+      await writeRegistryMirror(serializeDiskRegistry(index))
+    } catch {
+      // Best-effort — see syncRegistryMirror in lores.ts.
+    }
+  })
 }
 
 /**

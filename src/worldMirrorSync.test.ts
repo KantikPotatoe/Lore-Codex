@@ -3,8 +3,9 @@ import { MIRROR_QUIET_MS, MIRROR_FLOOR_MS, MIRROR_POLL_MS } from './worldMirror'
 
 vi.mock('./platform', () => ({
   writeWorldMirror: vi.fn(async () => true),
-  readRegistryMirror: vi.fn(async () => null),
+  readRegistryMirror: vi.fn(async () => ({ status: 'absent' })),
   writeRegistryMirror: vi.fn(async () => true),
+  withRegistryMirrorLock: (fn: () => Promise<unknown>) => fn(),
   WORLDS_DIR: 'worlds',
 }))
 
@@ -85,7 +86,7 @@ beforeEach(async () => {
   resetWorldMirrorStateForTests()
   vi.mocked(writeWorldMirror).mockResolvedValue(true)
   vi.mocked(exportAll).mockResolvedValue('{"pages":[]}')
-  vi.mocked(readRegistryMirror).mockResolvedValue(null)
+  vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'absent' })
   vi.mocked(writeRegistryMirror).mockResolvedValue(true)
   vi.mocked(countAll).mockResolvedValue({ ...ZERO_COUNTS })
   vi.mocked(currentLoreId).mockReturnValue('stale-live-lore-id')
@@ -206,10 +207,30 @@ describe('stamping the registry index after a real mirror write (#174 second bug
     await maybeMirrorWorld(NOW)
 
     expect(writeRegistryMirror).toHaveBeenCalledTimes(1)
-    const written = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls[0][0])
-    expect(written).toEqual([
+    const written = JSON.parse(vi.mocked(writeRegistryMirror).mock.calls[0][0]) as {
+      version: number
+      worlds: unknown[]
+    }
+    expect(written.worlds).toEqual([
       { id: 'default', name: 'My World', mirroredAt: NOW, appVersion: expect.any(String) },
     ])
+  })
+
+  // #174 Defect 1: an unreadable disk index must not be treated as empty —
+  // stamping mirroredAt against a computed-empty union would erase every
+  // disk-only entry the read failure merely hid, right after the mirror
+  // write it's supposed to be recording actually succeeded.
+  it('does not stamp the index when the disk read is unreadable', async () => {
+    await registerActiveLore({ name: 'My World' })
+    vi.mocked(latestChangeTime).mockResolvedValue(SETTLED)
+    vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'error' })
+
+    await maybeMirrorWorld(NOW)
+
+    // The mirror write itself still succeeds — only the index update is
+    // refused.
+    expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+    expect(writeRegistryMirror).not.toHaveBeenCalled()
   })
 
   it('does not stamp the index when the seam reports no write (browser path)', async () => {
