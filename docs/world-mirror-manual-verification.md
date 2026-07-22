@@ -1,9 +1,10 @@
 # World mirror — manual verification
 
-> **Partially run on 2026-07-22** against `npm run tauri dev` at commit `eb3caad`.
-> Checks 0, 1, 3, 5, 8 and 9 passed on a real filesystem, including the full
-> evict-and-recover scenario. Checks 2, 4, 6, 7 and 10 remain unrun — see each
-> entry. The unit suite covers the cadence policy, the seam's write ordering
+> **Fully run on 2026-07-22** against `npm run tauri dev` at commit `eb3caad`.
+> Checks 0, 1, 3, 5, 8 and 9 were run and recorded in-session, including the
+> full evict-and-recover scenario. Checks 2, 4, 6, 7 and 10 were run separately
+> by the repo owner, who reported them passing; those five are recorded on that
+> report rather than from captured output, and are marked as such. The unit suite covers the cadence policy, the seam's write ordering
 > (including that the temp write is *awaited* before the rename commits), the
 > import-suppression guard, the recovery planning, and the panel's render
 > conditions — but all against mocks, which is what let two rounds of Criticals
@@ -61,20 +62,20 @@ manifest — so `fs:allow-exists` is a valid identifier.
       settling. Payload confirmed to be a real `exportAll` backup:
       `schemaVersion: 14`, `appVersion: 1.0.0`, all expected tables.
 
-- [ ] **2. The interval floor holds.** Edit again immediately and idle again —
+- [x] **2. The interval floor holds.** Edit again immediately and idle again —
       the `.lore` file's timestamp does **not** move. Wait past the 5-minute
       floor with a further edit and confirm it does.
 
-      **NOT RUN.** Needs a multi-minute interactive editing session.
+      **PASS — reported by the repo owner, 2026-07-22.**
 
 - [x] **3. No debris.** After a write, no `.lore.tmp` remains in `worlds\`.
 
       **PASS.** No `.lore.tmp*` files at any point across four writes.
 
-- [ ] **4. Close flushes.** Make an edit and close the window immediately,
+- [x] **4. Close flushes.** Make an edit and close the window immediately,
       inside the quiet window. The mirror updates on close.
 
-      **NOT RUN.** Needs an interactive edit immediately before closing.
+      **PASS — reported by the repo owner, 2026-07-22.**
 
 - [x] **5. The payload is a backup.** Open `<loreId>.lore` in a text editor: it
       is the same JSON shape as a "Back up now" export, with `schemaVersion`
@@ -85,19 +86,20 @@ manifest — so `fs:allow-exists` is a valid identifier.
       (`schemaVersion`/`appVersion`/`exportedAt` + `pages`/`maps`/`pins`/
       `regions`/`templates`/...). Rename-to-`.json`-and-import not exercised.
 
-- [ ] **6. Restores don't corrupt the mirror.** Settings → restore a backup,
+- [x] **6. Restores don't corrupt the mirror.** Settings → restore a backup,
       and separately restore a snapshot. In both cases no mirror write lands
       mid-restore, and one lands afterwards reflecting the restored data.
 
-      **NOT RUN** for the Settings restore path. The *recovery* restore was
-      exercised in check 8 and left the mirror correct.
+      **PASS — reported by the repo owner, 2026-07-22** for the Settings
+      restore path. The *recovery* restore was separately exercised in check 8
+      and left the mirror correct.
 
-- [ ] **7. Deletion trashes.** Delete a world. Its `.lore` moves to
+- [x] **7. Deletion trashes.** Delete a world. Its `.lore` moves to
       `worlds\trash\<loreId>-<stamp>.lore` and disappears from `registry.json`.
       Relaunch: the deleted world is **not** offered for recovery.
 
-      **NOT RUN.** No `worlds/trash/` was created during this session (nothing
-      was deleted), so the trash path is still unexercised on a real disk.
+      **PASS — reported by the repo owner, 2026-07-22.** This was the last
+      path in the feature with no real-disk exercise at all.
 
 - [x] **8. The real test — recovery.** Close the app. Delete the WebView2 data
       directory (`%LOCALAPPDATA%\com.lorecodex.app\EBWebView`) — this is the
@@ -141,12 +143,13 @@ manifest — so `fs:allow-exists` is a valid identifier.
       C3 fix (freshness is stamped by a real write, never invented at index
       time). This is the case the per-CRUD refreshes alone could not cover.
 
-- [ ] **10. The browser build is untouched.** `npm run dev` in Firefox: no
+- [x] **10. The browser build is untouched.** `npm run dev` in Firefox: no
       recovery panel, no console errors, and no repeated serialization — the
       poll loop must not run at all outside the shell.
 
-      **NOT RUN** in a browser. The `isTauri()` gates on the poll loop and the
-      startup reconciliation are covered by unit tests in both directions.
+      **PASS — reported by the repo owner, 2026-07-22.** The `isTauri()` gates
+      on the poll loop and the startup reconciliation are additionally covered
+      by unit tests in both directions.
 
 ---
 
