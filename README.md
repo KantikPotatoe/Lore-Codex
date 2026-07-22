@@ -2,27 +2,44 @@
 
 # 📜 Lore Codex
 
-**A local-first worldbuilding wiki that lives entirely in your browser.**
+**A local-first worldbuilding wiki that lives entirely on your machine.**
 
-Write, link, and map the lore of your fictional worlds — inspired by World Anvil
-and LoreKeeper. No account, no server, fully offline. Your world never leaves your machine.
+Write, link, and map the lore of your fictional worlds — then write the novel beside it.
+No account, no server, no network. Your world never leaves your computer.
 
 [![Version](https://img.shields.io/github/package-json/v/KantikPotatoe/Lore-Codex?style=flat-square&color=c9a24b&label=version)](https://github.com/KantikPotatoe/Lore-Codex/releases)
+[![Download](https://img.shields.io/badge/Download-Windows%20installer-c9a24b.svg?style=flat-square)](https://github.com/KantikPotatoe/Lore-Codex/releases/latest)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-c9a24b.svg?style=flat-square)](LICENSE.md)
 ![React](https://img.shields.io/badge/React-19-1d1a14.svg?style=flat-square&logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-1d1a14.svg?style=flat-square&logo=typescript)
-![Local-first](https://img.shields.io/badge/Local--first-offline-c9a24b.svg?style=flat-square)
+![Tauri](https://img.shields.io/badge/Tauri-v2-1d1a14.svg?style=flat-square&logo=tauri)
 
 </div>
 
 ---
 
+## 🚀 Getting started
+
+**[⬇ Download the latest installer →](https://github.com/KantikPotatoe/Lore-Codex/releases/latest)**
+
+Run `Lore.Codex_x64-setup.exe` and you're done — no Node, no terminal, no account,
+no sign-up. The app checks for new versions on its own and offers to install them.
+
+> **Windows only, for now.** The installer targets Windows 11/10 (x64) and rides the
+> preinstalled WebView2 runtime, which is why it's a ~5 MB download rather than ~100 MB.
+
+---
+
 ## ✨ Why Lore Codex
 
-Everything you write is stored **locally in your browser** via IndexedDB — there's no
-sign-up, no cloud, and no network round-trip. It works on a plane, and your lore stays
-private by default. Each world is its own isolated database, so you can keep a dozen
-settings going at once without them bleeding together.
+Everything you write stays on your computer. There is no sign-up, no cloud, and no
+network round-trip — the app's *only* outbound request is the update check, and you can
+turn that off in Settings, after which Lore Codex never reaches the network on its own.
+It works on a plane.
+
+Each world is its own isolated database, so you can keep a dozen settings going at once
+without them bleeding together — and each one is automatically mirrored to a plain
+`.lore` file on disk, so your work survives things that used to be fatal.
 
 ---
 
@@ -32,19 +49,21 @@ settings going at once without them bleeding together.
 
 | | |
 |---|---|
-| **Rich-text pages** | Articles for characters, places, factions, items, events, and more — with headings, inline images (no upload), and editable tables for stat blocks. |
+| **Rich-text pages** | Articles for characters, places, factions, items, events, and more — with headings, inline images, and editable tables for stat blocks. |
 | **Wiki links** | Type `[[Page Name]]` to link pages. Renaming a page rewrites every reference automatically; broken links are flagged. |
 | **Autolinker** | The first mention of any page's title in your prose links itself automatically — no `[[brackets]]` needed. Toggle it off in Settings. |
 | **Citations** | Mark a claim with an in-world source — another page or free text, with an optional locator and quote — and a numbered References list builds itself at the foot of the page. |
 | **Hover previews** | Hover a `[[wiki link]]` to peek at the linked page's category, title, and summary in a floating card. |
 | **Backlinks & TOC** | Every page shows what links to it, plus an auto-generated table of contents from its headings. |
-| **External links** | Attach a URL to selected text; opens in a new tab. |
+| **Page history** | Every timeline event that touches a page — whether it names the page directly or just mentions it — collected into one chronology in the page's sidebar. |
+| **Linked documents** | Attach a curated, drag-ordered shelf of in-world Documents to any page. |
+| **Spellcheck** | On by default, with a dictionary language you can pin per device. |
 
 ### 🗂️ Organizing
 
 | | |
 |---|---|
-| **Multiple worlds** | Fully isolated worlds you can create, rename, banner, delete, and switch between — each its own local database. |
+| **Multiple worlds** | Fully isolated worlds you can create, rename, banner, delete, and switch between — each its own local database and its own file on disk. |
 | **Page types & templates** | Colour-coded categories with starter infobox rows and optional starter body sections you can drop into a page in one click. Use the built-ins or define your own; switching a page's type keeps the values you filled in. |
 | **Tags** | Tag pages freely and open a tag to see every page that shares it. |
 | **Infoboxes** | A per-page sidebar card with image, caption, and typed fields — text, numbers, and `[[reference]]` links — grouped under separator headings. |
@@ -55,7 +74,8 @@ settings going at once without them bleeding together.
 | | |
 |---|---|
 | **Interactive maps** | Upload a map image and drop pins linked to lore pages. Draw regions as polygons and nest maps inside one another. |
-| **Relationship graph** | A force-directed graph of every page and the links between them — node size shows how connected a page is, surfacing hubs and isolated pages. |
+| **Relationship graph** | A force-directed graph of every page and the links between them, in **2D or 3D** — node size shows how connected a page is, surfacing hubs and isolated pages. Filter by category or by a set of tags, and export the view as an SVG or PNG. |
+| **Shortest path** | Pick any two pages and the graph highlights the chain of links connecting them — or tells you whether they're genuinely unconnected or just hidden by your current filters. |
 | **Timeline & calendars** | Define custom calendars (months, eras, year lengths) and place events on a shared timeline — list or zoomable axis. Calendars share one absolute-day axis so events line up. |
 
 ### ✒️ Writing the novel
@@ -74,48 +94,53 @@ settings going at once without them bleeding together.
 |---|---|
 | **Full-text search** | A keyboard-driven modal searching titles, summaries, tags, and body content, with highlighted snippets. |
 | **World health dashboard** | A to-do list for your world: broken `[[links]]` with one-click stub creation, orphan pages nothing links to, and pages still marked Stub. Summarized on Home, full detail at `/health`. |
+| **Rediscovery** | Home resurfaces pages you haven't touched in a while and features a different event each day; the sidebar has a "random page" jump. Nudges back into the corners of your own world. |
 
 ### 💾 Data & safety
 
 | | |
 |---|---|
-| **Backup & restore** | Export everything to a JSON file and re-import anytime. Import validates the file, shows what it'll replace, writes a recovery backup first, and migrates older backups forward. |
+| **Automatic disk mirror** | Every world is written to `<app-data>/worlds/<id>.lore` as you work, and always on exit. Writes are atomic — a crash or power cut can never leave a half-written file where a good one was. |
+| **Recovery on launch** | If the app's internal storage is ever wiped, the next launch finds the `.lore` files still on disk and offers to restore them. Nothing is written without your click. |
+| **Backup & restore** | Export everything to a JSON file and re-import anytime, through a real Save/Open dialog. Import validates the file, shows what it'll replace, writes a recovery backup first, and migrates older backups forward. |
+| **Backup on exit** | Optionally drop a dated backup into app data every time you close, rotating by weekday to keep a week of history. |
 | **Auto-snapshots** | Local snapshots saved automatically (after ~50 changes or 24h of activity); restore any from Settings. |
 | **Export as HTML** | Download a self-contained ZIP of your wiki as a browsable static site — index by category, one page per article, with infoboxes, images, citations, and resolved links. |
-| **Settings** | Per-world controls for snapshot frequency and retention, the backup-overdue window, and the autolinker — plus backup, import, HTML export, and deleting the world. |
-| **Overdue nudges** | The Home screen and the top banner track edits since your last backup and turn red when one is overdue. |
+| **Overdue nudges** | Home and the top banner track edits since your last *exported* backup and turn red when one is overdue. The disk mirror deliberately doesn't silence them — see [below](#-a-note-on-backups). |
+| **Crash recovery** | If the app ever crashes, the recovery screen's first offer is to download a backup before anything else. |
+
+### ⚙️ Settings
+
+Per-world: snapshot frequency and retention, the backup-overdue window, and the autolinker.
+Per-device: reopen the last world on launch, spellcheck and its language, backup-on-exit and
+where it lands, and whether to check for updates automatically. Device settings live outside
+your worlds, so they can never travel inside a backup.
 
 ---
 
-## 🚀 Getting started
+## ⚠️ A note on backups
 
-You need [Node.js](https://nodejs.org). **First time only:**
+Lore Codex now keeps a `.lore` mirror of every world on disk, which makes it far harder to
+lose work than it used to be. But **a mirror is not a backup**, and the distinction matters:
 
-```bash
-npm install      # download dependencies
-```
+- The mirror lives in app data **on this machine**. A dead drive, a lost laptop, or a
+  ransomware hit takes the mirror with the app.
+- The mirror is *currency* — it holds the latest state, not history. If you delete a page
+  and only notice a week later, the mirror agrees the page is gone. Snapshots and dated
+  exit backups are what hold history.
 
-Then **double-click `start-lore-codex.cmd`** to launch — it opens Firefox at
-`http://localhost:5174` and starts the app. Tip: right-click → *Pin to Start* so it
-launches like a regular app.
+So the advice stands, for the reason it always did:
 
-> ⚠️ **Always launch this way.** Your lore is stored in Firefox under the exact address
-> `localhost:5174`. Opening a *different* browser or port shows a *different* (empty)
-> database — your data isn't gone, it's just tied to the original address. The launcher and
-> the pinned port (`vite.config.ts`) guarantee you return to the same place.
+- **Use Export backup regularly** — keep the JSON files somewhere off this machine
+  (a private repo, a synced folder, an external drive).
+- **Back up each world you care about** — every world is a separate database and a
+  separate export.
 
-<details>
-<summary><b>Other commands</b></summary>
+This is also why the backup-overdue banner ignores the mirror entirely. Silencing a
+"back up your world" reminder because a copy exists *on the same disk* would be a lie.
 
-```bash
-npm run dev      # start manually (also port 5174, hot reload)
-npm run build    # type-check + optimized production build → dist/
-npm run preview  # preview the production build (port 5174)
-npm run lint     # ESLint
-npm run test:run # run the test suite once (Vitest)
-```
-
-</details>
+Import is safe by design: it validates the file, shows exactly what you're replacing,
+writes a recovery backup of the current state first, and only then applies the import.
 
 ---
 
@@ -124,13 +149,14 @@ npm run test:run # run the test suite once (Vitest)
 | Area | Built with |
 |---|---|
 | **Framework** | React 19 · TypeScript (strict) · Vite |
-| **Editor** | TipTap |
+| **Desktop shell** | Tauri v2 (WebView2) — dialog, fs, and updater plugins; the Rust side is config-only |
+| **Editor** | Tiptap |
 | **Maps** | Leaflet + leaflet-draw |
-| **Graph** | react-force-graph-2d |
-| **Storage** | Dexie (IndexedDB) |
+| **Graph** | react-force-graph-2d / -3d |
+| **Storage** | Dexie (IndexedDB), mirrored to `.lore` files on disk |
 | **Search** | FlexSearch |
-| **Safety** | DOMPurify (sanitization) · JSZip (HTML export) |
-| **Testing** | Vitest |
+| **Safety** | DOMPurify (sanitization) · JSZip (HTML + EPUB export) |
+| **Testing** | Vitest · happy-dom · fake-indexeddb |
 
 ---
 
@@ -141,102 +167,78 @@ npm run test:run # run the test suite once (Vitest)
 
 ```
 src/
-  db/                    Data layer (single source of truth), behind a barrel index.ts:
-    types.ts             Data-model interfaces
-    schema.ts            Dexie schema, version ladder, db singleton
-    templates.ts         Page types: built-ins, seeding, template CRUD
-    pages.ts             Page CRUD, rename link-rewriting, backlinks
-    maps.ts              Maps / pins / regions CRUD
-    images.ts            Per-page image gallery CRUD
-    graph.ts             Relationship-graph builder
-    calendar.ts          Timeline calendar / event CRUD
-    snapshots.ts         Snapshot CRUD
-    manuscript.ts        Book / chapter / scene / plotline / beat CRUD + word counts
-    worldHealth.ts       Broken links / orphans / stubs analysis
-    backup.ts            Export / import + versioned migrations + sanitization
-  loreId.ts              Active-world id + per-world database naming
-  lores.ts               World registry + create/rename/delete/switch
-  settings.ts            Per-world settings (snapshots, backup window, autolink)
-  calendar.ts            Pure date math (absolute-day axis, eras, formatting)
-  search.ts              FlexSearch full-text index + incremental sync
-  autolink.ts            Title matcher + first-mention planner for the autolinker
-  citations.ts           Reads citation markers from a page body
-  toc.ts                 Heading slug / nesting helpers for the table of contents
-  sectionNodes.ts        Turns a page type's starter sections into editor nodes
-  imageUtils.ts          Client-side image resize / compression
-  htmlExport.ts          HTML static-site export (JSZip)
-  manuscriptExport.ts    Compile a book to EPUB (JSZip) + print-ready HTML
-  manuscriptStructures.ts Built-in story structures (Save the Cat, etc.)
-  sanitize.ts            DOMPurify whitelist for imported / raw-rendered HTML
-  html.ts                Shared HTML parsing helpers
-  backup.ts              Download/import helpers + backup-overdue tracking
-  snapshots.ts           Auto-snapshot trigger logic
-  storageError.ts        IndexedDB quota detection + notice bus
-  wikiLinkHover.ts       Event bus for wiki link hover state
-  main.tsx               App entry + ErrorBoundary
-  App.tsx                Hash routing, layout shell, global overlays + wiring
-  routes/
-    LoreSelectorRoute.tsx  World picker (no shell)
-    HomeRoute.tsx          Dashboard: hero, stats, recently edited
-    PageRoute.tsx          View / edit a lore page
-    CategoryRoute.tsx      Page-card grid for a category
-    TagRoute.tsx           Page-card grid for a tag
-    MapRoute.tsx           Maps, pins, regions
-    GraphRoute.tsx         Relationship graph
-    TimelineRoute.tsx      Timeline (list / axis)
-    ManuscriptRoute.tsx    Book library (grid of books + word-count stats)
-    BookRoute.tsx          Book workspace: Write / Grid views + EPUB / PDF compile
-    TemplatesRoute.tsx     Manage page-type templates
-    SettingsRoute.tsx      Settings, backup / import, HTML export, snapshots
-    HealthRoute.tsx         World health: broken links, orphans, stubs
-  components/
-    manuscript/            Binder tree, scene editor + meta, grid, structure controls
-    Sidebar.tsx            Navigation, page list, search trigger
-    LoreEditor.tsx         Rich-text editor (TipTap) with toolbar
-    Infobox.tsx            Page sidebar card with typed fields
-    Backlinks.tsx          "What links here" panel
-    References.tsx         Numbered citation list for a page
-    TableOfContents.tsx    Auto TOC from page headings
-    BrowseCard.tsx         Page card used by the category / tag grids
-    EmptyState.tsx         Reusable empty-state placeholder
-    Breadcrumb.tsx         Nested-map / page breadcrumb trail
-    ConfirmDialog.tsx      Reusable confirm modal
-    ImageGallery.tsx       Per-page image grid
-    Lightbox.tsx           Fullscreen image viewer
-    MapView.tsx            Leaflet map rendering + pins + regions
-    MapPreviewCard.tsx     Click-to-preview card before editing a pin / region
-    GraphView.tsx          Force-directed graph rendering
-    HubsOrphansPanel.tsx   Most-linked / isolated pages beside the graph
-    TimelineVertical.tsx   Timeline list view
-    TimelineHorizontal.tsx Timeline zoomable axis
-    CalendarEditor.tsx     Calendar definition modal
-    EventEditor.tsx        Timeline event modal
-    SearchModal.tsx        Full-text search overlay with keyboard navigation
-    WikiLinkPopover.tsx    Hover preview card for wiki links
-    StorageErrorBanner.tsx IndexedDB quota / write-failure notice
-    ErrorBoundary.tsx      Top-level crash recovery screen
-  extensions/
-    WikiLink.ts            The [[wiki link]] editor feature
-    Autolink.ts            Decorates first mentions of page titles as links
-    Citation.ts            The citation marker editor feature
-  index.css                The full theme (colors are CSS variables at the top)
+  db/                  The data layer and single source of truth, reached only
+                       through its barrel index.ts — schema and version ladder,
+                       CRUD per domain (pages, maps, calendar, manuscript,
+                       images, snapshots), graph building, world-health
+                       analysis, and versioned backup export/import.
+                       repositories.ts is the seam the UI reads through; no
+                       component touches the database directly.
+  routes/              One component per hash route — the world picker, home,
+                       page view/edit, category and tag grids, map, graph,
+                       timeline, manuscript library, book workspace, page
+                       types, settings, world health.
+  components/          Shared UI, plus a manuscript/ subtree for the binder,
+                       scene editor, and plotline grid.
+  extensions/          Tiptap editor features: [[wiki links]], the autolinker's
+                       decorations, citations, body images.
+  platform.ts          The ONLY file allowed to touch Tauri APIs or trigger a
+                       download — save/open dialogs, app-data writes, printing,
+                       the updater handle, and the window-close hook. Every
+                       function has a browser fallback, so the web build works.
+  worldMirror*.ts      The per-world .lore disk mirror: pure cadence policy,
+  worldIndex.ts        the poll/flush loop, the on-disk world index, and the
+  worldRecovery.ts     restore-on-launch flow.
+  calendar.ts          Pure date math — the shared absolute-day axis that lets
+                       several in-world calendars line up on one timeline.
+  search.ts            FlexSearch index + incremental sync.
+  *.ts                 Small pure modules beside their feature (autolink,
+                       citations, tags, toc, sanitize, storageError, …) and
+                       use*.ts hooks. Pure logic is kept out of components so
+                       it can be unit-tested without a DOM or a database.
+
+src-tauri/             The desktop shell: Tauri config, capability ACL
+                       (deliberately minimal), and config-only Rust.
 ```
+
+For a far more detailed architecture map — including the reasoning behind the
+data layer, the repository seam, and the mirror — see [`CLAUDE.md`](CLAUDE.md).
 
 </details>
 
 ---
 
-## ⚠️ A note on backups
+## 🛠️ Developing
 
-Because your lore lives in this browser under `localhost:5174`, clearing site data,
-switching browsers, or opening a different address shows an empty database. So:
+<details>
+<summary><b>Running from source</b></summary>
 
-- **Always launch with `start-lore-codex.cmd`.**
-- **Use Export backup regularly** — keep the JSON files somewhere safe (or in a private repo).
-- **Back up each world you care about** — every world is a separate database.
+You need [Node.js](https://nodejs.org), plus a [Rust toolchain](https://rustup.rs) for the
+desktop shell.
 
-Import is safe by design: it validates the file, shows exactly what you're replacing,
-downloads a recovery backup of the current state first, and only then applies the import.
+```bash
+npm install          # first time only
+
+npm run dev          # web app w/ hot reload → http://localhost:5174
+npm run tauri dev    # desktop shell w/ hot reload
+
+npm run build        # type-check + production build → dist/
+npm run lint         # ESLint
+npm run test:run     # run the test suite once (Vitest)
+npm run tauri build  # desktop installer → src-tauri/target/release/bundle/
+```
+
+> **The port is pinned to 5174 on purpose.** Browser storage is keyed to the exact
+> address, so a drifting port shows an empty database that looks exactly like lost data.
+> It's set in `vite.config.ts`, `start-lore-codex.cmd`, and `src-tauri/tauri.conf.json` —
+> change it in all three or none.
+
+The web build is how the app is developed, and it keeps working: every native capability
+sits behind `platform.ts` with a browser fallback. But the desktop build is the one that
+gets you the disk mirror, real file dialogs, and updates — it's how the app is meant to
+be run.
+
+</details>
 
 ---
 
