@@ -85,15 +85,26 @@ export async function getRelationsFor(pageId: string): Promise<PageRelation[]> {
   ])
   const typeById = new Map(types.map((t) => [t.id, t]))
 
-  const out: PageRelation[] = []
-  for (const row of [...outgoing, ...incoming]) {
+  // Resolve every row first, then fetch the far pages in ONE bulkGet. A hub
+  // character carries many relations across kin/faction/org, so a per-row
+  // db.pages.get() would be that many sequential round-trips on every page load.
+  const resolved = [...outgoing, ...incoming].flatMap((row) => {
     const type = typeById.get(row.typeId)
-    if (!type) continue
-    const resolved = resolveRelation(row, type, pageId)
-    if (!resolved) continue
-    const other = await db.pages.get(resolved.otherId)
-    if (other) out.push({ ...resolved, other })
-  }
+    if (!type) return []
+    const r = resolveRelation(row, type, pageId)
+    return r ? [r] : []
+  })
+
+  const otherIds = [...new Set(resolved.map((r) => r.otherId))]
+  const pages = await db.pages.bulkGet(otherIds)
+  const pageById = new Map(
+    pages.flatMap((p) => (p ? [[p.id, p] as const] : [])),
+  )
+
+  const out: PageRelation[] = resolved.flatMap((r) => {
+    const other = pageById.get(r.otherId)
+    return other ? [{ ...r, other }] : []
+  })
 
   out.sort(
     (a, b) =>

@@ -74,6 +74,32 @@ describe('getRelationsFor', () => {
     expect(rows.map((r) => r.other.title)).toEqual(['Arthur', 'Igraine'])
   })
 
+  // The sort's first tier (type.order) is exercised above; on its own that test
+  // stays green with the title tiebreak deleted. This case pins the second tier
+  // alone: every row shares one type, so ordering can come from nothing else.
+  //
+  // The row ids are explicit, and deliberately ordered so that pre-sort
+  // retrieval order is the REVERSE of the expected one. addRelationship mints
+  // a uuid, and Dexie returns index matches in primary-key order — so with
+  // random ids this assertion would pass ~1 run in 6 with a broken comparator.
+  // Seeding the rows directly is what makes the mutation deterministic.
+  //
+  // Lowercase 'bors' also pins the case-folding: a raw localeCompare without
+  // toLowerCase() sorts it after both capitalised titles.
+  it('breaks ties on the other page title, case-insensitively', async () => {
+    await db.pages.bulkAdd([
+      page('cador', 'Cador'), page('bors', 'bors'), page('agravain', 'Agravain'),
+    ])
+    await db.relationships.bulkAdd([
+      { id: 'r1', fromId: 'uther', toId: 'cador', typeId: 'ally-of', note: '', createdAt: 1 },
+      { id: 'r2', fromId: 'uther', toId: 'bors', typeId: 'ally-of', note: '', createdAt: 2 },
+      { id: 'r3', fromId: 'uther', toId: 'agravain', typeId: 'ally-of', note: '', createdAt: 3 },
+    ])
+
+    const rows = await getRelationsFor('uther')
+    expect(rows.map((r) => r.other.title)).toEqual(['Agravain', 'bors', 'Cador'])
+  })
+
   it('skips rows whose other page no longer exists', async () => {
     await addRelationship('uther', 'arthur', 'parent-of')
     await db.pages.delete('arthur')
