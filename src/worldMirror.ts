@@ -11,6 +11,17 @@ export const MIRROR_QUIET_MS = 30_000
  *  long session must not rewrite it every quiet window. */
 export const MIRROR_FLOOR_MS = 5 * 60_000
 
+/** Staleness ceiling: how long changes may go unmirrored before a write is
+ *  forced through the quiet window. Without it the quiet window is
+ *  unreachable for a steady typist — `PageRoute` commits content after 500ms,
+ *  so `lastChangeAt` slides forward faster than `MIRROR_QUIET_MS` elapses and
+ *  no mirror write fires for the whole session, making an unclean loss cost the
+ *  entire editing burst (#233). Bounds that loss at this value plus one poll.
+ *  Ten minutes rather than fifteen because `MIRROR_FLOOR_MS` already permits a
+ *  write every five during bursty editing, so a forced write every ten asks
+ *  nothing of the system it doesn't already do on a normal day. */
+export const MIRROR_MAX_STALE_MS = 10 * 60_000
+
 /** How often the shell re-evaluates the policy. Each evaluation costs six
  *  indexed boundary reads plus nine row counts (worldMirrorSync's
  *  mirrorChangeTime), not a table scan. */
@@ -36,30 +47,62 @@ export function isValidLoreId(id: string): boolean {
  *  dirty. Non-finite and future timestamps count as due — the same guard
  *  `updater.ts`'s `shouldCheck` carries, and for the same reason: a corrupted
  *  or rolled-back clock must never disable durability silently and
- *  indefinitely. */
+ *  indefinitely.
+ *
+ *  Three windows, in order of precedence. The **quiet window** holds a write
+ *  back while editing is in flight; the **staleness ceiling** overrides it
+ *  once changes have been pending for `maxStaleMs`, because otherwise a
+ *  steady typist never reaches a quiet moment at all (#233); the **interval
+ *  floor** is evaluated on every path, ceiling included, so it always holds.
+ *  That last point is deliberate: it keeps `maxStaleMs >= floorMs` a tuning
+ *  choice rather than a correctness dependency.
+ *
+ *  `sessionStartAt` is what the ceiling measures from until the first write of
+ *  the page-life lands. `lastMirrorAt` is module state in `worldMirrorSync.ts`
+ *  that starts at 0 every page-life, so a ceiling measured from it alone would
+ *  be true on the first poll of every launch — forcing a multi-megabyte export
+ *  30 seconds into a session, mid-burst, which is precisely what the quiet
+ *  window exists to prevent. It defaults to `now`, which makes the ceiling
+ *  inert: a caller that omits it degrades to the pre-#233 behaviour and can
+ *  never trigger a spurious write. */
 export function shouldMirror(args: {
   lastChangeAt: number
   lastMirrorAt: number
   now: number
+  sessionStartAt?: number
   quietMs?: number
   floorMs?: number
+  maxStaleMs?: number
 }): boolean {
   const {
     lastChangeAt,
     lastMirrorAt,
     now,
+    sessionStartAt = now,
     quietMs = MIRROR_QUIET_MS,
     floorMs = MIRROR_FLOOR_MS,
+    maxStaleMs = MIRROR_MAX_STALE_MS,
   } = args
 
   // A world with no recorded change at all has nothing to mirror. Checked
-  // before the finite guards so an untouched world stays silent.
+  // before the finite guards so an untouched world stays silent — and before
+  // the ceiling, so an old session can't force a write of an empty world.
   if (lastChangeAt === 0) return false
 
-  if (!Number.isFinite(lastChangeAt) || !Number.isFinite(lastMirrorAt)) return true
-  if (lastChangeAt > now || lastMirrorAt > now) return true
+  if (
+    !Number.isFinite(lastChangeAt) ||
+    !Number.isFinite(lastMirrorAt) ||
+    !Number.isFinite(sessionStartAt)
+  ) return true
+  if (lastChangeAt > now || lastMirrorAt > now || sessionStartAt > now) return true
 
+  // Checked before the ceiling: the disk copy is already current, so however
+  // stale the clock says it is, there is nothing new to write.
   if (lastChangeAt <= lastMirrorAt) return false // already mirrored
-  if (now - lastChangeAt < quietMs) return false // still editing
+
+  const staleSince = lastMirrorAt > 0 ? lastMirrorAt : sessionStartAt
+  const stale = now - staleSince >= maxStaleMs
+
+  if (!stale && now - lastChangeAt < quietMs) return false // still editing
   return now - lastMirrorAt >= floorMs
 }
