@@ -62,9 +62,13 @@ export function isValidLoreId(id: string): boolean {
  *  that starts at 0 every page-life, so a ceiling measured from it alone would
  *  be true on the first poll of every launch — forcing a multi-megabyte export
  *  30 seconds into a session, mid-burst, which is precisely what the quiet
- *  window exists to prevent. It defaults to `now`, which makes the ceiling
- *  inert: a caller that omits it degrades to the pre-#233 behaviour and can
- *  never trigger a spurious write. */
+ *  window exists to prevent. It defaults to `now`, which makes the *anchor
+ *  path* inert: before the first write of a page-life (`lastMirrorAt === 0`,
+ *  so `staleSince` falls back to `sessionStartAt`), a caller that omits it
+ *  degrades to the pre-#233 behaviour and can never trigger a spurious write.
+ *  That guarantee does not extend past the first write — once `lastMirrorAt`
+ *  is non-zero, `staleSince` reads it directly and the ceiling engages
+ *  regardless of whether `sessionStartAt` was supplied. */
 export function shouldMirror(args: {
   lastChangeAt: number
   lastMirrorAt: number

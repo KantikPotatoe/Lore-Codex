@@ -54,11 +54,25 @@ describe('shouldMirror', () => {
     // this would return false — the assertion can only pass because of it.
     expect(shouldMirror({ ...base, lastChangeAt: NaN, lastMirrorAt: NOW - 1000 })).toBe(true)
     expect(shouldMirror({ ...base, lastMirrorAt: NaN })).toBe(true)
+    // lastMirrorAt: 0 (first poll of the session) makes staleSince fall back to
+    // sessionStartAt, and lastChangeAt is inside the quiet window, so without
+    // the sessionStartAt finite guard this would fall through to "still
+    // editing" and return false.
+    expect(shouldMirror({
+      now: NOW, lastChangeAt: NOW - 500, lastMirrorAt: 0, sessionStartAt: NaN,
+    })).toBe(true)
   })
 
   it('treats future timestamps as due', () => {
     expect(shouldMirror({ ...base, lastChangeAt: NOW + 5000 })).toBe(true)
     expect(shouldMirror({ ...base, lastMirrorAt: NOW + 5000 })).toBe(true)
+    // Same shape as above: lastMirrorAt: 0 hands the ceiling to sessionStartAt,
+    // and lastChangeAt is inside the quiet window, so without the
+    // sessionStartAt future guard this would fall through to "still editing"
+    // and return false.
+    expect(shouldMirror({
+      now: NOW, lastChangeAt: NOW - 500, lastMirrorAt: 0, sessionStartAt: NOW + 5000,
+    })).toBe(true)
   })
 
   it('honours caller-supplied windows', () => {
@@ -132,6 +146,12 @@ describe('shouldMirror staleness ceiling', () => {
   })
 
   it('honours a caller-supplied ceiling', () => {
+    // Load-bearing beyond its own name: per review, this is the only
+    // assertion on the branch that catches `staleSince` always equalling
+    // `sessionStartAt` (i.e. never handing over to `lastMirrorAt` after the
+    // first write) — the real-DB regression test and four of the other new
+    // unit cases here still pass under that mutation. Do not delete this as
+    // redundant with the other ceiling cases.
     expect(shouldMirror({
       ...typing, lastMirrorAt: NOW - 2000, maxStaleMs: 1000, floorMs: 10,
     })).toBe(true)

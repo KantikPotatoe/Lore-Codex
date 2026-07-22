@@ -93,10 +93,15 @@ export const MIRROR_MAX_STALE_MS = 10 * 60_000
 ```
 
 `shouldMirror` gains two optional args, `sessionStartAt` and `maxStaleMs`.
-`sessionStartAt` defaults to `now`, which makes the ceiling **inert** when a
-caller omits it: `now - now = 0`, never `>= maxStaleMs`. Omitting the anchor
-can therefore only degrade to today's behaviour, never cause a spurious
-mid-burst write. Given this module's history, the safe direction is the default.
+`sessionStartAt` defaults to `now`, which makes the **anchor path** inert when a
+caller omits it: `now - now = 0`, never `>= maxStaleMs`. That inertness holds
+only before the first write of a page-life — `staleSince` falls back to
+`sessionStartAt` solely while `lastMirrorAt === 0`; once a write has landed
+this session, `staleSince` reads `lastMirrorAt` directly and the ceiling
+engages whether or not `sessionStartAt` was supplied. So omitting the anchor
+can only degrade to today's behaviour *before that first write*, never cause a
+spurious mid-burst write in that window. Given this module's history, the safe
+direction is the default.
 
 Guard order, and why each position is load-bearing:
 
