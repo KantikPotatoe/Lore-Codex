@@ -284,3 +284,41 @@ export interface Beat {
   createdAt: number
   updatedAt: number
 }
+
+// ---------------------------------------------------------------------------
+// Typed relationships (#175)
+// ---------------------------------------------------------------------------
+// Untyped [[wiki links]] can say Arthur references Uther but not that Uther is
+// his *father*. A Relationship is one directed fact; the RelationshipType it
+// points at says how that fact reads from each end.
+
+/** Which view a relationship type feeds. #136 filters to 'kin', #137 to
+ *  'faction'/'org'. Stored on the type so a user-invented "Half-sibling of"
+ *  tagged 'kin' appears in the family tree without hardcoding its id. */
+export type RelationshipGroup = 'kin' | 'faction' | 'org' | 'social' | 'other'
+
+/** A user-definable kind of relationship, with how it reads from each end.
+ *  A type is *symmetric* when `label` and `inverse` are the same text — see
+ *  isSymmetric() in src/relations.ts. That is the definition, not a shortcut:
+ *  there is deliberately no stored flag that could contradict the labels. */
+export interface RelationshipType {
+  id: string
+  label: string // reads from the `from` page: "Parent of"
+  inverse: string // reads from the `to` page: "Child of"
+  color: string
+  group: RelationshipGroup
+  order: number // display order in pickers and the page aside
+  builtin: boolean // true for the shipped starter vocabulary
+}
+
+/** One directed fact: `fromId` is `type.label` of `toId`.
+ *  Stored ONCE and rendered from both ends via the type's inverse — two
+ *  mirrored rows could desync, and one row cannot disagree with itself. */
+export interface Relationship {
+  id: string
+  fromId: string
+  toId: string
+  typeId: string
+  note: string // free text, '' when none — covers "m. 1042–1067"
+  createdAt: number
+}
