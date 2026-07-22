@@ -15,6 +15,7 @@ import PageHistory from '../components/PageHistory'
 import ImageGallery from '../components/ImageGallery'
 import TableOfContents from '../components/TableOfContents'
 import DocumentLinks from '../components/DocumentLinks'
+import Relations from '../components/Relations'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { maybeTakeSnapshot } from '../snapshots'
 import Breadcrumb from '../components/Breadcrumb'
@@ -321,6 +322,8 @@ export default function PageRoute() {
               </button>
             )
           )}
+
+          <Relations page={page} editable={editing} />
 
           {!editing && pinLocations.length > 0 && (
             <div className="page-locations">

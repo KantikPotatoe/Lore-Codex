@@ -25,7 +25,7 @@ const MapRoute = lazy(() => import('./routes/MapRoute'))
 const GraphRoute = lazy(() => import('./routes/GraphRoute'))
 const BookRoute = lazy(() => import('./routes/BookRoute'))
 import { requestPersistentStorage, latestChangeTime, shouldBackupOnExit, backupOnExit, LAST_BACKUP_KEY } from './backup'
-import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, activeLoreId, getMeta } from './db'
+import { seedTemplates, seedDefaultCalendar, seedRelationshipTypes, migrateInlineBodyImages, activeLoreId, getMeta } from './db'
 import { maybeTakeSnapshot } from './snapshots'
 import { installSearchIndex } from './searchSync'
 import { bootstrapDefaultLore, syncRegistryMirror } from './lores'
@@ -104,6 +104,7 @@ export default function App() {
     requestPersistentStorage()
     seedTemplates()
     seedDefaultCalendar()
+    seedRelationshipTypes()
     // Convert any legacy inline body images to the by-ref model (#182 phase 2),
     // then snapshot — runs once per world (guarded by a meta flag), idempotent.
     migrateInlineBodyImages().finally(() => maybeTakeSnapshot())
