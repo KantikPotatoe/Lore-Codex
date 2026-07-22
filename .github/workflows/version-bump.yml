@@ -26,11 +26,13 @@ jobs:
           # Full history so the tag lands on a real commit, not a shallow stub.
           fetch-depth: 0
           # An admin PAT (not the default GITHUB_TOKEN) is required to push to
-          # main: branch protection requires a PR + the "verify" check, which the
-          # default token cannot satisfy or bypass. As an admin (enforce_admins
-          # is off and the admin role is an "always" bypass on the ruleset), this
-          # token bypasses both. This workflow only triggers on PR close, so the
-          # push it makes below cannot re-trigger it: there is no bump-on-bump loop.
+          # main: the "main protection" ruleset requires a PR + the "verify"
+          # check, which the default token can neither satisfy nor bypass. The
+          # Admin role is an "always" bypass on that ruleset, so this token
+          # clears both. That bypass is load-bearing — narrowing it to
+          # "pull_request" mode breaks this push and therefore the release tag.
+          # This workflow only triggers on PR close, so the push it makes below
+          # cannot re-trigger it: there is no bump-on-bump loop.
           token: ${{ secrets.BUMP_PAT }}
 
       - name: Set up Node
