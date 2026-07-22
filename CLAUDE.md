@@ -24,6 +24,21 @@ npm run tauri build  # desktop NSIS installer → src-tauri/target/release/bundl
 - Tests: Vitest + happy-dom + fake-indexeddb (`*.test.{ts,tsx}`). **DOMPurify tests need jsdom** — add `// @vitest-environment jsdom` (happy-dom's parser lets `<script>` survive).
 - **Version labels on every PR.** `.github/workflows/version-bump.yml` bumps `package.json` + tags `vX.Y.Z` on merge to `main`, driven by the PR's label. **Always add one** when opening a PR: `version:minor` for a new feature, `version:patch` for a bug fix or chore, `version:major` for a breaking change. No label ⇒ patch. (If PR checks ever fail to start, suspect a transient GitHub event-delivery incident — check githubstatus.com — not the config; an empty-commit push re-triggers once it recovers.)
 
+## Git workflow
+
+Trunk-based: short-lived branches off `main`, one PR each, **squash-merge**, label drives the version bump, the tag triggers the release. No `develop`, no `release/*` — the repo ships continuously from `main`.
+
+- **Branch from `origin/main`, never local `main`** — `git switch -c type/123-slug origin/main`. Local `main` silently falls behind, because every merge is followed by a bot commit (the version bump) that you didn't pull.
+- **Naming: `type/<issue>-<slug>`**, type ∈ `feat` `fix` `chore` `ci` `perf` `docs` `polish`. (History predates this and drifted — `feature/`, bare `graph-*`. Don't imitate those.)
+- **Delete at merge time**, not in a later sweep: `gh pr merge --squash --delete-branch`. The repo also has `deleteBranchOnMerge`, and `fetch.prune` should be on locally.
+- **Squash-merge breaks `git branch --merged`.** It reports squashed branches as unmerged, so *never* trust it to decide what's safe to delete — check the PR state (`gh pr list --head <branch> --state all`). A July 2026 cleanup found 28 false "unmerged" branches this way, plus one branch that had genuinely never had a PR.
+- **Don't use `git stash`.** Two stashes rotted for months holding the only copy of two shipped docs' provenance (`docs/archive/`). GitHub Desktop auto-stashes on branch switch — that's where they came from. Use a WIP commit on a branch: visible, pushable, survives.
+
+**Protection on `main`** (ruleset "main protection"): `deletion`, `non_fast_forward`, `pull_request` (0 approvals — solo repo), and `required_status_checks` on **`verify` only**. Two things to know before touching it:
+
+- **Only require `verify`.** It's the one job that runs on every PR. `desktop.yml`'s `cargo-check` is path-scoped to `src-tauri/**` + `package.json`, so requiring it would permanently block every pure-web PR on a check that never starts.
+- **The Admin role is an `always` bypass, and that is load-bearing** — `version-bump.yml` pushes the bump commit and tag straight to `main` with an admin PAT. Narrowing that bypass to `pull_request` mode breaks the release pipeline. The practical consequence: these rules are a guardrail that turns a mistake into a deliberate override, not a wall against the repo owner.
+
 ## Architecture
 
 **Lore Codex** — a local-first, in-browser worldbuilding wiki. All data lives in IndexedDB via Dexie; nothing leaves the machine. Reactive reads use `useLiveQuery` (dexie-react-hooks) throughout.
