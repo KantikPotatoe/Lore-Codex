@@ -190,6 +190,59 @@ now" button in Settings still reaches it when the user clicks it. That
 distinction is what keeps the local-first claim honest: nothing outbound
 happens unasked.
 
+### World mirror — `src/worldMirror.ts` + `worldMirrorSync.ts` + `worldRecovery.ts`
+
+Desktop only. Each world auto-mirrors to `<app-data>/worlds/<loreId>.lore` —
+the `exportAll()` JSON **verbatim**, so `parseBackup`'s validation and
+`MIGRATIONS` ladder restore it and no second format needs versioning. Written
+**temp-then-rename** (`fs:allow-rename`), so a crash or the close-handler
+timeout can never leave a truncated file where a good mirror was.
+
+`worldMirror.ts` is pure (`shouldMirror`: a quiet window so writes fall between
+editing bursts, an interval floor so a long session doesn't rewrite tens of MB
+every 30s, and the non-finite/future-timestamp guards `shouldCheck` carries).
+**There is no dirty flag** — `worldMirrorSync.ts` polls `latestChangeTime()`
+(six indexed boundary reads), which sees every table, so map-only and
+manuscript-only sessions are covered and no future edit path can forget to opt
+in. `lastMirrorAt` is module state, not persisted: a launch mirrors once if
+anything changed since the file was written. The poll loop (`startMirrorLoop`,
+wired in `App.tsx`) is **gated on `isTauri()`**, not left to the seam's
+browser no-op: a mirror attempt calls `exportAll()` *before* reaching the seam,
+and the browser no-op never advances `lastMirrorAt` — so an ungated loop would
+re-serialize the whole database, images included, every 30s for the life of a
+browser session and throw the result away.
+
+Mirroring is **suspended across both `importAll()` and `restoreSnapshot()`**
+(`withMirroringSuspended`, wired in `SettingsRoute`): both are `clear()` +
+`bulkAdd` over the active DB — `restoreSnapshot` clears ten tables, the same
+hazard shape as `importAll` — and a write landing mid-call would rename a
+half-empty export over a good mirror. Attempts are dropped, not queued — a
+deferred write would fire against the state it was meant to avoid. The
+selector's wizard needs no guard: `importLoreFromBackup` targets a different
+world's DB.
+
+`registry.json` lists the worlds so recovery reads **one known path instead of
+enumerating a directory** — that's what keeps `fs:allow-read-dir` ungranted.
+It's kept current two ways, and both are load-bearing: `lores.ts`'s world CRUD
+(`registerLore`/`renameLore`/`setLoreBanner`/`deleteLore`) calls
+`syncRegistryMirror()` after every mutation, and `App.tsx` also calls it once
+on every launch (gated on `isTauri()` like the poll loop). The startup call
+isn't redundant with the per-CRUD ones: `bootstrapDefaultLore()` returns early
+once the `lore-bootstrapped` flag is set, which it already is for every
+existing install, so without the startup reconciliation a single-world user
+who never renamed anything would have a faithfully mirrored `.lore` file and
+no index entry naming it — recovery would find nothing. On a launch where the
+registry DB is missing worlds the index names, `LoreSelectorRoute` offers to
+restore them (`plannedRecovery`, pure); nothing is written without a click.
+Deleting a world moves its `.lore` to `worlds/trash/` and re-indexes, so a
+deliberate deletion is never resurrected.
+
+**`BackupBanner` and `backupOnExit` both stay.** The mirror lives in `$APPDATA`
+— it has not left the machine, so it must not stamp `LAST_BACKUP_KEY` or
+silence the backup reminder, the same reasoning already written into
+`backupOnExit`. The weekday-rotating exit backup is a week of *history*; the
+mirror is *currency*. Different failures, not redundant.
+
 ### Other
 
 - **Auto-snapshots (`src/snapshots.ts`):** `maybeTakeSnapshot()` snapshots when ≥50 records changed or ≥24h passed with ≥1 change; keeps 10 most recent. Called on start + after each edit session.
