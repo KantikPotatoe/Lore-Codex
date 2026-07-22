@@ -31,6 +31,8 @@ vi.mock('./db', () => ({
     plotlines: { count: vi.fn(async () => 0) },
     beats: { count: vi.fn(async () => 0) },
     meta: { count: vi.fn(async () => 0) },
+    relationshipTypes: { count: vi.fn(async () => 0) },
+    relationships: { count: vi.fn(async () => 0) },
   },
 }))
 vi.mock('./backup', () => ({ latestChangeTime: vi.fn(async () => 0) }))

@@ -116,32 +116,36 @@ export function mirrorFilePath(loreId: string = activeLoreId): string {
 // reads an indexed updatedAt/createdAt boundary on 6 of the 15 tables
 // exportAll() writes (pages, maps, events, calendars, images, scenes; see
 // schema.ts). BackupBanner and backupOnExit depend on exactly that shape, so
-// it is deliberately left alone here. The other 9 tables — pins, regions,
-// templates, docLinks, books, chapters, plotlines, beats, meta — carry no
-// timestamp field at all, so a pin-only, plotline-only or settings-only
-// session left latestChangeTime() flat: no poll write, no close flush.
+// it is deliberately left alone here. The other 11 tables — pins, regions,
+// templates, docLinks, books, chapters, plotlines, beats, meta,
+// relationshipTypes, relationships — carry no timestamp field at all, so a
+// pin-only, plotline-only, settings-only or relationship-only session left
+// latestChangeTime() flat: no poll write, no close flush.
 
-/** The 9 tables exportAll() writes that have no updatedAt/createdAt index to
+/** The 11 tables exportAll() writes that have no updatedAt/createdAt index to
  *  read (see schema.ts). Tracked by row COUNT instead: an add or a delete
  *  changes the count even with nothing to timestamp. */
 const COUNTED_TABLES = [
   'pins', 'regions', 'templates', 'docLinks',
   'books', 'chapters', 'plotlines', 'beats', 'meta',
+  'relationshipTypes', 'relationships',
 ] as const
 type CountedTable = (typeof COUNTED_TABLES)[number]
 
 async function countedTableCounts(): Promise<Record<CountedTable, number>> {
-  const [pins, regions, templates, docLinks, books, chapters, plotlines, beats, meta] =
+  const [pins, regions, templates, docLinks, books, chapters, plotlines, beats, meta,
+    relationshipTypes, relationships] =
     await Promise.all([
       db.pins.count(), db.regions.count(), db.templates.count(), db.docLinks.count(),
       db.books.count(), db.chapters.count(), db.plotlines.count(), db.beats.count(),
-      db.meta.count(),
+      db.meta.count(), db.relationshipTypes.count(), db.relationships.count(),
     ])
-  return { pins, regions, templates, docLinks, books, chapters, plotlines, beats, meta }
+  return { pins, regions, templates, docLinks, books, chapters, plotlines, beats, meta,
+    relationshipTypes, relationships }
 }
 
 // The counts as of the last time they were read, so the next read can tell
-// whether any of the 9 counted tables gained or lost a row. `null` until the
+// whether any of the 11 counted tables gained or lost a row. `null` until the
 // first read this page-life (see the "first observation" guard below).
 let lastKnownCounts: Record<CountedTable, number> | null = null
 
@@ -154,7 +158,7 @@ let countedChangeAt = 0
 /**
  * Mirror-specific change signal, wider than latestChangeTime(). Combines the
  * same 6 indexed timestamp reads latestChangeTime() does with a `count()` on
- * each of the 9 tables it cannot see, so an add or a delete on any of those
+ * each of the 11 tables it cannot see, so an add or a delete on any of those
  * tables registers even though there is no timestamp to read.
  *
  * A counted table's diff is detected by comparing this poll's counts against
@@ -377,7 +381,7 @@ async function stampRegistryMirrored(id: string, at: number): Promise<void> {
  * Polling rather than hooking edit sites is deliberate: no future edit path
  * can forget to opt in, because the poll doesn't depend on any of them firing
  * a hook. `mirrorChangeTime()` (above) is what makes that hold in practice —
- * six indexed boundary reads plus nine row counts, cheap enough for a 30s
+ * six indexed boundary reads plus eleven row counts, cheap enough for a 30s
  * cadence — but it is not exhaustive; see its doc for exactly what an
  * in-place edit on an unindexed, uncounted field can still hide from it, and
  * `flushWorldMirror()` for the close-time backstop.
