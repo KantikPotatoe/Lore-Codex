@@ -1,0 +1,33 @@
+# Shapes GitHub's auto-generated release notes (the /releases/generate-notes
+# API, which .github/workflows/release.yml calls after the installer is built).
+#
+# Categories are driven by the `version:*` labels rather than a separate set of
+# `type:*` ones, because CLAUDE.md already requires a version label on every PR
+# — the same label that version-bump.yml reads to decide the tag. That means a
+# PR cannot be correctly labelled for the version bump and still land
+# uncategorised here, and there is no second labelling convention to remember.
+#
+# A PR falls into the FIRST category whose labels it carries, so order matters:
+# `version:major` wins over `version:minor` if both were somehow applied. The
+# catch-all must stay last — it exists for the no-label case (which
+# version-bump.yml treats as a patch) so nothing is silently dropped from the
+# notes.
+changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - wontfix
+  categories:
+    - title: ⚠️ Breaking changes
+      labels:
+        - 'version:major'
+    - title: ✨ Features
+      labels:
+        - 'version:minor'
+    - title: 🐛 Fixes & maintenance
+      labels:
+        - 'version:patch'
+    - title: Other changes
+      labels:
+        - '*'

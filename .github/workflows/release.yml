@@ -50,7 +50,32 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Lore Codex ${{ github.ref_name }}'
+          # Also the fallback body: if the changelog step below fails, the
+          # release still explains itself instead of showing an empty page.
           releaseBody: 'Windows installer for Lore Codex ${{ github.ref_name }}. Unsigned — SmartScreen will ask for "More info → Run anyway" on first launch.'
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+
+      # tauri-action publishes with an explicit body, and an explicit body
+      # suppresses GitHub's own note generation — so the changelog has to be
+      # generated and written back afterwards. `generate-notes` picks the
+      # previous tag itself and groups PRs per .github/release.yml.
+      #
+      # Deliberately NOT continue-on-error: the installer and updater manifest
+      # are already published by this point, so a failure here costs only the
+      # notes (the fallback body above stands), but it must still show red
+      # rather than quietly shipping a release that says nothing about itself.
+      - name: Write the changelog into the release notes
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          notes=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="${GITHUB_REF_NAME}" --jq .body)
+          {
+            printf 'Windows installer for Lore Codex %s. Unsigned — SmartScreen will ask for "More info → Run anyway" on first launch.\n\n' "${GITHUB_REF_NAME}"
+            printf '%s\n' "$notes"
+          } > release-notes.md
+          gh release edit "${GITHUB_REF_NAME}" --notes-file release-notes.md
