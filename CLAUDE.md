@@ -215,23 +215,32 @@ timeout can never leave a truncated file where a good mirror was.
 
 **Cadence.** `worldMirror.ts` is pure (`shouldMirror`: a quiet window so writes
 fall between editing bursts, an interval floor so a long session doesn't
-rewrite tens of MB every 30s, and the non-finite/future-timestamp guards
-`shouldCheck` carries). **There is no dirty flag** — `worldMirrorSync.ts` polls
+rewrite tens of MB every 30s, a **staleness ceiling** that overrides the quiet
+window after 10 min, and the non-finite/future-timestamp guards `shouldCheck`
+carries). The ceiling exists because the quiet window is otherwise unreachable
+for a steady typist — `PageRoute` commits content after 500ms, so
+`lastChangeAt` slides forward faster than 30s can elapse and no write fired for
+the whole session (#233). It measures from a **session-start anchor** until the
+first write of the page-life lands, not from `lastMirrorAt` alone: that starts
+at 0 every page-life, so a ceiling measured from it is true on the *first* poll
+of every launch and would force a multi-MB export mid-burst. The floor is
+evaluated on every path including the stale one, which keeps
+`MIRROR_MAX_STALE_MS >= MIRROR_FLOOR_MS` a tuning choice, not a correctness
+dependency. **There is no dirty flag** — `worldMirrorSync.ts` polls
 a mirror-specific `mirrorChangeTime()`, *not* `latestChangeTime()` (that sees
 only 6 of the 15 tables `exportAll()` writes, and `BackupBanner`/`backupOnExit`
 depend on exactly that shape, so it stays as-is). `mirrorChangeTime()` combines
 those six indexed reads with a `count()` on each of the other nine, so an add
 or delete registers even with no timestamp to read. It is **not** complete: an
 in-place edit to a row on those nine is invisible between polls, and
-`maps`/`calendars` notice an add but not an edit. Worse, the quiet window means
-a steady typist slides `lastChangeAt` forward on every poll and gets **no write
-at all** for the whole session (#233). `flushWorldMirror()` on close is the
-deliberate backstop for all of it — unconditional, writing whenever the world
-has any content. `lastMirrorAt` is module state, not persisted. The poll loop
-(`startMirrorLoop`) is **gated on `isTauri()`**, not left to the seam's browser
-no-op: a mirror attempt calls `exportAll()` *before* reaching the seam, and the
-no-op never advances `lastMirrorAt`, so an ungated loop would re-serialize the
-whole database every 30s for the life of a browser session and discard it.
+`maps`/`calendars` notice an add but not an edit. `flushWorldMirror()` on close
+is the deliberate backstop for all of it — unconditional, writing whenever the
+world has any content. `lastMirrorAt` is module state, not persisted. The poll
+loop (`startMirrorLoop`) is **gated on `isTauri()`**, not left to the seam's
+browser no-op: a mirror attempt calls `exportAll()` *before* reaching the seam,
+and the no-op never advances `lastMirrorAt`, so an ungated loop would
+re-serialize the whole database every 30s for the life of a browser session and
+discard it.
 
 **The load-bearing guard: `write()` refuses when `activeLoreId` has no row in
 the registry DB.** Without it, the recovery launch is a data-loss mechanism —

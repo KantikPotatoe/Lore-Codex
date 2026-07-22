@@ -51,6 +51,7 @@ import { writeWorldMirror } from './platform'
 import { db, activeLoreId, seedTemplates, seedDefaultCalendar, exportAll } from './db'
 import { latestChangeTime } from './backup'
 import { registry } from './registryDb'
+import { MIRROR_MAX_STALE_MS, MIRROR_POLL_MS } from './worldMirror'
 import {
   maybeMirrorWorld,
   flushWorldMirror,
@@ -195,5 +196,92 @@ describe('write() must drop an export that straddled a suspension, even one that
     await flushWorldMirror(Date.now())
     expect(writeWorldMirror).toHaveBeenCalledTimes(1)
     expect(exportAll).toHaveBeenCalledTimes(1)
+  })
+})
+
+// #233. Reproduces the reported bug against real data: an author typing
+// continuously slides the change probe forward past every poll, so the quiet
+// window never elapses and — before the ceiling — nothing was ever mirrored
+// for the whole session. The assertion that matters most is the zero-before:
+// without it this would only prove that writes happen eventually.
+describe('a long unbroken writing session is still mirrored (#233)', () => {
+  const PAGE_ID = 'p-233'
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    resetWorldMirrorStateForTests()
+    vi.mocked(writeWorldMirror).mockResolvedValue(true)
+
+    // write()'s entry guard refuses a world the registry doesn't know, so the
+    // world under test must be registered or nothing would write regardless.
+    await registry.lores.clear()
+    await registry.lores.add({
+      id: activeLoreId, name: 'Aethel', banner: null, createdAt: 1, updatedAt: 1,
+    })
+
+    await Promise.all(db.tables.map((t) => t.clear()))
+  })
+
+  /** One poll tick of a steady typist: PageRoute committed page content 500ms
+   *  ago (CONTENT_WRITE_DELAY_MS), which is what makes the 30s quiet window
+   *  unreachable. Writes a real row so the real latestChangeTime() reads it. */
+  async function typeThenPoll(now: number): Promise<void> {
+    await db.pages.put({
+      id: PAGE_ID,
+      title: 'Aethelred',
+      titleLc: 'aethelred',
+      category: 'Character',
+      content: '<p>drafting</p>',
+      summary: '',
+      tags: [],
+      createdAt: now - 60 * 60_000,
+      updatedAt: now - 500,
+    })
+    await maybeMirrorWorld(now)
+  }
+
+  it('writes nothing until the ceiling, then exactly once, then respects the floor', async () => {
+    const start = Date.now()
+
+    // 18 polls at the real 30s poll cadence (t = 0 ... 510_000), i.e. 8.5
+    // minutes of unbroken typing — one poll short of nine minutes, since the
+    // ceiling tick below lands 90s (three poll intervals) after the last one.
+    for (let t = 0; t < 9 * 60_000; t += MIRROR_POLL_MS) {
+      await typeThenPoll(start + t)
+    }
+    // The pre-#233 behaviour, and the whole bug: the quiet window has not
+    // elapsed once, so nothing has reached disk.
+    expect(writeWorldMirror).not.toHaveBeenCalled()
+
+    // The ceiling elapses. This is the write that #233 says never happens.
+    const ceiling = start + MIRROR_MAX_STALE_MS
+    await typeThenPoll(ceiling)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+
+    // And the floor still applies afterwards. This tick must land on the
+    // floor line specifically, not the quiet-window line above it: a change
+    // written via typeThenPoll is always 500ms old, which never clears the
+    // 30s quiet window, so a naive "poll again soon" tick would return false
+    // there and prove nothing about the floor (mutating floorMs to 0 would
+    // leave it green). Instead write a settled change — 1s after the
+    // ceiling write, so by the time we poll it is 59s old, past MIRROR_QUIET_MS
+    // (30s) — and poll 60s after the ceiling write, i.e. only 60s since
+    // lastMirrorAt, short of MIRROR_FLOOR_MS (5 min). That makes `stale` false
+    // (60s < 10min) and the quiet check pass (59s > 30s), so the floor check
+    // (`now - lastMirrorAt >= floorMs`, 60_000 >= 300_000 — false) is the only
+    // line that can produce this result.
+    await db.pages.put({
+      id: PAGE_ID,
+      title: 'Aethelred',
+      titleLc: 'aethelred',
+      category: 'Character',
+      content: '<p>drafting</p>',
+      summary: '',
+      tags: [],
+      createdAt: ceiling - 60 * 60_000,
+      updatedAt: ceiling + 1_000,
+    })
+    await maybeMirrorWorld(ceiling + 60_000)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(1)
   })
 })
