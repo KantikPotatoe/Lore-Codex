@@ -212,8 +212,11 @@ The route already exists to manage the world's other user-definable vocabulary
 (page types), so this needs no new nav entry and reuses the same seeding and
 reset idiom.
 
-A `＋ New type…` shortcut in the aside's type dropdown lets a type be created
-without leaving the page mid-thought.
+An earlier draft also put a `＋ New type…` shortcut in the aside's type
+dropdown, so a type could be invented without leaving the page. It is cut: a
+type needs a label, an inverse and a group, which is a form rather than a menu
+item, and the six built-ins cover the common cases. Revisit if creating types
+turns out to be frequent enough that the trip to `/templates` grates.
 
 ---
 
