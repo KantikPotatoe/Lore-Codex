@@ -8,6 +8,7 @@ import { UpdateCheckProvider } from '../UpdateCheckContext'
 import { openTextFile } from '../platform'
 import { registry } from '../registryDb'
 import { getAppSettings } from '../appSettings'
+import { withMirroringSuspended } from '../worldMirrorSync'
 
 // The import flow goes through the platform seam (native Open dialog in the
 // shell, transient file input in the browser) — mock the seam, not the DOM.
@@ -19,6 +20,22 @@ vi.mock('../platform', () => ({
   appVersion: vi.fn(async () => null),
   checkForUpdate: vi.fn(async () => null), // reached via useUpdateCheck in the Updates section
   isTauri: () => false, // the suite runs as the browser build
+  // Gated behind isTauri() in SettingsRoute (#174 task r3, item 3) — never
+  // actually called in this browser-mode suite, but the named import must
+  // resolve to something.
+  readRegistryMirror: vi.fn(async () => ({ status: 'absent' })),
+}))
+
+// Both restore branches of confirmImport must run inside the mirror
+// suspension guard (#174) — spy on it (pass-through) rather than mocking it
+// away, so the wrapped call still actually executes against the real db.
+vi.mock('../worldMirrorSync', () => ({
+  withMirroringSuspended: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+  // Desktop-only in the UI (this suite runs isTauri: () => false throughout),
+  // so these are never actually called here — see
+  // SettingsRoute.mirrorHealth.test.tsx for the desktop-mode readout itself.
+  getMirrorHealth: vi.fn(() => ({ lastSuccessAt: null, lastError: null })),
+  mirrorFilePath: vi.fn(() => 'worlds/default.lore'),
 }))
 
 afterEach(() => {
@@ -128,5 +145,35 @@ describe('SettingsRoute app-level options', () => {
     const exit = await screen.findByLabelText(/back up when I close/i)
     expect((exit as HTMLInputElement).disabled).toBe(true)
     expect(screen.getAllByText(/desktop app only/i).length).toBeGreaterThan(0)
+  })
+})
+
+// Both branches of confirmImport clear-and-repopulate the active DB, the
+// hazard withMirroringSuspended exists to guard (#174) — a mirror write
+// landing mid-restore would export a half-empty world and rename it over a
+// good mirror. The two branches must be treated symmetrically.
+describe('SettingsRoute — mirror suspension across a restore (#174)', () => {
+  beforeEach(async () => {
+    await db.meta.clear()
+    await db.snapshots.clear()
+  })
+
+  it('suspends mirroring across a backup import', async () => {
+    vi.mocked(openTextFile).mockResolvedValue({
+      name: 'lore-backup.json',
+      text: JSON.stringify({ pages: [] }),
+    })
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
+    fireEvent.click(await screen.findByText(/Restore from backup/))
+    fireEvent.click(await screen.findByText('Replace everything'))
+    await waitFor(() => expect(withMirroringSuspended).toHaveBeenCalled())
+  })
+
+  it('suspends mirroring across a snapshot restore too', async () => {
+    await db.snapshots.add({ timestamp: Date.now(), editCount: 3, data: JSON.stringify({ pages: [] }) })
+    render(<MemoryRouter><UpdateCheckProvider><SettingsRoute /></UpdateCheckProvider></MemoryRouter>)
+    fireEvent.click(await screen.findByText('Restore'))
+    fireEvent.click(await screen.findByText('Restore text'))
+    await waitFor(() => expect(withMirroringSuspended).toHaveBeenCalled())
   })
 })

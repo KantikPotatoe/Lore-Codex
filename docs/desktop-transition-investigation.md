@@ -1,6 +1,6 @@
 # Lore Codex — Desktop Transition Investigation
 
-**Status:** in execution — pre-work (schema v12 `meta` in backups, #162), **Phase 0** (Tauri v2 shell, `src/platform.ts` save seam, self-hosted fonts, #163) and **Phase 1** (open/import dialogs, migration wizard, `ConfirmDialog` everywhere, iframe print, CSP, `release.yml`) shipped 2026-07-03. Spikes resolved: version sync, WebView2 profile (`%LOCALAPPDATA%\com.lorecodex.app\EBWebView`), CSP boots clean, print via hidden iframe. Next: Phase 2 (per-world `.lore` disk mirror). · **Written:** 2026-07-03
+**Status:** in execution — pre-work (schema v12 `meta` in backups, #162), **Phase 0** (Tauri v2 shell, `src/platform.ts` save seam, self-hosted fonts, #163) and **Phase 1** (open/import dialogs, migration wizard, `ConfirmDialog` everywhere, iframe print, CSP, `release.yml`) shipped 2026-07-03. Spikes resolved: version sync, WebView2 profile (`%LOCALAPPDATA%\com.lorecodex.app\EBWebView`), CSP boots clean, print via hidden iframe. **Phase 2** (per-world `.lore` disk mirror, atomic writes, registry index, restore-on-launch, #174) shipped 2026-07-22 — pending the real-filesystem checks in `docs/world-mirror-manual-verification.md`. Next: Phase 3a (assets to disk) if map resolution demands it. · **Written:** 2026-07-03
 **Scope:** evaluate moving Lore Codex from a localhost-served browser SPA to a Windows desktop app; recommend a shell framework and a data-layer strategy; produce a phased, low-risk migration plan.
 
 ---
@@ -170,9 +170,9 @@ Every escape of data from the app is a **browser download to the Downloads folde
 - "Import backup" → **Open** dialog; the confirm-with-counts flow (`parseBackup` → `downloadPreImportBackup` → `importAll` in `SettingsRoute.tsx:confirmImport`) is unchanged except the pre-import safety copy is written to a fixed `backups/` folder in app-data instead of downloaded.
 - `ErrorBoundary`'s "Download a backup" panic button becomes a real save dialog — strictly better in the moment it matters most.
 
-### 5.3 After Phase 2 (auto-mirror)
+### 5.3 After Phase 2 (auto-mirror) — SHIPPED (#174)
 
-- Each world auto-saves its `exportAll()` JSON to `<app-data>/worlds/<loreId>.lore` — **atomically** (write temp file, rename over), debounced on the exact cadence `maybeTakeSnapshot()` already hooks ("on start + after each edit session", `CLAUDE.md`), plus a flush on window close (Tauri close-requested event). The change-detection queries in `snapshots.ts:takeSnapshot` are reused as the dirty check.
+- Each world auto-saves its `exportAll()` JSON to `<app-data>/worlds/<loreId>.lore` — **atomically** (write temp file, rename over), plus a flush on window close (Tauri close-requested event). The payload is the `exportAll()` JSON **verbatim**, which is the decision the rest of the feature hangs off: `parseBackup`'s validation and `MIGRATIONS` ladder restore it unchanged, `importLoreFromBackup` *is* the recovery path, and no second format needs versioning, sanitizing or migrating. As shipped the cadence is a quiet window plus an interval floor over `latestChangeTime()`, not the `maybeTakeSnapshot` hook this section originally assumed — see §9 Phase 2 for why.
 - The user may point the worlds folder (or a secondary backup target) at a synced directory — turning the current "please manually move downloads into Dropbox" advice (`src/backup.ts` header) into automatic off-device safety.
 - Snapshots can then graduate to `<app-data>/snapshots/<loreId>/<timestamp>.json` files with the same retention policy (`settings.ts:snapshotRetention`) — surviving anything that happens to the webview profile. `BackupBanner`'s nagging logic (`hasUnbackedUpChanges`, `isBackupOverdue`) can be retired or repurposed to watch the mirror's health.
 
@@ -237,8 +237,13 @@ Scaffold `src-tauri/` (config only; `devUrl` → 5174, `beforeBuildCommand` → 
 **Phase 1 — native backups & first-run migration.**
 Open-dialog import path in `SettingsRoute`; pre-import safety copy to an app-data `backups/` folder; migration wizard on the empty-registry first run (§4.5, reusing `parseBackup` counts UI); replace remaining `alert`/`confirm` with `ConfirmDialog`; fix the print path (checklist #3); set the CSP. *Exit criterion:* a Firefox user migrates all worlds via backups with settings + home config intact, and never touches the Downloads folder again. (Size: **M**)
 
-**Phase 2 — the disk becomes durable: per-world auto-mirror.**
-`<app-data>/worlds/<loreId>.lore` written atomically on the `maybeTakeSnapshot` cadence + on close; a "world files" section in Settings (reveal folder, set secondary/synced backup target); snapshots optionally to disk; retire/repurpose `BackupBanner`. Registry metadata mirrored to `registry.json`. *Exit criterion:* deleting the entire WebView2 profile loses at most one debounce-window of edits, recovered by opening the `.lore` file. (Size: **M**)
+**Phase 2 — the disk becomes durable: per-world auto-mirror. — SHIPPED (#174).**
+`<app-data>/worlds/<loreId>.lore` written atomically (temp file, rename over) on a quiet-window + interval-floor cadence and flushed on close; registry mirrored to `registry.json`; deletion moves the `.lore` to `worlds/trash/`; a launch that finds worlds on disk the registry DB doesn't know about offers to restore them. *Exit criterion met in design;* the end-to-end check (delete the WebView2 profile, relaunch, restore) is a real-filesystem test and lives in `docs/world-mirror-manual-verification.md`.
+
+Three things landed differently from this plan, each for a reason worth keeping:
+- **Not the `maybeTakeSnapshot` cadence.** That hook fires only on page saves from `PageRoute`, so map-only, timeline-only and manuscript-only sessions would never have marked the world dirty. The mirror polls `latestChangeTime()` instead — six indexed boundary reads that see every table — so there is no dirty flag and no edit path that can forget to opt in.
+- **`BackupBanner` was NOT retired.** An `$APPDATA` mirror has not left the machine; silencing the "back up your world" reminder because a local copy exists would be a lie. `backupOnExit` stays for the same reason, and the two are complementary: the weekday rotation is a week of *history*, the mirror is *currency*.
+- **Snapshots to disk stayed out of scope**, and the Settings "world files" section (reveal folder, synced target) was deferred — the file layout supports both as later additive steps.
 
 **Phase 3 (optional, pain-driven) — storage evolution behind the seam.**
 - **3a — assets to disk:** map/gallery/infobox/banner images stored as files, records hold references; asset-protocol serving; import/export packs assets (zip-based `.lore` container). Unblocks map resolution. No reactivity changes. (Size: **L**)

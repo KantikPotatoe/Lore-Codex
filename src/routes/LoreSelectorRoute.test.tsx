@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import LoreSelectorRoute from './LoreSelectorRoute'
-import { openTextFile } from '../platform'
+import { openTextFile, readRegistryMirror, readWorldMirror } from '../platform'
 import { importLoreFromBackup, switchLore, listLores, type Lore } from '../lores'
+import { withMirroringSuspended } from '../worldMirrorSync'
 import { CURRENT_LORE_KEY } from '../loreId'
 
 // The wizard is the first-run migration path from the browser version (desktop
@@ -14,6 +15,8 @@ import { CURRENT_LORE_KEY } from '../loreId'
 vi.mock('../platform', () => ({
   openTextFile: vi.fn(),
   isTauri: () => false,
+  readRegistryMirror: vi.fn(async () => ({ status: 'absent' })),
+  readWorldMirror: vi.fn(async () => null),
 }))
 
 vi.mock('../lores', () => ({
@@ -25,6 +28,13 @@ vi.mock('../lores', () => ({
   deleteLore: vi.fn(),
   setLoreBanner: vi.fn(),
   importLoreFromBackup: vi.fn(async () => 'new-world-id'),
+}))
+
+// #174 task 3, I-B: restoreWorld must suspend mirroring for the duration of
+// its import (id reuse means it can target the active db). Calls its `fn`
+// through by default, like every other consumer of this seam mocks it.
+vi.mock('../worldMirrorSync', () => ({
+  withMirroringSuspended: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }))
 
 vi.mock('../appSettings', async (importOriginal) => ({
@@ -47,6 +57,8 @@ afterEach(() => {
   // clearAllMocks() clears calls but NOT implementations, so a mockResolvedValue
   // set by one test would leak into the next. Put the world list back to empty.
   vi.mocked(listLores).mockResolvedValue([])
+  vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'absent' })
+  vi.mocked(readWorldMirror).mockResolvedValue(null)
 })
 
 const backupJson = JSON.stringify({ pages: [{ id: 'p1' }] })
@@ -254,5 +266,175 @@ describe('LoreSelectorRoute — open last world on launch', () => {
     } finally {
       window.location.hash = ''
     }
+  })
+})
+
+describe('LoreSelectorRoute — recovery panel', () => {
+  // #174: worlds mirrored to disk that the registry DB doesn't know about
+  // (the storage-was-wiped case). The panel offers to restore them, but must
+  // never write anything without a click, and must not render at all when
+  // there's nothing to recover — the normal case for every healthy install.
+
+  // `toHaveBeenCalled()` is true the instant the effect fires the read on
+  // mount — synchronously, in the same act() flush as render(). It says
+  // nothing about whether the read has *resolved* or whether React has
+  // applied the setDiskWorlds() update that follows it, so a negative
+  // assertion right after it races a pending state update and passes
+  // vacuously either way. Instead, await the exact promise the effect
+  // itself is chained off of (the mock's own return value for that call),
+  // wrapped in act() so React flushes the resulting render before we go on
+  // to assert its absence.
+  async function settleDiskRead() {
+    await waitFor(() => expect(readRegistryMirror).toHaveBeenCalled())
+    const pending = vi.mocked(readRegistryMirror).mock.results[0]?.value
+    await act(async () => {
+      await pending
+    })
+  }
+
+  it('stays hidden when there is nothing on disk to recover', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'absent' })
+    render(<LoreSelectorRoute />)
+    await settleDiskRead()
+    expect(screen.queryByText(/found on disk/i)).toBeNull()
+  })
+
+  // #174 Defect 1: an unreadable index (not absent) must also stay hidden —
+  // this route never writes, so degrading to "offer nothing" here is safe
+  // (unlike the writers in lores.ts / worldMirrorSync.ts, which must refuse
+  // to write instead).
+  it('stays hidden when the disk index is unreadable', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'error' })
+    render(<LoreSelectorRoute />)
+    await settleDiskRead()
+    expect(screen.queryByText(/found on disk/i)).toBeNull()
+  })
+
+  it('offers worlds present on disk but missing from the registry', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'lost', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' }]),
+    })
+    render(<LoreSelectorRoute />)
+    expect(await screen.findByText(/found on disk/i)).toBeTruthy()
+    expect(screen.getByText('Aethel')).toBeTruthy()
+  })
+
+  it('restores a world through the existing import path', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'lost', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' }]),
+    })
+    vi.mocked(readWorldMirror).mockResolvedValue('{"pages":[]}')
+    render(<LoreSelectorRoute />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /restore/i }))
+
+    // Nothing is written without this click, and the restore reuses the
+    // migration wizard's path rather than a second import implementation.
+    // It must pass the disk entry's own id ('lost') — not omit it — or the
+    // restored world gets a fresh uuid and the original disk entry (still
+    // absent from the registry) keeps satisfying plannedRecovery forever,
+    // offering the same restore again on every launch (#174).
+    await waitFor(() =>
+      expect(importLoreFromBackup).toHaveBeenCalledWith('Aethel', '{"pages":[]}', 'lost'),
+    )
+  })
+
+  // #174 task 3, I-B: id reuse means a restore can target the ACTIVE database
+  // (e.g. restoring 'default' after an eviction that reset currentLoreId()
+  // back to 'default'), and importBackupInto is a clear()-then-bulkAdd
+  // transaction — exactly the mid-import hazard withMirroringSuspended
+  // exists to guard, the same as SettingsRoute's import/restore-snapshot
+  // branches already do.
+  it('suspends mirroring for the duration of the restore', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'lost', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' }]),
+    })
+    vi.mocked(readWorldMirror).mockResolvedValue('{"pages":[]}')
+    render(<LoreSelectorRoute />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /restore/i }))
+
+    await waitFor(() => expect(importLoreFromBackup).toHaveBeenCalled())
+    expect(withMirroringSuspended).toHaveBeenCalled()
+  })
+
+  it('does not offer a world whose registry entry already exists', async () => {
+    // Make the disk entry's id match a world listLores already reports, so
+    // plannedRecovery filters it out and the panel stays hidden.
+    vi.mocked(listLores).mockResolvedValue([world({ id: 'default' })])
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'default', name: 'Aethel' }]),
+    })
+    render(<LoreSelectorRoute />)
+    await settleDiskRead()
+    expect(screen.queryByText(/found on disk/i)).toBeNull()
+  })
+})
+
+// #174 task r3, item 4: a world named in the index with mirroredAt: null and
+// absent from the registry has no .lore file at all — nothing to restore —
+// but silently dropping it from view means the app knows the names of the
+// worlds it just lost and says nothing.
+describe('never-mirrored worlds (#174 task r3, item 4)', () => {
+  async function settleDiskRead() {
+    await waitFor(() => expect(readRegistryMirror).toHaveBeenCalled())
+    const pending = vi.mocked(readRegistryMirror).mock.results[0]?.value
+    await act(async () => {
+      await pending
+    })
+  }
+
+  it('lists a never-mirrored world separately, with no Restore button', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'ghost', name: 'Unmirrored World', mirroredAt: null, appVersion: null }]),
+    })
+    render(<LoreSelectorRoute />)
+
+    expect(await screen.findByText(/lost, with no copy on disk/i)).toBeTruthy()
+    expect(screen.getByText('Unmirrored World')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /restore/i })).toBeNull()
+    // Never mixed into the recoverable-worlds panel.
+    expect(screen.queryByText(/found on disk/i)).toBeNull()
+  })
+
+  it('stays hidden when there is nothing never-mirrored', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({ status: 'absent' })
+    render(<LoreSelectorRoute />)
+    await settleDiskRead()
+    expect(screen.queryByText(/lost, with no copy on disk/i)).toBeNull()
+  })
+
+  it('separates a mixed disk index into recoverable and never-mirrored sections', async () => {
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([
+        { id: 'recoverable', name: 'Aethel', mirroredAt: Date.now(), appVersion: '1.0.0' },
+        { id: 'ghost', name: 'Unmirrored World', mirroredAt: null, appVersion: null },
+      ]),
+    })
+    render(<LoreSelectorRoute />)
+
+    expect(await screen.findByText(/found on disk/i)).toBeTruthy()
+    expect(await screen.findByText(/lost, with no copy on disk/i)).toBeTruthy()
+    expect(screen.getByText('Aethel')).toBeTruthy()
+    expect(screen.getByText('Unmirrored World')).toBeTruthy()
+    // Exactly one Restore button — for the recoverable world only.
+    expect(screen.getAllByRole('button', { name: /restore/i })).toHaveLength(1)
+  })
+
+  it('does not offer a never-mirrored world whose registry entry already exists', async () => {
+    vi.mocked(listLores).mockResolvedValue([world({ id: 'ghost' })])
+    vi.mocked(readRegistryMirror).mockResolvedValue({
+      status: 'ok',
+      text: JSON.stringify([{ id: 'ghost', name: 'Ghost', mirroredAt: null, appVersion: null }]),
+    })
+    render(<LoreSelectorRoute />)
+    await settleDiskRead()
+    expect(screen.queryByText(/lost, with no copy on disk/i)).toBeNull()
   })
 })

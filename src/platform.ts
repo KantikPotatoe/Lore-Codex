@@ -11,6 +11,9 @@
 // Rule for new code: never call a `@tauri-apps/*` API or trigger an
 // `<a download>` outside this module.
 
+import { isValidLoreId } from './worldMirror'
+import type { DiskRegistryRead } from './worldRecovery'
+
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
@@ -312,4 +315,179 @@ export async function appVersion(): Promise<string | null> {
   if (!isTauri()) return null
   const { getVersion } = await import('@tauri-apps/api/app')
   return getVersion()
+}
+
+/** Where per-world mirrors live, relative to $APPDATA. */
+export const WORLDS_DIR = 'worlds'
+
+function assertSafeLoreId(loreId: string): void {
+  if (!isValidLoreId(loreId)) {
+    throw new Error(`Unsafe lore id for a filename: ${JSON.stringify(loreId)}`)
+  }
+}
+
+/** Write `json` to `relativePath` under $APPDATA via temp-then-rename. */
+async function atomicAppDataWrite(relativePath: string, json: string): Promise<void> {
+  const { writeTextFile, rename, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  const dir = relativePath.split('/').slice(0, -1).join('/')
+  if (dir) {
+    await mkdir(dir, { baseDir: BaseDirectory.AppData, recursive: true }).catch(() => {
+      // Already exists — fine. A real permission failure surfaces on the write.
+    })
+  }
+  // A unique tmp path per call, not a fixed `${relativePath}.tmp` — belt-and-
+  // braces under `withRegistryMirrorLock`'s serialization (the actual fix for
+  // #174 Defect 2). Even if some future caller of this helper ever raced
+  // another write to the SAME target the way registry.json's three writers
+  // used to, two overlapping `writeTextFile` calls could no longer interleave
+  // into one corrupted tmp file for the first `rename` to commit as truth.
+  const tmpPath = `${relativePath}.tmp-${crypto.randomUUID()}`
+  await writeTextFile(tmpPath, json, { baseDir: BaseDirectory.AppData })
+  await rename(tmpPath, relativePath, {
+    oldPathBaseDir: BaseDirectory.AppData,
+    newPathBaseDir: BaseDirectory.AppData,
+  })
+}
+
+/**
+ * Write `json` to `<app-data>/worlds/<loreId>.lore` **atomically**: the bytes
+ * land in a `.tmp` sibling first, and a rename commits them. A crash, a full
+ * disk, or the close-handler timeout firing mid-write can then never leave a
+ * truncated file where a good mirror used to be — the previous mirror survives
+ * intact until the rename succeeds.
+ *
+ * Shell-only: resolves `false` in the browser, which has no filesystem to
+ * mirror to.
+ */
+export async function writeWorldMirror(loreId: string, json: string): Promise<boolean> {
+  assertSafeLoreId(loreId)
+  if (!isTauri()) return false
+  await atomicAppDataWrite(`${WORLDS_DIR}/${loreId}.lore`, json)
+  return true
+}
+
+/**
+ * Read a world's mirror. Resolves `null` in the browser, and `null` rather
+ * than throwing when the file is missing or unreadable — to a recovery flow
+ * "absent" and "corrupt on read" are the same answer: there is nothing here to
+ * offer the user.
+ */
+export async function readWorldMirror(loreId: string): Promise<string | null> {
+  assertSafeLoreId(loreId)
+  if (!isTauri()) return null
+  const { readTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  try {
+    return await readTextFile(`${WORLDS_DIR}/${loreId}.lore`, { baseDir: BaseDirectory.AppData })
+  } catch {
+    return null
+  }
+}
+
+/** Where the mirrored world index lives, relative to $APPDATA. */
+const REGISTRY_MIRROR_PATH = `${WORLDS_DIR}/registry.json`
+
+/**
+ * Mirror the world index. This is what makes recovery possible without
+ * `fs:allow-read-dir`: the app reads one known path to learn which `.lore`
+ * files to expect, instead of enumerating a directory.
+ */
+export async function writeRegistryMirror(json: string): Promise<boolean> {
+  if (!isTauri()) return false
+  await atomicAppDataWrite(REGISTRY_MIRROR_PATH, json)
+  return true
+}
+
+/**
+ * Read the mirrored world index.
+ *
+ * Distinguishes `'absent'` (no file yet — a legitimate empty registry, safe
+ * to write over) from `'error'` (a file exists but could not be read:
+ * permission denied, a Windows sharing violation, a disk I/O failure — quite
+ * possibly on the very machine that just evicted its storage). Before #174
+ * Defect 1 both collapsed to the same `null`, and a read-modify-write caller
+ * on that value would treat "I couldn't read this" as "there's nothing here"
+ * and write an empty (or registry-only) index over survivors it never
+ * actually looked at.
+ *
+ * `exists()` is checked FIRST, separately from `readTextFile()`, so a
+ * transient read failure on a file that verifiably exists can never be
+ * misreported as `'absent'` — and so a failure to even determine existence
+ * (also `'error'`) can't be either.
+ */
+export async function readRegistryMirror(): Promise<DiskRegistryRead> {
+  if (!isTauri()) return { status: 'absent' }
+  const { readTextFile, exists, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  let present: boolean
+  try {
+    present = await exists(REGISTRY_MIRROR_PATH, { baseDir: BaseDirectory.AppData })
+  } catch {
+    return { status: 'error' }
+  }
+  if (!present) return { status: 'absent' }
+  try {
+    const text = await readTextFile(REGISTRY_MIRROR_PATH, { baseDir: BaseDirectory.AppData })
+    return { status: 'ok', text }
+  } catch {
+    return { status: 'error' }
+  }
+}
+
+/**
+ * Serializes every registry.json read-modify-write across the app.
+ *
+ * Three independent call sites — `syncRegistryMirror`/`dropFromRegistryMirror`
+ * in lores.ts, `stampRegistryMirrored` in worldMirrorSync.ts — each read this
+ * file, merge, and write it back, with real `await`s between the read and the
+ * write. Left unserialized, two overlapping sequences interleave in two silent
+ * ways (all three writers swallow their own errors): a **lost update** — one
+ * sequence's read observes the disk before another's write lands, so the
+ * second write clobbers the first with stale data (e.g. a delete's drop
+ * undone by a concurrently in-flight mirror stamp, permanently resurrecting an
+ * entry whose `.lore` is already in `trash/`) — or a **torn commit** — two
+ * overlapping `writeTextFile` calls to the identical tmp path interleave their
+ * bytes, and the first `rename` commits the torn result, defeating the
+ * atomicity the whole mirror design rests on.
+ *
+ * Chaining every attempt through one promise turns "read, merge, write" back
+ * into a single atomic step from every caller's point of view: no read can
+ * observe a state some other still-in-flight write is about to replace. The
+ * chain advances regardless of whether a given task throws — one failed
+ * best-effort write must not wedge every later one behind a permanently
+ * rejected promise — but the real outcome (success or failure) still reaches
+ * that task's own caller through the returned promise.
+ */
+let registryMirrorQueue: Promise<unknown> = Promise.resolve()
+
+export function withRegistryMirrorLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = registryMirrorQueue.then(fn, fn)
+  registryMirrorQueue = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
+/**
+ * Move a deleted world's mirror into `worlds/trash/` rather than unlinking it.
+ * Cheap insurance the browser could never offer: deleting a world in the app
+ * is instant and irreversible, but the last mirror survives on disk.
+ *
+ * `stamp` is supplied by the caller so this stays free of ambient time.
+ * Resolves `false` when there was no mirror to move — a world created and
+ * deleted inside one session never had one.
+ */
+export async function trashWorldMirror(loreId: string, stamp: string): Promise<boolean> {
+  assertSafeLoreId(loreId)
+  if (!isTauri()) return false
+  const { rename, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  await mkdir(`${WORLDS_DIR}/trash`, { baseDir: BaseDirectory.AppData, recursive: true }).catch(() => {})
+  try {
+    await rename(`${WORLDS_DIR}/${loreId}.lore`, `${WORLDS_DIR}/trash/${loreId}-${stamp}.lore`, {
+      oldPathBaseDir: BaseDirectory.AppData,
+      newPathBaseDir: BaseDirectory.AppData,
+    })
+    return true
+  } catch {
+    return false
+  }
 }

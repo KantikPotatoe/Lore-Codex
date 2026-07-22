@@ -28,13 +28,14 @@ import { requestPersistentStorage, latestChangeTime, shouldBackupOnExit, backupO
 import { seedTemplates, seedDefaultCalendar, migrateInlineBodyImages, activeLoreId, getMeta } from './db'
 import { maybeTakeSnapshot } from './snapshots'
 import { installSearchIndex } from './searchSync'
-import { bootstrapDefaultLore } from './lores'
+import { bootstrapDefaultLore, syncRegistryMirror } from './lores'
 import { installStorageErrorListener } from './storageError'
 import { installTabSyncListener } from './tabSync'
 import { shouldOpenSearch } from './searchShortcut'
 import { useNavDirection } from './navDirection'
-import { onCloseRequested } from './platform'
+import { onCloseRequested, isTauri } from './platform'
 import { getAppSettings } from './appSettings'
+import { startMirrorLoop, flushWorldMirror } from './worldMirrorSync'
 
 // onCloseRequested awaits its handler before destroying the window (platform.ts),
 // and only catches a *rejected* handler — a backup that hangs (e.g. a stalled
@@ -46,9 +47,21 @@ import { getAppSettings } from './appSettings'
 // writeAppData's writeTextFile is mid-write, leaving a truncated exit-<Day>.json
 // that looks valid by its name. This is deliberately not guarded against — it
 // fails loudly at restore (parseBackup throws on the truncated JSON) rather
-// than corrupting anything silently, and a write-to-temp-then-rename fix would
-// need an fs permission (temp-file write/rename outside the final path) this
-// branch refuses to add for a backup that's already a secondary safety net.
+// than corrupting anything silently.
+// The mirror written alongside it (#174) is immune to this: writeWorldMirror
+// commits by rename, so a timeout mid-write leaves the previous mirror whole.
+// backupOnExit's own write is still direct and still truncatable — moving it
+// to the same atomic idiom is a small follow-up now that fs:allow-rename is
+// granted, but it stays out of this change.
+//
+// Ordering within the race (#174 I5): the mirror flushes FIRST. Both do a
+// full exportAll() of a world that can be tens of megabytes of data-URLs —
+// two full serializations, sequentially, inside one 5s budget — so whichever
+// runs second is the one the timeout is most likely to cut. That ordering
+// used to put backupOnExit first, which is backwards on the merits: its write
+// is the direct, truncatable one (see above), while the mirror commits by
+// rename and is the actual durability net. If the budget runs out, it should
+// be backupOnExit's write that's sacrificed, not the mirror's.
 function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
   return Promise.race([promise, new Promise<void>((resolve) => setTimeout(resolve, ms))])
 }
@@ -80,13 +93,23 @@ export default function App() {
   useEffect(() => {
     installStorageErrorListener() // surface IndexedDB quota/eviction write failures
     installTabSyncListener(activeLoreId) // freeze on another tab's import/delete of this world
-    bootstrapDefaultLore()
+    // bootstrapDefaultLore() now READS worlds/registry.json (#174 C2: an empty
+    // registry only means "seed a default" when the disk index doesn't also
+    // name a recoverable world) and syncRegistryMirror() WRITES it below.
+    // Chaining the reconciliation off bootstrap's own promise — rather than
+    // firing both from independent effects — makes that read-then-write order
+    // explicit instead of leaving it to accidental effect-registration order,
+    // which async work inside each effect could reshuffle anyway.
+    const bootstrapped = bootstrapDefaultLore()
     requestPersistentStorage()
     seedTemplates()
     seedDefaultCalendar()
     // Convert any legacy inline body images to the by-ref model (#182 phase 2),
     // then snapshot — runs once per world (guarded by a meta flag), idempotent.
     migrateInlineBodyImages().finally(() => maybeTakeSnapshot())
+    if (isTauri()) {
+      void bootstrapped.then(() => syncRegistryMirror())
+    }
   }, [])
 
   // Keep the search index in sync as any searchable table changes. installSearchIndex
@@ -94,6 +117,16 @@ export default function App() {
   useEffect(() => {
     const teardown = installSearchIndex()
     return teardown
+  }, [])
+
+  // Keep the active world's .lore mirror current (#174). Shell-only: gated on
+  // isTauri() rather than relying on the seam's no-op, because a mirror attempt
+  // pays a full exportAll() BEFORE reaching the seam, and a browser no-op never
+  // advances lastMirrorAt — so an ungated loop would re-serialize the whole DB,
+  // images included, every 30s for the rest of the session and discard it.
+  useEffect(() => {
+    if (!isTauri()) return
+    return startMirrorLoop()
   }, [])
 
   // Desktop only: finish a backup before the window closes. Everything is read
@@ -105,6 +138,21 @@ export default function App() {
     onCloseRequested(async () => {
       await withTimeout(
         (async () => {
+          // Mirror first (#174 I5) — see the ordering note above. Inside the
+          // same race on purpose: it's worth up to the remaining budget, but
+          // an app you cannot quit is never acceptable. A truncated mirror is
+          // impossible regardless — writeWorldMirror commits by rename, so a
+          // timeout mid-write leaves the previous mirror intact.
+          //
+          // Caught, not awaited bare (#174 task 3, I-E): write() (worldMirrorSync.ts)
+          // already records the failure into mirror health, then rethrows, before
+          // this line ever sees it — Settings' status readout is fed by that
+          // recording, not by this catch. An uncaught rejection here would abort
+          // this whole async IIFE, skipping everything below: a persistent
+          // disk-full or permission failure would silently take out the exit
+          // backup too, on top of the mirror, leaving the user with neither net
+          // and Settings reporting only the one it can see.
+          await flushWorldMirror().catch(() => {})
           const { backupOnExit: enabled } = await getAppSettings()
           const lastBackup = (await getMeta<number>(LAST_BACKUP_KEY)) ?? null
           if (shouldBackupOnExit(enabled, lastBackup, await latestChangeTime())) {

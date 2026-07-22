@@ -14,10 +14,13 @@ import {
   type Lore,
 } from '../lores'
 import { parseBackup, type BackupCounts } from '../db'
-import { openTextFile } from '../platform'
+import { openTextFile, readRegistryMirror, readWorldMirror } from '../platform'
+import { parseDiskRegistry, plannedRecovery, neverMirrored, type RecoverableWorld } from '../worldRecovery'
+import { timeAgo } from '../backup'
 import { compressImage } from '../imageUtils'
 import { getAppSettings, shouldOpenLastWorld } from '../appSettings'
 import { CURRENT_LORE_KEY } from '../loreId'
+import { withMirroringSuspended } from '../worldMirrorSync'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
 
@@ -60,6 +63,12 @@ export default function LoreSelectorRoute() {
   const [importing, setImporting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
+  // Worlds found on disk that the registry DB doesn't know about (#174 — the
+  // storage-was-wiped case). One read of a known path on mount, never a
+  // directory listing; see worldRecovery.ts.
+  const [diskWorlds, setDiskWorlds] = useState<RecoverableWorld[] | null>(null)
+  const [restoring, setRestoring] = useState<string | null>(null)
+
   const loresRaw = useLiveQuery(listLores, [])
   const lores = loresRaw ?? []
   const appSettings = useLiveQuery(() => getAppSettings(), [])
@@ -89,6 +98,32 @@ export default function LoreSelectorRoute() {
     startupHandled = true
   }, [loresRaw, appSettings])
 
+  useEffect(() => {
+    let cancelled = false
+    readRegistryMirror()
+      .then((read) => {
+        if (cancelled) return
+        const parsed = parseDiskRegistry(read)
+        // Display-only, never a write: an unreadable index degrades to
+        // "offer nothing" here, same as a bare-empty index always has. Only
+        // the writers (lores.ts / worldMirrorSync.ts) need to refuse on
+        // `!parsed.ok` — this route never persists anything back to disk.
+        setDiskWorlds(parsed.ok ? parsed.entries : [])
+      })
+      .catch(() => { if (!cancelled) setDiskWorlds([]) })
+    return () => { cancelled = true }
+  }, [])
+
+  // Derived, not mirrored into state via an effect (this repo lints
+  // setState-in-effect): the offer is a pure function of the disk read and
+  // the live registry list.
+  const recoverable = diskWorlds && loresRaw ? plannedRecovery(diskWorlds, loresRaw) : []
+  // Worlds the disk index still names but that were never actually mirrored
+  // (#174 task r3, item 4) — no .lore file exists, so there is nothing to
+  // restore, but silently hiding them would mean the app knows the names of
+  // the worlds it just lost and says nothing about it.
+  const lost = diskWorlds && loresRaw ? neverMirrored(diskWorlds, loresRaw) : []
+
   async function handleCreate() {
     setCreating(true)
     await createLore() // triggers reload — setCreating never resolves visually
@@ -117,6 +152,38 @@ export default function LoreSelectorRoute() {
       setNotice(err instanceof Error ? err.message : 'The import failed. Nothing was created.')
     } finally {
       setImporting(false)
+    }
+  }
+
+  async function restoreWorld(world: RecoverableWorld) {
+    setRestoring(world.id)
+    try {
+      const json = await readWorldMirror(world.id)
+      if (!json) throw new Error('That world file could not be read.')
+      // parseBackup runs inside importLoreFromBackup and throws before any
+      // world is registered, so a corrupt mirror leaves nothing behind.
+      // Reuse the disk entry's own id: a recovered world IS the world, so it
+      // keeps its identity and its file. A fresh id here would leave this
+      // disk entry — real mirroredAt, still absent from the registry —
+      // satisfying plannedRecovery forever, offering the same restore again
+      // on every launch (see importLoreFromBackup's doc comment).
+      //
+      // withMirroringSuspended (#174 I-B): id reuse means restoring a world
+      // whose id matches the currently-bound `db` (e.g. 'default' after an
+      // eviction that also reset currentLoreId() to 'default') targets the
+      // ACTIVE database, not a fresh, not-yet-active one — importBackupInto
+      // is a clear()-then-bulkAdd transaction, and a poll or close-time mirror
+      // write landing between those two steps would capture a half-imported
+      // world and rename it over the very mirror this restore is reading
+      // from. Same hazard SettingsRoute's import/restore-snapshot branches
+      // already guard against; this call site needs the identical guard now
+      // that it can also target the active world.
+      await withMirroringSuspended(() => importLoreFromBackup(world.name, json, world.id))
+      setDiskWorlds((prev) => prev?.filter((w) => w.id !== world.id) ?? null)
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'That world could not be restored.')
+    } finally {
+      setRestoring(null)
     }
   }
 
@@ -165,6 +232,69 @@ export default function LoreSelectorRoute() {
           </button>
         </div>
       </header>
+
+      {/* Worlds found on disk but missing from the registry (#174) — the
+          storage-was-wiped case this feature exists for. Offers only; never
+          writes anything without a click, and renders nothing when there's
+          nothing to recover, which is the normal case for every install. */}
+      {recoverable.length > 0 && (
+        <section className="recovery-panel" aria-labelledby="recovery-heading">
+          <h2 id="recovery-heading">
+            {recoverable.length} world{recoverable.length === 1 ? '' : 's'} found on disk
+          </h2>
+          <p>
+            These were mirrored to this computer but aren’t in your library — most
+            likely the app’s local storage was cleared. Restoring re-imports them.
+          </p>
+          <ul>
+            {recoverable.map((w, i) => (
+              <li key={`${w.id}-${i}`}>
+                <span className="recovery-name">{w.name}</span>
+                <span className="recovery-meta">
+                  mirrored {timeAgo(w.mirroredAt)}
+                  {w.appVersion ? ` · v${w.appVersion}` : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void restoreWorld(w)}
+                  disabled={restoring !== null}
+                >
+                  {restoring === w.id ? 'Restoring…' : 'Restore'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Worlds the disk index remembers by name but that were never actually
+          mirrored (#174 task r3, item 4) — no .lore file exists, so there is
+          nothing to restore. Kept calm and factual, and deliberately styled
+          as neither a warning nor a recovery offer: there is no button here
+          because a Restore control would only ever fail. */}
+      {lost.length > 0 && (
+        <section className="recovery-panel recovery-panel--lost" aria-labelledby="lost-heading">
+          <h2 id="lost-heading">
+            {lost.length} world{lost.length === 1 ? '' : 's'} lost, with no copy on disk
+          </h2>
+          <p>
+            These worlds were known on this computer but existed before mirroring started, or
+            were never open long enough to be mirrored — no copy survived here. There is nothing
+            to restore. If you have a backup file for one of these, use Import World above.
+          </p>
+          <ul>
+            {lost.map((w, i) => (
+              // Keyed by id+index like the offer list above: parseDiskRegistry
+              // does not dedupe, and registry.json is hand-editable, so two
+              // entries can share an id.
+              <li key={`${w.id}-${i}`}>
+                <span className="recovery-name">{w.name}</span>
+                <span className="recovery-meta">no copy on disk</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Worlds grid */}
       <div className="lore-grid">

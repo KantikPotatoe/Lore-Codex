@@ -23,9 +23,11 @@ import {
 import { exportAsHtml } from '../htmlExport'
 import { getSettings, updateSettings, DEFAULT_SETTINGS, type LoreSettings } from '../settings'
 import { deleteLore, currentLoreId } from '../lores'
-import { openTextFile, isTauri, pickDirectory, appVersion } from '../platform'
+import { openTextFile, isTauri, pickDirectory, appVersion, readRegistryMirror } from '../platform'
 import { useSharedUpdateCheck } from '../UpdateCheckContext'
 import { getAppSettings, updateAppSettings, DEFAULT_APP_SETTINGS, SPELLCHECK_LANGS, type AppSettings } from '../appSettings'
+import { withMirroringSuspended, getMirrorHealth, mirrorFilePath, type MirrorHealth } from '../worldMirrorSync'
+import { parseDiskRegistry } from '../worldRecovery'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function SettingsRoute() {
@@ -89,6 +91,52 @@ export default function SettingsRoute() {
     isStoragePersisted().then(setPersisted)
   }, [])
 
+  // World-mirror health (#174 I4): getMirrorHealth() is a plain accessor over
+  // module state, not a live subscription — poll it while this page is open
+  // so a write landing in the background (the 30s cadence, or a close-flush
+  // from a previous session) doesn't leave a stale readout on screen for the
+  // rest of the visit. Desktop-only: the mirror never runs in the browser, so
+  // there is nothing to poll there.
+  const [mirrorHealth, setMirrorHealth] = useState<MirrorHealth | null>(null)
+  useEffect(() => {
+    if (!isTauri()) return
+    const read = () => setMirrorHealth(getMirrorHealth())
+    read()
+    const id = setInterval(read, 5000)
+    return () => clearInterval(id)
+  }, [])
+
+  // World-index readability (#174 task r3, item 3): every registry.json
+  // writer (syncRegistryMirror/dropFromRegistryMirror/stampRegistryMirrored)
+  // correctly refuses to write when the disk read comes back unreadable —
+  // but a refusal that never surfaces means `mirroredAt` freezes, new worlds
+  // never enter the index, and the mirror-health block above still reports a
+  // healthy "Last written N ago" (it only tracks writeWorldMirror outcomes,
+  // not whether that write's stamp into the index actually landed). Polled
+  // on the same cadence as mirror health, for the same reason: a write
+  // landing in the background, or the index becoming readable/unreadable
+  // between renders, must not leave a stale readout for the rest of the
+  // visit. Display-only — this route never writes registry.json, so
+  // degrading `ok: false` to a plain boolean here is safe (worldRecovery.ts).
+  const [indexReadable, setIndexReadable] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (!isTauri()) return
+    let cancelled = false
+    const read = () => {
+      readRegistryMirror()
+        .then((r) => {
+          if (!cancelled) setIndexReadable(parseDiskRegistry(r).ok)
+        })
+        // Only reachable if the dynamic plugin-fs import itself fails. Treat it
+        // as "cannot read the index", which is what this readout exists to
+        // report — never leave it stuck on the last good value.
+        .catch(() => { if (!cancelled) setIndexReadable(false) })
+    }
+    read()
+    const id = setInterval(read, 5000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
+
   async function handleBackup() {
     setBusy(true)
     try { await downloadBackup() } finally { setBusy(false) }
@@ -125,10 +173,18 @@ export default function SettingsRoute() {
     try {
       await downloadPreImportBackup()
       if (kind === 'snapshot') {
-        await restoreSnapshot(json)
+        // Suspend the mirror poll across the clear-then-repopulate window: a
+        // write landing mid-restore would export a stale/incomplete active
+        // world and rename it over a perfectly good mirror (#174).
+        // restoreSnapshot carries the identical clear-and-repopulate shape as
+        // importAll below, for the same reason.
+        await withMirroringSuspended(() => restoreSnapshot(json))
         setNotice({ title: 'Snapshot restored', body: 'Your text was rolled back to this snapshot. Images and maps were kept as they are now.' })
       } else {
-        await importAll(json)
+        // Suspend the mirror poll across the clear-then-repopulate window: a
+        // write landing mid-import would export a stale/incomplete active
+        // world and rename it over a perfectly good mirror (#174).
+        await withMirroringSuspended(() => importAll(json))
         setNotice({ title: 'Backup restored', body: 'Your codex was replaced with the backup contents.' })
       }
     } catch (err) {
@@ -339,6 +395,30 @@ export default function SettingsRoute() {
                 : 'Pick a cloud-synced folder and “Back up now” will open there — one click instead of navigating every time.'
               : 'Desktop app only. Browsers always save to their own downloads folder.'}
           </span>
+        </div>
+
+        <div className={`settings-field${desktop ? '' : ' is-disabled'}`}>
+          <span className="settings-label">World file</span>
+          <span>{desktop ? mirrorFilePath() : '—'}</span>
+          <span className="settings-hint">
+            {desktop
+              ? mirrorHealth?.lastSuccessAt
+                ? `An always-current copy of this world, kept automatically inside the app's data folder as a durability net if the browser storage is ever lost. Last written ${timeAgo(mirrorHealth.lastSuccessAt)}.`
+                : "An always-current copy of this world, kept automatically inside the app's data folder as a durability net if the browser storage is ever lost. Last written: never — expected right after launch, before the first quiet moment; it writes on its own as you keep editing."
+              : 'Desktop app only. A browser has no filesystem to mirror to.'}
+          </span>
+          {desktop && mirrorHealth?.lastError && (
+            <span className="settings-hint-danger">
+              Last write failed {timeAgo(mirrorHealth.lastError.at)}: {mirrorHealth.lastError.message}
+            </span>
+          )}
+          {desktop && indexReadable === false && (
+            <span className="settings-hint-danger">
+              The world index (registry.json) can't be read right now, so nothing new can be
+              recorded into it — mirrors keep being written, but new or updated worlds won't be
+              findable from them, and the durability net is effectively off until this is fixed.
+            </span>
+          )}
         </div>
 
         {isTauri() ? (
