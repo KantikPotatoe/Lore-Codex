@@ -280,29 +280,24 @@ No changes to the fake-indexeddb foundation; no new test environment.
 
 ## Exit criterion
 
-An unclean loss (crash, power cut, force-kill) costs **the floor window plus
-the length of the current unbroken editing burst**, and the second term is
-unbounded.
+An unclean loss (crash, power cut, force-kill) costs at most
+`MIRROR_MAX_STALE_MS` plus one poll interval — **~10.5 minutes**.
 
-`MIRROR_FLOOR_MS` (5 min) is the minimum gap between writes, and
-`MIRROR_QUIET_MS` (30s) of quiet must elapse before a write is attempted at
-all. That quiet window is the sharp edge: `shouldMirror` returns false while
+As originally shipped this section was wrong twice, first as "one quiet-window"
+(~30s) and then as "roughly 5.5 minutes". Both assumed a bursty editor who
+pauses. The real bound was unbounded: `shouldMirror` returned false while
 `now - lastChangeAt < MIRROR_QUIET_MS`, and `PageRoute` writes content after
-500ms, so an author typing steadily slides `lastChangeAt` forward on every
-poll and **no mirror write fires for the whole session**. Forty-five minutes
-of unbroken drafting, then a power cut, loses forty-five minutes — not 5.5.
+500ms, so an author typing steadily slid `lastChangeAt` forward on every poll
+and no mirror write fired for the whole session.
 
-This section has now understated the bound twice: first as "one quiet-window"
-(~30s), then as "roughly 5.5 minutes". Both assumed a bursty editor who pauses.
+#233 closed that with a staleness ceiling — a forced write once changes have
+gone unmirrored for `MIRROR_MAX_STALE_MS` (10 min), overriding the quiet window
+but not the interval floor. See
+`docs/superpowers/specs/2026-07-22-mirror-staleness-ceiling-design.md`.
 
-`flushWorldMirror` on a clean close is what actually bounds a long session, and
-it is unconditional for that reason. A *clean* quit therefore loses nothing.
-The next launch offers every mirrored world back from disk regardless.
-
-Closing the gap for unclean losses would mean a hard ceiling — force a write
-when `lastMirrorAt` is old enough, regardless of quiet — which is deliberately
-**not** done here: it is new cadence logic, and this feature has twice shipped
-a Critical introduced by a late fix. Tracked as a follow-up instead.
+`flushWorldMirror` on a clean close remains unconditional, so a *clean* quit
+still loses nothing, and the next launch offers every mirrored world back from
+disk regardless.
 
 ## Out of scope
 
