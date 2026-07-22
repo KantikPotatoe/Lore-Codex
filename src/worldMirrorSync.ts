@@ -28,6 +28,15 @@ import pkg from '../package.json'
 // changed since the file was written, which is the behaviour we want anyway.
 let lastMirrorAt = 0
 
+// When this page-life first evaluated the cadence policy. The staleness
+// ceiling measures from here until the first real write lands, because
+// `lastMirrorAt` above starts at 0: a ceiling measured from it alone is true
+// on the first poll of every launch, which would force a multi-megabyte
+// export 30 seconds into every session, mid-burst. Stamped lazily rather than
+// at module load — a module-level Date.now() is an import side effect, and
+// lazy stamping keeps the value resettable between test cases.
+let sessionStartAt = 0
+
 // Depth counter, not a boolean: nested suspensions must not have the inner one
 // lift the guard early.
 let suspendDepth = 0
@@ -191,6 +200,7 @@ async function hasMirrorableContent(): Promise<boolean> {
 /** Test-only: reset module state between cases. */
 export function resetWorldMirrorStateForTests(): void {
   lastMirrorAt = 0
+  sessionStartAt = 0
   suspendDepth = 0
   suspendEpoch = 0
   inFlight = null
@@ -233,8 +243,11 @@ export async function withMirroringSuspended<T>(fn: () => Promise<T>): Promise<T
 /** Mirror the active world if the cadence policy says it is due. */
 export async function maybeMirrorWorld(now = Date.now()): Promise<void> {
   if (suspendDepth > 0) return
+  // Stamped here, not in flushWorldMirror: flush bypasses the cadence policy
+  // entirely, so it has no anchor to establish.
+  if (sessionStartAt === 0) sessionStartAt = now
   const lastChangeAt = await mirrorChangeTime(now)
-  if (!shouldMirror({ lastChangeAt, lastMirrorAt, now })) return
+  if (!shouldMirror({ lastChangeAt, lastMirrorAt, now, sessionStartAt })) return
   return run(now)
 }
 
