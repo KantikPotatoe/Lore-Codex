@@ -176,4 +176,22 @@ describe('linkStyle', () => {
     })
     expect(linkStyle(link, NONE_HIDDEN)!.labels).toBe('Allied with · Rivalled by')
   })
+
+  it('HTML-escapes relationship-type labels, since `labels` reaches an innerHTML sink', () => {
+    // Relationship types are free text, editable in the admin UI and imported
+    // from backup files verbatim (importAll bulkAdds relationshipTypes
+    // unsanitized). GraphView feeds `labels` to react-force-graph's
+    // `linkLabel`, which float-tooltip renders via d3 `.html()`.
+    const link = graphLink({
+      relations: [relation({ label: '<img src=x onerror=alert(1)>', inverseLabel: 'Child of' })],
+    })
+    expect(linkStyle(link, NONE_HIDDEN)!.labels).toBe('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('escapes & before < and >, so the escaping cannot double-encode itself', () => {
+    const link = graphLink({
+      relations: [relation({ label: 'Foo & <bar>', inverseLabel: 'x' })],
+    })
+    expect(linkStyle(link, NONE_HIDDEN)!.labels).toBe('Foo &amp; &lt;bar&gt;')
+  })
 })

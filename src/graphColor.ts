@@ -125,6 +125,22 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
 }
 
+// Relationship-type labels are free text — editable in the Relationship-types
+// admin and, critically, imported from backup files verbatim (`importAll`
+// bulkAdds `relationshipTypes` unsanitized). `labels` reaches react-force-
+// graph's `linkLabel`, which float-tooltip renders via `.html()` (innerHTML),
+// bypassing React's escaping entirely. Escape here so the one styling
+// authority emits tooltip-safe text no matter what consumes it. `&` must be
+// escaped first, or the entities introduced by the other replacements would
+// themselves get escaped.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 /**
  * Rest-state presentation for one link, or null when it should not be drawn at
  * all — every relationship on it is filtered out and there is no wiki link
@@ -165,6 +181,6 @@ export function linkStyle(link: GraphLink, hiddenRelTypes: Set<string>): LinkSty
     arrow: primary.directed ? 'always' : 'never',
     // Per-edge, not per-relation: once the orientation flips, every label on
     // the edge reads the other way.
-    labels: visible.map((r) => (swap ? r.inverseLabel : r.label)).join(' · '),
+    labels: visible.map((r) => escapeHtml(swap ? r.inverseLabel : r.label)).join(' · '),
   }
 }
