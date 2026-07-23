@@ -14,6 +14,8 @@
 //   maps.ts       — maps, pins & regions CRUD, pin/region type resolution
 //   images.ts     — per-page gallery CRUD, portrait assignment
 //   docLinks.ts   — curated document attachments (page ↔ document join)
+//   relationshipTypes.ts — the user-definable relationship vocabulary (#175)
+//   relationships.ts — typed directed edges between pages (#175)
 //   manuscript.ts — books/chapters/scenes/plotlines/beats CRUD, word count
 //   graph.ts      — relationship-graph builder
 //   calendar.ts   — timeline calendar/event CRUD (cached absolute-day upkeep)
@@ -31,6 +33,8 @@ export * from './maps'
 export * from './images'
 export * from './bodyImageMigration'
 export * from './docLinks'
+export * from './relationshipTypes'
+export * from './relationships'
 export * from './manuscript'
 export * from './graph'
 export * from './worldHealth'

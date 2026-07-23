@@ -265,13 +265,13 @@ describe('importAll — round-trips', () => {
 })
 
 describe('schema version', () => {
-  it('is at 14 for the titleLc index bump', () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(14)
+  it('is at 15 for the typed-relationship tables', () => {
+    expect(CURRENT_SCHEMA_VERSION).toBe(15)
   })
 
   it('stamps an older backup up to current with no data loss', () => {
     const out = migrateBackup({ schemaVersion: 6, pages: [], regions: [] })
-    expect(out.schemaVersion).toBe(14)
+    expect(out.schemaVersion).toBe(15)
     expect(out.regions).toEqual([])
   })
 })
@@ -490,5 +490,95 @@ describe('countAll', () => {
     // Every BackupCounts key must be populated — a missing table would silently
     // read as `undefined` in the Settings import summary.
     for (const value of Object.values(counts)) expect(typeof value).toBe('number')
+  })
+})
+
+describe('typed relationships in backups (#175)', () => {
+  it('round-trips both new tables through export and import', async () => {
+    await db.relationshipTypes.clear()
+    await db.relationships.clear()
+    await db.pages.clear()
+    await db.pages.bulkAdd([
+      { id: 'uther', title: 'Uther', titleLc: 'uther', category: 'Character',
+        content: '', summary: '', tags: [], createdAt: 1, updatedAt: 1 },
+      { id: 'arthur', title: 'Arthur', titleLc: 'arthur', category: 'Character',
+        content: '', summary: '', tags: [], createdAt: 1, updatedAt: 1 },
+    ])
+    await db.relationshipTypes.add({
+      id: 'parent-of', label: 'Parent of', inverse: 'Child of',
+      color: '#e0a458', group: 'kin', order: 0, builtin: true,
+    })
+    await db.relationships.add({
+      id: 'r1', fromId: 'uther', toId: 'arthur',
+      typeId: 'parent-of', note: 'm. 1042', createdAt: 1,
+    })
+
+    const json = await exportAll()
+    await db.relationships.clear()
+    await db.relationshipTypes.clear()
+    await importAll(json)
+
+    expect(await db.relationshipTypes.get('parent-of')).toMatchObject({ inverse: 'Child of' })
+    expect(await db.relationships.get('r1')).toMatchObject({ note: 'm. 1042' })
+  })
+
+  it('counts the new tables for the import confirmation', async () => {
+    const json = await exportAll()
+    const { counts } = parseBackup(json)
+    expect(counts.relationships).toBe(await db.relationships.count())
+    expect(counts.relationshipTypes).toBe(await db.relationshipTypes.count())
+  })
+
+  it('imports a pre-v15 backup with the new tables empty', async () => {
+    const legacy = JSON.stringify({
+      schemaVersion: 14, pages: [], maps: [], pins: [], regions: [],
+      templates: [], calendars: [], events: [], images: [], docLinks: [],
+      books: [], chapters: [], scenes: [], plotlines: [], beats: [], meta: [],
+    })
+    const { data, counts } = parseBackup(legacy)
+    expect(counts.relationships).toBe(0)
+    expect(data.relationships).toEqual([])
+    expect(data.relationshipTypes).toEqual([])
+  })
+
+  it('drops edges whose endpoints are not in the backup page set', async () => {
+    const crafted = JSON.stringify({
+      schemaVersion: 15,
+      pages: [
+        { id: 'uther', title: 'Uther', category: 'Character',
+          content: '', summary: '', tags: [], createdAt: 1, updatedAt: 1 },
+        { id: 'arthur', title: 'Arthur', category: 'Character',
+          content: '', summary: '', tags: [], createdAt: 1, updatedAt: 1 },
+      ],
+      relationshipTypes: [], meta: [],
+      relationships: [
+        { id: 'ok', fromId: 'uther', toId: 'arthur', typeId: 't', note: '', createdAt: 1 },
+        { id: 'dangling', fromId: 'uther', toId: 'ghost', typeId: 't', note: '', createdAt: 1 },
+      ],
+    })
+    const { data } = parseBackup(crafted)
+    // sanitizeBackup runs inside importAll, so assert through a real import.
+    await importAll(crafted)
+    expect((await db.relationships.toArray()).map((r) => r.id)).toEqual(['ok'])
+    expect(data.relationships).toHaveLength(2) // parseBackup itself does not filter
+  })
+
+  it('drops a self-loop edge a hand-crafted backup could carry', async () => {
+    // addRelationship refuses fromId === toId at runtime, but a hand-edited
+    // backup bypasses that path. Left in, getRelationsFor would match the row on
+    // both the fromId and toId indexes and render it twice (duplicate React key).
+    const crafted = JSON.stringify({
+      schemaVersion: 15,
+      pages: [
+        { id: 'uther', title: 'Uther', category: 'Character',
+          content: '', summary: '', tags: [], createdAt: 1, updatedAt: 1 },
+      ],
+      relationshipTypes: [], meta: [],
+      relationships: [
+        { id: 'loop', fromId: 'uther', toId: 'uther', typeId: 't', note: '', createdAt: 1 },
+      ],
+    })
+    await importAll(crafted)
+    expect(await db.relationships.count()).toBe(0)
   })
 })

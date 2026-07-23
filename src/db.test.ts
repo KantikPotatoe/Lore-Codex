@@ -47,6 +47,8 @@ describe('parseBackup — acceptance and counts', () => {
       scenes: 0,
       plotlines: 0,
       beats: 0,
+      relationshipTypes: 0,
+      relationships: 0,
     })
   })
 
@@ -77,6 +79,8 @@ describe('parseBackup — acceptance and counts', () => {
       scenes: 0,
       plotlines: 0,
       beats: 0,
+      relationshipTypes: 0,
+      relationships: 0,
     })
   })
 

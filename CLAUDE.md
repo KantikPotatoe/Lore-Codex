@@ -230,9 +230,9 @@ dependency. **There is no dirty flag** — `worldMirrorSync.ts` polls
 a mirror-specific `mirrorChangeTime()`, *not* `latestChangeTime()` (that sees
 only 6 of the 15 tables `exportAll()` writes, and `BackupBanner`/`backupOnExit`
 depend on exactly that shape, so it stays as-is). `mirrorChangeTime()` combines
-those six indexed reads with a `count()` on each of the other nine, so an add
+those six indexed reads with a `count()` on each of the other eleven, so an add
 or delete registers even with no timestamp to read. It is **not** complete: an
-in-place edit to a row on those nine is invisible between polls, and
+in-place edit to a row on those eleven is invisible between polls, and
 `maps`/`calendars` notice an add but not an edit. `flushWorldMirror()` on close
 is the deliberate backstop for all of it — unconditional, writing whenever the
 world has any content. `lastMirrorAt` is module state, not persisted. The poll

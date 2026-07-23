@@ -23,7 +23,7 @@ export const MIRROR_FLOOR_MS = 5 * 60_000
 export const MIRROR_MAX_STALE_MS = 10 * 60_000
 
 /** How often the shell re-evaluates the policy. Each evaluation costs six
- *  indexed boundary reads plus nine row counts (worldMirrorSync's
+ *  indexed boundary reads plus eleven row counts (worldMirrorSync's
  *  mirrorChangeTime), not a table scan. */
 export const MIRROR_POLL_MS = 30_000
 

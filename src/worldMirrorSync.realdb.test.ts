@@ -51,7 +51,7 @@ import { writeWorldMirror } from './platform'
 import { db, activeLoreId, seedTemplates, seedDefaultCalendar, exportAll } from './db'
 import { latestChangeTime } from './backup'
 import { registry } from './registryDb'
-import { MIRROR_MAX_STALE_MS, MIRROR_POLL_MS } from './worldMirror'
+import { MIRROR_MAX_STALE_MS, MIRROR_POLL_MS, MIRROR_FLOOR_MS, MIRROR_QUIET_MS } from './worldMirror'
 import {
   maybeMirrorWorld,
   flushWorldMirror,
@@ -283,5 +283,104 @@ describe('a long unbroken writing session is still mirrored (#233)', () => {
     })
     await maybeMirrorWorld(ceiling + 60_000)
     expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+  })
+})
+
+// #175: relationship rows carry no updatedAt, so they belong to the tables the
+// probe tracks by COUNT. Without that, a session spent only adding relations
+// looks completely idle to the poll.
+describe('typed relationships are visible to the change probe (#175)', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    resetWorldMirrorStateForTests()
+    vi.mocked(writeWorldMirror).mockResolvedValue(true)
+
+    await registry.lores.clear()
+    await registry.lores.add({
+      id: activeLoreId, name: 'Aethel', banner: null, createdAt: 1, updatedAt: 1,
+    })
+
+    await Promise.all(db.tables.map((t) => t.clear()))
+  })
+
+  it('notices a relationship added when no timestamped table changed', async () => {
+    const start = Date.now()
+
+    // A page edited an hour ago: there is content to export, and the quiet
+    // window is comfortably satisfied so the poll is free to write.
+    await db.pages.put({
+      id: 'uther', title: 'Uther', titleLc: 'uther', category: 'Character',
+      content: '<p>x</p>', summary: '', tags: [],
+      createdAt: start - 60 * 60_000, updatedAt: start - 60 * 60_000,
+    })
+
+    // First poll: establishes the baseline counts and writes once.
+    await maybeMirrorWorld(start)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+
+    // Add ONLY a relationship. No table with an updatedAt/createdAt index moves.
+    await db.relationships.add({
+      id: 'r-mirror', fromId: 'uther', toId: 'arthur',
+      typeId: 'parent-of', note: '', createdAt: 1,
+    })
+
+    // The NEXT poll is the one that first observes the count diff:
+    // mirrorChangeTime() has no real timestamp for a counted-table row, so it
+    // stamps `countedChangeAt` with THIS poll's own `now` — meaning the quiet
+    // window (now - lastChangeAt) reads exactly zero here, the same as it
+    // would for a page whose updatedAt was just now. shouldMirror correctly
+    // declines to write on this same poll (still within MIRROR_QUIET_MS of
+    // its own detection), past the floor though `now` already is relative to
+    // the first write.
+    const detectedAt = start + MIRROR_FLOOR_MS + 1_000
+    await maybeMirrorWorld(detectedAt)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+
+    // Once the quiet window has elapsed since THAT detection — with the floor
+    // against the last write already long satisfied — the poll must write
+    // again. This is the assertion #175 is actually about: nothing but the
+    // relationship add moved between the two writes.
+    await maybeMirrorWorld(detectedAt + MIRROR_QUIET_MS + 1_000)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(2)
+  })
+
+  // The test above only ever moves db.relationships. If 'relationshipTypes'
+  // were dropped from COUNTED_TABLES while 'relationships' stayed, that test
+  // would still pass — nothing in it isolates the *type* table. This case
+  // mutates ONLY db.relationshipTypes (no db.relationships row is touched)
+  // so it can only pass if relationshipTypes itself is counted.
+  it('notices a relationshipType added when no timestamped table changed', async () => {
+    const start = Date.now()
+
+    // A page edited an hour ago: there is content to export, and the quiet
+    // window is comfortably satisfied so the poll is free to write.
+    await db.pages.put({
+      id: 'uther', title: 'Uther', titleLc: 'uther', category: 'Character',
+      content: '<p>x</p>', summary: '', tags: [],
+      createdAt: start - 60 * 60_000, updatedAt: start - 60 * 60_000,
+    })
+
+    // First poll: establishes the baseline counts and writes once.
+    await maybeMirrorWorld(start)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+
+    // Add ONLY a relationship TYPE. No table with an updatedAt/createdAt
+    // index moves, and db.relationships itself is never touched here.
+    await db.relationshipTypes.add({
+      id: 'parent-of', label: 'Parent of', inverse: 'Child of',
+      color: '#a35d3f', group: 'kin', order: 0, builtin: false,
+    })
+
+    // Same detect-then-write shape as above: the poll that first observes
+    // the count diff stamps countedChangeAt with its own `now`, so it must
+    // decline to write (quiet window reads zero against its own detection).
+    const detectedAt = start + MIRROR_FLOOR_MS + 1_000
+    await maybeMirrorWorld(detectedAt)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(1)
+
+    // Once the quiet window has elapsed since that detection, the poll must
+    // write again — proving relationshipTypes alone drove the mirror.
+    await maybeMirrorWorld(detectedAt + MIRROR_QUIET_MS + 1_000)
+    expect(writeWorldMirror).toHaveBeenCalledTimes(2)
   })
 })

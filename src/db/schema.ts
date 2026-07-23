@@ -17,6 +17,8 @@ import type {
   Scene,
   Plotline,
   Beat,
+  Relationship,
+  RelationshipType,
 } from './types'
 
 // ---------------------------------------------------------------------------
@@ -117,6 +119,8 @@ export class LoreDB extends Dexie {
   scenes!: Table<Scene, string>
   plotlines!: Table<Plotline, string>
   beats!: Table<Beat, string>
+  relationshipTypes!: Table<RelationshipType, string>
+  relationships!: Table<Relationship, string>
 
   constructor(name: string = 'lore-app') {
     super(name)
@@ -320,6 +324,30 @@ export class LoreDB extends Dexie {
             p.titleLc = typeof p.title === 'string' ? p.title.trim().toLowerCase() : ''
           }),
       )
+    // v15 adds the typed-relationship tables (#175): a user-definable vocabulary
+    // plus the directed edges that reference it. New tables need no data
+    // migration. `relationships` is indexed on both endpoints because a page's
+    // relations are read from both directions and merged into one list.
+    this.version(15).stores({
+      pages: 'id, title, titleLc, category, updatedAt',
+      maps: 'id, name, createdAt',
+      pins: 'id, mapId, pageId, childMapId',
+      regions: 'id, mapId, pageId, childMapId',
+      meta: '&key',
+      templates: 'id, name',
+      snapshots: '++id, timestamp',
+      calendars: 'id, name, createdAt',
+      events: 'id, calendarId, startAbsolute, pageId, updatedAt',
+      images: 'id, pageId, order, createdAt',
+      docLinks: 'id, pageId, documentId',
+      books: 'id, order',
+      chapters: 'id, bookId, order',
+      scenes: 'id, bookId, chapterId, order, updatedAt',
+      plotlines: 'id, bookId, order',
+      beats: 'id, bookId, plotlineId, sceneId',
+      relationshipTypes: 'id, order',
+      relationships: 'id, fromId, toId, typeId',
+    })
   }
 }
 
