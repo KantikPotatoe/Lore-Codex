@@ -394,6 +394,16 @@ function sanitizeBackup(data: BackupData): BackupData {
           : {}),
       })),
     events: asArray(data.events).map((e) => ({ ...e, description: sanitizeHtml(e.description) })),
+    // Map images feed L.imageOverlay and the HTML export's raw markup. Upload
+    // used to launder every map through a JPEG re-encode; #246 removed that, so
+    // this is now the only check on the path. Blank rather than drop (the
+    // treatment `images` gets below): pins and regions are keyed by mapId, so
+    // dropping the map row would strand them as unreachable data. A blanked map
+    // keeps its pins and is repaired by re-uploading the image.
+    maps: asArray(data.maps).map((m) => ({
+      ...m,
+      image: isCleanImageDataUrl(m.image) ? m.image : '',
+    })),
     // Scene prose is HTML from the editor; scrub it at the import boundary like page
     // content. synopsis/notes/title are plain text (React-escaped), left untouched.
     scenes: asArray(data.scenes).map((s) => ({ ...s, content: sanitizeHtml(s.content) })),

@@ -102,7 +102,11 @@ export default function MapView({
       zoomControl: true,
       attributionControl: false,
     })
-    L.imageOverlay(map.image, bounds).addTo(lmap)
+    // A map whose image failed import sanitization is stored with image: ''
+    // (see sanitizeBackup). L.imageOverlay('') renders a blank tile with pins
+    // floating over nothing, so skip it and let the render show why. The effect
+    // is keyed on map.image, so a re-upload restores the overlay without a remount.
+    if (map.image) L.imageOverlay(map.image, bounds).addTo(lmap)
     lmap.fitBounds(bounds)
     lmap.on('click', (e) => cbRef.current.onMapClick(e.latlng.lat, e.latlng.lng))
     mapRef.current = lmap
@@ -377,6 +381,12 @@ export default function MapView({
   return (
     <>
       <div ref={containerRef} className="map-canvas" />
+      {!map.image && (
+        <div className="map-image-missing" role="status">
+          This map’s image could not be restored from the backup. Its pins and regions
+          are intact — upload a replacement image to see them in place.
+        </div>
+      )}
       {previewCard && (
         <div ref={overlayRef} className="map-preview-anchor">{previewCard}</div>
       )}
