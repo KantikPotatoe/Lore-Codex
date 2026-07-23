@@ -18,6 +18,18 @@ import { useEscapeKey } from '../useEscapeKey'
 // ~268 MB of RGBA), not file size. Anything within it is stored untouched.
 const MAP_MAX_DIM = 8192
 
+// Human-readable size of the decoded bytes behind a base64 data URL, for the
+// import notice. Reads the base64 length (4 chars → 3 bytes, less padding)
+// rather than atob-decoding the whole ~80 MB string just to measure it.
+function dataUrlSize(dataUrl: string): string {
+  const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0
+  const bytes = Math.max(0, Math.floor(b64.length * 3 / 4) - padding)
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export default function MapRoute() {
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -294,12 +306,18 @@ export default function MapRoute() {
       const name = file.name.replace(/\.[^.]+$/, '')
       const id = await mapRepo.addMap(name, dataUrl, width, height)
       setActiveId(id)
-      if (downscaledFrom) {
-        setImportNotice(
-          `Resized ${downscaledFrom.width}×${downscaledFrom.height} → ${width}×${height} ` +
-          `(${MAP_MAX_DIM}px limit). Images within that limit are stored at full quality.`,
-        )
-      }
+      // Always report — full-quality storage is the expensive case, and it used
+      // to be the one with no feedback at all. A verbatim map lands in the world
+      // mirror (rewritten while you edit) and every rotating exit backup, so the
+      // stored size is worth surfacing, not just the downscale.
+      const size = dataUrlSize(dataUrl)
+      setImportNotice(
+        downscaledFrom
+          ? `Resized ${downscaledFrom.width}×${downscaledFrom.height} → ${width}×${height} ` +
+            `(${MAP_MAX_DIM}px limit) and stored at ${size}.`
+          : `Stored at full quality, ${width}×${height} (${size}). ` +
+            `Large maps grow every backup and the world mirror.`,
+      )
     } catch (err) {
       setImportError(
         err instanceof UnsupportedImageError

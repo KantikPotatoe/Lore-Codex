@@ -192,4 +192,31 @@ describe('sanitizeBackup — map images', () => {
     }))
     expect((await db.maps.get('m1'))?.image).toBe('')
   })
+
+  it('coerces a map missing width/height to a finite placeholder and keeps its pins', async () => {
+    // A hand-edited/truncated backup with no dimensions would yield Leaflet
+    // bounds of [[0,0],[NaN,NaN]], crashing the whole /map route. Keep the row
+    // usable (pins are keyed by mapId) rather than dropping or crashing.
+    await importAll(JSON.stringify({
+      pages: [],
+      maps: [{ id: 'm1', name: 'Known World', image: 'data:image/png;base64,iVBORw0KGgo=', createdAt: 1 }],
+      pins: [{ id: 'pin1', mapId: 'm1', lat: 1, lng: 2, label: 'Keep me', pageId: null }],
+    }))
+    const m = await db.maps.get('m1')
+    expect(m).toBeTruthy()
+    expect(Number.isFinite(m?.width)).toBe(true)
+    expect(m!.width).toBeGreaterThan(0)
+    expect(Number.isFinite(m?.height)).toBe(true)
+    expect(m!.height).toBeGreaterThan(0)
+    expect(await db.pins.get('pin1')).toBeTruthy()
+  })
+
+  it('drops a non-object map row so it cannot abort the import transaction', async () => {
+    await importAll(JSON.stringify({
+      pages: [],
+      maps: [null, mapRow('data:image/png;base64,iVBORw0KGgo=')],
+    }))
+    expect(await db.maps.get('m1')).toBeTruthy()
+    expect(await db.maps.count()).toBe(1)
+  })
 })

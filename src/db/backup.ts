@@ -400,10 +400,23 @@ function sanitizeBackup(data: BackupData): BackupData {
     // keyed by mapId, so dropping the map row would strand them as
     // unreachable data. A blanked map keeps its pins and is repaired by
     // re-uploading the image.
-    maps: asArray(data.maps).map((m) => ({
-      ...m,
-      image: isCleanImageDataUrl(m.image) ? m.image : '',
-    })),
+    //
+    // width/height feed Leaflet's CRS.Simple bounds ([[0,0],[height,width]]);
+    // a hand-edited or truncated backup missing them yields [[0,0],[NaN,NaN]],
+    // which throws inside L.latLng and drops the whole /map route into the
+    // ErrorBoundary with no in-app way back. Coerce to a finite positive
+    // placeholder (the map draws at the wrong aspect until re-uploaded, but the
+    // route survives and its pins stay reachable — same spirit as blanking the
+    // image). Rows that aren't objects with a string id can't be a valid pin
+    // target and would abort bulkAdd, so drop them like `pages` does.
+    maps: asArray(data.maps)
+      .filter((m): m is WorldMap => !!m && typeof m === 'object' && typeof (m as WorldMap).id === 'string')
+      .map((m) => ({
+        ...m,
+        image: isCleanImageDataUrl(m.image) ? m.image : '',
+        width: Number.isFinite(m.width) && m.width > 0 ? m.width : 1000,
+        height: Number.isFinite(m.height) && m.height > 0 ? m.height : 1000,
+      })),
     // Scene prose is HTML from the editor; scrub it at the import boundary like page
     // content. synopsis/notes/title are plain text (React-escaped), left untouched.
     scenes: asArray(data.scenes).map((s) => ({ ...s, content: sanitizeHtml(s.content) })),
