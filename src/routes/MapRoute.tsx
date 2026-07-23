@@ -364,7 +364,7 @@ export default function MapRoute() {
       <EmptyState
         icon="🗺️"
         title="No map yet"
-        message="Upload an image of your world (PNG or JPG) to start dropping pins."
+        message="Upload an image of your world (PNG, JPEG, or WebP) to start dropping pins."
       >
         <button className="primary-btn" onClick={() => fileRef.current?.click()}>⭱ Upload a map image</button>
         <input
