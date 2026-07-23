@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { pageRepo, relationshipRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, findPath, type GraphNode, type LorePage, type Relationship, type RelationshipType } from '../db'
+import { pageRepo, relationshipRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, findPath, type GraphNode, type LorePage, type Relationship, type RelationshipType, type RelationshipGroup } from '../db'
 import { useGraphPrefs } from '../useGraphPrefs'
 import { useWikiLinkNavigation } from '../useWikiLinkNavigation'
 import GraphView from '../components/GraphView'
@@ -23,6 +23,16 @@ const NO_REL_TYPES: RelationshipType[] = []
 const EMPTY_ISLAND_COLORS = new Map<string, string>()
 const TAG_CHIP_LIMIT = 12
 
+// Declaration order of RelationshipGroup, so the chip rows never reshuffle.
+const GROUP_ORDER: RelationshipGroup[] = ['kin', 'faction', 'org', 'social', 'other']
+const GROUP_LABELS: Record<RelationshipGroup, string> = {
+  kin: 'Kinship',
+  faction: 'Faction',
+  org: 'Organisation',
+  social: 'Social',
+  other: 'Other',
+}
+
 export default function GraphRoute() {
   const pages = useLiveQuery(() => pageRepo.list(), []) ?? NO_PAGES
   const relationships = useLiveQuery(() => relationshipRepo.listAll(), []) ?? NO_RELATIONSHIPS
@@ -43,7 +53,7 @@ export default function GraphRoute() {
     panelOpen, setPanelOpen,
     tags, toggleTag, tagMode, setTagMode,
     colorBy, setColorBy,
-    hiddenRelTypes,
+    hiddenRelTypes, toggleRelType, toggleRelGroup,
     minDegree, setMinDegree,
     depth, setDepth,
     cam, setCam,
@@ -103,6 +113,24 @@ export default function GraphRoute() {
     () => orderTagChips(counts, selectedTags, showAllTags ? counts.length : TAG_CHIP_LIMIT),
     [counts, selectedTags, showAllTags],
   )
+
+  // Only types actually used by a relationship get a chip: a world that has
+  // never used the feature shows no new controls in an already-dense toolbar,
+  // and an unused custom type is not a filter anyone needs.
+  const relGroups = useMemo(() => {
+    const used = new Set(relationships.map((r) => r.typeId))
+    const byGroup = new Map<RelationshipGroup, RelationshipType[]>()
+    for (const t of relTypes) {
+      if (!used.has(t.id)) continue
+      const list = byGroup.get(t.group)
+      if (list) list.push(t)
+      else byGroup.set(t.group, [t])
+    }
+    return GROUP_ORDER.flatMap((group) => {
+      const types = byGroup.get(group)
+      return types ? [{ group, types }] : []
+    })
+  }, [relationships, relTypes])
 
   const tagFilter = useMemo<TagFilter>(
     () => (selectedTags.size > 0 ? { tags: [...selectedTags], mode: tagMode } : NO_TAG_FILTER),
@@ -313,6 +341,40 @@ export default function GraphRoute() {
                 {tagMode === 'all' ? '⋂ Match all' : '⋃ Match any'}
               </button>
             )}
+          </div>
+        )}
+
+        {relGroups.length > 0 && (
+          <div className="graph-rel-chips">
+            {relGroups.map(({ group, types }) => {
+              const ids = types.map((t) => t.id)
+              const allHidden = ids.every((id) => hiddenRelTypes.has(id))
+              return (
+                <div className="graph-rel-group" key={group}>
+                  <button
+                    className={`graph-group-btn${allHidden ? ' off' : ''}`}
+                    title={`Show or hide every ${GROUP_LABELS[group].toLowerCase()} relationship`}
+                    onClick={() => toggleRelGroup(ids)}
+                  >
+                    {GROUP_LABELS[group]}
+                  </button>
+                  {types.map((t) => (
+                    <button
+                      key={t.id}
+                      className={`graph-chip${hiddenRelTypes.has(t.id) ? ' off' : ''}`}
+                      style={{
+                        borderColor: t.color,
+                        color: hiddenRelTypes.has(t.id) ? undefined : t.color,
+                      }}
+                      onClick={() => toggleRelType(t.id)}
+                    >
+                      <span className="dot" style={{ background: t.color }} />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )
+            })}
           </div>
         )}
 

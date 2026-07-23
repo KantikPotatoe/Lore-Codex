@@ -1408,6 +1408,31 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 }
 .graph-chip:hover { background: var(--panel-2); }
 .graph-chip.off { opacity: 0.4; border-color: var(--border) !important; }
+.graph-rel-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.graph-rel-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.graph-group-btn {
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.graph-group-btn:hover { background: var(--panel-2); color: var(--ink-dim); }
+.graph-group-btn.off { opacity: 0.4; }
 .graph-hint {
   color: var(--ink-faint);
   font-size: 14px;
