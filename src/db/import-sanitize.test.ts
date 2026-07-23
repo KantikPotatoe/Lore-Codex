@@ -123,7 +123,7 @@ describe('importAll — XSS sanitization (roadmap #8)', () => {
 
     const pages = await db.pages.toArray()
     expect(() => { resetIndex(); syncSlice('page', pageEntries(pages)) }).not.toThrow()
-    expect(() => buildGraphData(pages)).not.toThrow()
+    expect(() => buildGraphData(pages, [], [])).not.toThrow()
   })
 
   it('coerces a missing/invalid tags field to an array on import', async () => {

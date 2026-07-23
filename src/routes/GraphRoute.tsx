@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { pageRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, findPath, type GraphNode, type LorePage } from '../db'
+import { pageRepo, relationshipRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, findPath, type GraphNode, type LorePage, type Relationship, type RelationshipType } from '../db'
 import { useGraphPrefs } from '../useGraphPrefs'
 import { useWikiLinkNavigation } from '../useWikiLinkNavigation'
 import GraphView from '../components/GraphView'
@@ -18,13 +18,20 @@ import { tagCounts, orderTagChips } from '../tags'
 const GraphView3D = lazy(() => import('../components/GraphView3D'))
 
 const NO_PAGES: LorePage[] = []
+const NO_RELATIONSHIPS: Relationship[] = []
+const NO_REL_TYPES: RelationshipType[] = []
 const EMPTY_ISLAND_COLORS = new Map<string, string>()
 const TAG_CHIP_LIMIT = 12
 
 export default function GraphRoute() {
   const pages = useLiveQuery(() => pageRepo.list(), []) ?? NO_PAGES
+  const relationships = useLiveQuery(() => relationshipRepo.listAll(), []) ?? NO_RELATIONSHIPS
+  const relTypes = useLiveQuery(() => relationshipRepo.listTypes(), []) ?? NO_REL_TYPES
 
-  const full = useMemo(() => buildGraphData(pages), [pages])
+  const full = useMemo(
+    () => buildGraphData(pages, relationships, relTypes),
+    [pages, relationships, relTypes],
+  )
 
   const wiki = useWikiLinkNavigation()
   const {
