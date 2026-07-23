@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildScene, sceneToSvg, svgBlob, EXPORT_BG, GHOST_COLOR, LABEL_COLOR } from './graphExport'
-import { categoryColor, type GraphData, type GraphNode } from './db'
+import { categoryColor, type GraphNode } from './db'
+import { linkStyle, withAlpha, type DrawnGraphData, type DrawnLink } from './graphColor'
 import { NO_TAG_FILTER } from './tagFilter'
 
 // Nodes as the running sim leaves them: plain GraphNode + injected x/y.
@@ -11,11 +12,18 @@ function pos(n: Partial<GraphNode> & { id: string }, x: number, y: number) {
   } as GraphNode & { x: number; y: number }
 }
 
+/** A drawn link as GraphRoute's filter memo produces it: the plain link plus
+ *  the presentation linkStyle computed for it. */
+function drawn(link: Partial<DrawnLink> & { source: string; target: string }): DrawnLink {
+  const base = { mutual: false, wiki: true, relations: [], ...link }
+  return { ...base, ...linkStyle(base, new Set())! }
+}
+
 const OPTS = { colorBy: 'type' as const, tagFilter: NO_TAG_FILTER, islandColors: new Map<string, string>() }
 
 describe('buildScene', () => {
   it('returns null when no node has coordinates', () => {
-    const data: GraphData = {
+    const data: DrawnGraphData = {
       nodes: [{ id: 'a', title: 'A', category: 'Character', tags: [], status: 'Draft', degree: 0 }],
       links: [],
     }
@@ -23,7 +31,7 @@ describe('buildScene', () => {
   })
 
   it('computes a padded bounding box enclosing all positioned nodes', () => {
-    const data = { nodes: [pos({ id: 'a' }, 0, 0), pos({ id: 'b' }, 100, 50)], links: [] } as unknown as GraphData
+    const data = { nodes: [pos({ id: 'a' }, 0, 0), pos({ id: 'b' }, 100, 50)], links: [] } as unknown as DrawnGraphData
     const scene = buildScene(data, OPTS)!
     expect(scene).not.toBeNull()
     // Box starts left/above the min node and extends right/below the max node.
@@ -35,7 +43,7 @@ describe('buildScene', () => {
   })
 
   it('gives every node a label and a type-coloured fill', () => {
-    const data = { nodes: [pos({ id: 'a', title: 'Alice', category: 'Character' }, 0, 0)], links: [] } as unknown as GraphData
+    const data = { nodes: [pos({ id: 'a', title: 'Alice', category: 'Character' }, 0, 0)], links: [] } as unknown as DrawnGraphData
     const scene = buildScene(data, OPTS)!
     expect(scene.nodes).toHaveLength(1)
     expect(scene.nodes[0].title).toBe('Alice')
@@ -45,7 +53,7 @@ describe('buildScene', () => {
   })
 
   it('renders ghost nodes as stroke-not-fill with the muted label colour', () => {
-    const data = { nodes: [pos({ id: 'ghost:x', title: 'X', ghost: true, status: '' }, 0, 0)], links: [] } as unknown as GraphData
+    const data = { nodes: [pos({ id: 'ghost:x', title: 'X', ghost: true, status: '' }, 0, 0)], links: [] } as unknown as DrawnGraphData
     const scene = buildScene(data, OPTS)!
     expect(scene.nodes[0].fill).toBeNull()
     expect(scene.nodes[0].ghost).toBe(true)
@@ -56,10 +64,10 @@ describe('buildScene', () => {
     const data = {
       nodes: [pos({ id: 'a', degree: 1 }, 0, 0), pos({ id: 'b', degree: 1 }, 10, 0), pos({ id: 'c', degree: 1 }, 20, 0)],
       links: [
-        { source: 'a', target: 'b', mutual: true },
-        { source: 'b', target: 'c', mutual: false },
+        drawn({ source: 'a', target: 'b', mutual: true }),
+        drawn({ source: 'b', target: 'c', mutual: false }),
       ],
-    } as unknown as GraphData
+    } as unknown as DrawnGraphData
     const scene = buildScene(data, OPTS)!
     const mutual = scene.links[0]
     const oneWay = scene.links[1]
@@ -69,20 +77,39 @@ describe('buildScene', () => {
     expect(mutual.x2).toBe(10)
   })
 
+  it('draws a relationship edge in its type colour, not the wiki styling', () => {
+    const data = {
+      nodes: [pos({ id: 'a', degree: 1 }, 0, 0), pos({ id: 'b', degree: 1 }, 10, 0)],
+      links: [
+        drawn({
+          source: 'a', target: 'b', wiki: false,
+          relations: [{
+            typeId: 'parent-of', group: 'kin', color: '#e0a458',
+            label: 'Parent of', inverseLabel: 'Child of',
+            directed: true, reversed: false, order: 0,
+          }],
+        }),
+      ],
+    } as unknown as DrawnGraphData
+    const scene = buildScene(data, OPTS)!
+    expect(scene.links[0].color).toBe(withAlpha('#e0a458', 0.75))
+    expect(scene.links[0].width).toBe(2.5)
+  })
+
   it('skips un-positioned nodes and drops links that touch them', () => {
     const data = {
       nodes: [pos({ id: 'a' }, 0, 0), { id: 'b', title: 'B', category: 'Character', tags: [], status: 'Draft', degree: 0 }],
-      links: [{ source: 'a', target: 'b', mutual: false }],
-    } as unknown as GraphData
+      links: [drawn({ source: 'a', target: 'b', mutual: false })],
+    } as unknown as DrawnGraphData
     const scene = buildScene(data, OPTS)!
     expect(scene.nodes).toHaveLength(1) // 'b' has no x/y → skipped
     expect(scene.links).toHaveLength(0) // link touches skipped 'b' → dropped
   })
 
   it('widens the bbox for a node with a long title vs a short title', () => {
-    const shortData = { nodes: [pos({ id: 'a', title: 'A' }, 0, 0)], links: [] } as unknown as GraphData
+    const shortData = { nodes: [pos({ id: 'a', title: 'A' }, 0, 0)], links: [] } as unknown as DrawnGraphData
     const longTitle = 'X'.repeat(40)
-    const longData = { nodes: [pos({ id: 'a', title: longTitle }, 0, 0)], links: [] } as unknown as GraphData
+    const longData = { nodes: [pos({ id: 'a', title: longTitle }, 0, 0)], links: [] } as unknown as DrawnGraphData
     const shortScene = buildScene(shortData, OPTS)!
     const longScene = buildScene(longData, OPTS)!
     expect(longScene.width).toBeGreaterThan(shortScene.width)
@@ -92,7 +119,7 @@ describe('buildScene', () => {
     const a = pos({ id: 'a' }, 0, 0)
     const b = pos({ id: 'b' }, 30, 40)
     // After the sim runs, react-force-graph swaps ids for node object refs.
-    const data = { nodes: [a, b], links: [{ source: a, target: b, mutual: false }] } as unknown as GraphData
+    const data = { nodes: [a, b], links: [drawn({ source: a as unknown as string, target: b as unknown as string, mutual: false })] } as unknown as DrawnGraphData
     const scene = buildScene(data, OPTS)!
     expect(scene.links).toHaveLength(1)
     expect(scene.links[0].x2).toBe(30)
@@ -106,8 +133,8 @@ function scene1() {
       { title: 'Alice & Bob', category: 'Character', tags: [], status: 'Draft', degree: 1, id: 'a', x: 0, y: 0 },
       { title: 'Ghosttown', category: '', tags: [], status: '', degree: 1, id: 'g', ghost: true, x: 20, y: 0 },
     ],
-    links: [{ source: 'a', target: 'g', mutual: false }],
-  } as unknown as GraphData
+    links: [drawn({ source: 'a', target: 'g', mutual: false })],
+  } as unknown as DrawnGraphData
   return buildScene(data, { colorBy: 'type', tagFilter: NO_TAG_FILTER, islandColors: new Map() })!
 }
 
@@ -159,7 +186,7 @@ describe('graphFilename', () => {
 
 describe('sceneToPng', () => {
   it('resolves to a non-empty image/png Blob', async () => {
-    const data = { nodes: [{ title: 'A', category: 'Character', tags: [], status: 'Draft', degree: 0, id: 'a', x: 0, y: 0 }], links: [] } as unknown as import('./db').GraphData
+    const data = { nodes: [{ title: 'A', category: 'Character', tags: [], status: 'Draft', degree: 0, id: 'a', x: 0, y: 0 }], links: [] } as unknown as DrawnGraphData
     const scene = buildScene(data, { colorBy: 'type', tagFilter: NO_TAG_FILTER, islandColors: new Map() })!
     let blob: Blob
     try {

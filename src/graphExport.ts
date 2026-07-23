@@ -1,7 +1,7 @@
 import { radiusFor } from './graphGeometry'
-import { nodeFill, type ColorBy } from './graphColor'
+import { nodeFill, type ColorBy, type DrawnGraphData, type DrawnLink } from './graphColor'
 import { saveFile } from './platform'
-import type { GraphData, GraphNode, GraphLink } from './db'
+import type { GraphNode } from './db'
 import type { TagFilter } from './tagFilter'
 
 // Solid dark background matching the live graph canvas, so the light labels and
@@ -19,11 +19,6 @@ const PAD = 48
 // be wider than the node itself). Not exact glyph metrics — buildScene stays
 // pure (no canvas/measureText) — just enough to keep long titles from clipping.
 const LABEL_CHAR_W = 7
-
-// Rest-state link styling, mirrored from GraphView.linkColor / linkWidth (the
-// no-focus branch) so an exported image matches the graph at rest.
-const MUTUAL_LINK = { color: 'rgba(150,180,255,0.5)', width: 2.5 }
-const ONEWAY_LINK = { color: 'rgba(160,160,160,0.28)', width: 1 }
 
 export interface SceneNode {
   x: number
@@ -65,13 +60,16 @@ function endId(end: string | Positioned): string {
 }
 
 /**
- * Build a serialisable scene from the *filtered* graph. Nodes are expected to
- * carry x/y from the running force simulation. Un-positioned nodes are skipped
- * (and any link touching them dropped). Returns null when no node has settled
- * yet, so callers can show a "still settling" message instead of a blank image.
+ * Build a serialisable scene from the *filtered* graph, whose links already
+ * carry the presentation linkStyle computed for them — so an exported image
+ * matches the canvas by construction rather than by mirrored constants.
+ * Nodes are expected to carry x/y from the running force simulation.
+ * Un-positioned nodes are skipped (and any link touching them dropped).
+ * Returns null when no node has settled yet, so callers can show a
+ * "still settling" message instead of a blank image.
  */
 export function buildScene(
-  data: GraphData,
+  data: DrawnGraphData,
   opts: { colorBy: ColorBy; tagFilter: TagFilter; islandColors: Map<string, string> },
 ): GraphScene | null {
   const positioned = new Map<string, Positioned>()
@@ -95,12 +93,11 @@ export function buildScene(
   if (sceneNodes.length === 0) return null
 
   const sceneLinks: SceneLink[] = []
-  for (const l of data.links as Array<GraphLink & { source: string | Positioned; target: string | Positioned }>) {
+  for (const l of data.links as Array<DrawnLink & { source: string | Positioned; target: string | Positioned }>) {
     const s = positioned.get(endId(l.source))
     const t = positioned.get(endId(l.target))
     if (!s || !t) continue
-    const style = l.mutual ? MUTUAL_LINK : ONEWAY_LINK
-    sceneLinks.push({ x1: s.x!, y1: s.y!, x2: t.x!, y2: t.y!, color: style.color, width: style.width })
+    sceneLinks.push({ x1: s.x!, y1: s.y!, x2: t.x!, y2: t.y!, color: l.color, width: l.width })
   }
 
   // Bounding box over node centres expanded by each node's radius, then padded.
