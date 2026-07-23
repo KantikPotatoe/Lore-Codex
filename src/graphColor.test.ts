@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { nodeFill, TAG_ACCENT, MUTED, ISLAND_PALETTE, islandColorOf } from './graphColor'
-import { categoryColor, statusColor, type GraphNode } from './db'
+import { nodeFill, linkStyle, withAlpha, TAG_ACCENT, MUTED, ISLAND_PALETTE, islandColorOf } from './graphColor'
+import { categoryColor, statusColor, type GraphNode, type GraphLink, type RelationEdge } from './db'
 import { NO_TAG_FILTER, type TagFilter } from './tagFilter'
 
 function node(overrides: Partial<GraphNode> = {}): GraphNode {
@@ -76,5 +76,122 @@ describe('islandColorOf', () => {
     const sizes = new Array(rank + 1).fill(2) // all clusters (size >= 2)
     const colors = islandColorOf(componentOf, sizes)
     expect(colors.get('z')).toBe(ISLAND_PALETTE[rank % ISLAND_PALETTE.length])
+  })
+})
+
+function relation(overrides: Partial<RelationEdge> = {}): RelationEdge {
+  return {
+    typeId: 'parent-of', group: 'kin', color: '#e0a458',
+    label: 'Parent of', inverseLabel: 'Child of',
+    directed: true, reversed: false, order: 0, ...overrides,
+  }
+}
+
+function graphLink(overrides: Partial<GraphLink> = {}): GraphLink {
+  return { source: 'a', target: 'b', mutual: false, wiki: true, relations: [], ...overrides }
+}
+
+const NONE_HIDDEN = new Set<string>()
+
+describe('withAlpha', () => {
+  it('converts a six-digit hex to rgba', () => {
+    expect(withAlpha('#e0a458', 0.75)).toBe('rgba(224, 164, 88, 0.75)')
+  })
+
+  it('returns non-hex input unchanged, so a hand-edited colour cannot blank an edge', () => {
+    expect(withAlpha('tomato', 0.5)).toBe('tomato')
+  })
+})
+
+describe('linkStyle', () => {
+  it('styles a wiki-only one-way link as today, arrows following the toggle', () => {
+    const s = linkStyle(graphLink(), NONE_HIDDEN)!
+    expect(s.width).toBe(1)
+    expect(s.arrow).toBe('toggle')
+    expect(s.labels).toBe('')
+  })
+
+  it('styles a mutual wiki link thicker and bluer than a one-way one', () => {
+    const mutual = linkStyle(graphLink({ mutual: true }), NONE_HIDDEN)!
+    const oneWay = linkStyle(graphLink(), NONE_HIDDEN)!
+    expect(mutual.width).toBeGreaterThan(oneWay.width)
+    expect(mutual.color).not.toBe(oneWay.color)
+  })
+
+  it('takes the primary relation colour, at full strength when lit', () => {
+    const s = linkStyle(graphLink({ relations: [relation()] }), NONE_HIDDEN)!
+    expect(s.color).toBe(withAlpha('#e0a458', 0.75))
+    expect(s.activeColor).toBe('#e0a458')
+    expect(s.width).toBe(2.5)
+  })
+
+  it('always arrows an asymmetric relation and never a symmetric one', () => {
+    expect(linkStyle(graphLink({ relations: [relation()] }), NONE_HIDDEN)!.arrow).toBe('always')
+    expect(
+      linkStyle(graphLink({ relations: [relation({ directed: false })] }), NONE_HIDDEN)!.arrow,
+    ).toBe('never')
+  })
+
+  it('joins every visible label for the hover tooltip', () => {
+    const link = graphLink({
+      relations: [relation(), relation({ typeId: 'ally-of', label: 'Ally of', inverseLabel: 'Ally of', order: 3 })],
+    })
+    expect(linkStyle(link, NONE_HIDDEN)!.labels).toBe('Parent of · Ally of')
+  })
+
+  it('falls back to wiki styling when every relation is hidden', () => {
+    const link = graphLink({ mutual: true, relations: [relation()] })
+    const s = linkStyle(link, new Set(['parent-of']))!
+    expect(s.color).toBe(linkStyle(graphLink({ mutual: true }), NONE_HIDDEN)!.color)
+    expect(s.arrow).toBe('toggle')
+    expect(s.labels).toBe('')
+  })
+
+  it('drops the edge when every relation is hidden and no wiki link is underneath', () => {
+    const link = graphLink({ wiki: false, relations: [relation()] })
+    expect(linkStyle(link, new Set(['parent-of']))).toBeNull()
+  })
+
+  it('promotes the next visible relation, swapping the edge so the arrow reads forward', () => {
+    // parent-of orients the edge a→b; ally-of is stored the other way. Hiding
+    // parent-of promotes ally-of, whose row runs b→a.
+    const link = graphLink({
+      relations: [
+        relation(),
+        relation({ typeId: 'ally-of', label: 'Ally of', inverseLabel: 'Allied with', order: 3, reversed: true }),
+      ],
+    })
+    const s = linkStyle(link, new Set(['parent-of']))!
+    expect(s.source).toBe('b')
+    expect(s.target).toBe('a')
+    expect(s.labels).toBe('Allied with')
+  })
+
+  it('flips every label on the edge when the orientation swaps, not just the primary', () => {
+    const link = graphLink({
+      relations: [
+        relation({ typeId: 'ally-of', label: 'Ally of', inverseLabel: 'Allied with', order: 3, reversed: true }),
+        relation({ typeId: 'rival-of', label: 'Rival of', inverseLabel: 'Rivalled by', order: 4 }),
+      ],
+    })
+    expect(linkStyle(link, NONE_HIDDEN)!.labels).toBe('Allied with · Rivalled by')
+  })
+
+  it('HTML-escapes relationship-type labels, since `labels` reaches an innerHTML sink', () => {
+    // Relationship types are free text, editable in the admin UI and imported
+    // from backup files verbatim (importAll bulkAdds relationshipTypes
+    // unsanitized). GraphView feeds `labels` to react-force-graph's
+    // `linkLabel`, which float-tooltip renders via d3 `.html()`.
+    const link = graphLink({
+      relations: [relation({ label: '<img src=x onerror=alert(1)>', inverseLabel: 'Child of' })],
+    })
+    expect(linkStyle(link, NONE_HIDDEN)!.labels).toBe('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('escapes & before < and >, so the escaping cannot double-encode itself', () => {
+    const link = graphLink({
+      relations: [relation({ label: 'Foo & <bar>', inverseLabel: 'x' })],
+    })
+    expect(linkStyle(link, NONE_HIDDEN)!.labels).toBe('Foo &amp; &lt;bar&gt;')
   })
 })

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { pageRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, findPath, type GraphNode, type LorePage } from '../db'
+import { pageRepo, relationshipRepo, buildGraphData, categoryColor, statusColor, STATUSES, nodesWithinHops, connectedComponents, findPath, type GraphNode, type LorePage, type Relationship, type RelationshipType, type RelationshipGroup } from '../db'
 import { useGraphPrefs } from '../useGraphPrefs'
 import { useWikiLinkNavigation } from '../useWikiLinkNavigation'
 import GraphView from '../components/GraphView'
@@ -8,7 +8,7 @@ import GraphPathControls from '../components/GraphPathControls'
 import EmptyState from '../components/EmptyState'
 import HubsOrphansPanel from '../components/HubsOrphansPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { islandColorOf, type ColorBy } from '../graphColor'
+import { islandColorOf, linkStyle, type ColorBy, type DrawnLink, type DrawnGraphData } from '../graphColor'
 import { getLore, currentLoreId } from '../lores'
 import { buildScene, sceneToSvg, svgBlob, sceneToPng, downloadBlob, graphFilename } from '../graphExport'
 import { matchesTags, NO_TAG_FILTER, type TagFilter } from '../tagFilter'
@@ -18,13 +18,30 @@ import { tagCounts, orderTagChips } from '../tags'
 const GraphView3D = lazy(() => import('../components/GraphView3D'))
 
 const NO_PAGES: LorePage[] = []
+const NO_RELATIONSHIPS: Relationship[] = []
+const NO_REL_TYPES: RelationshipType[] = []
 const EMPTY_ISLAND_COLORS = new Map<string, string>()
 const TAG_CHIP_LIMIT = 12
 
+// Declaration order of RelationshipGroup, so the chip rows never reshuffle.
+const GROUP_ORDER: RelationshipGroup[] = ['kin', 'faction', 'org', 'social', 'other']
+const GROUP_LABELS: Record<RelationshipGroup, string> = {
+  kin: 'Kinship',
+  faction: 'Faction',
+  org: 'Organisation',
+  social: 'Social',
+  other: 'Other',
+}
+
 export default function GraphRoute() {
   const pages = useLiveQuery(() => pageRepo.list(), []) ?? NO_PAGES
+  const relationships = useLiveQuery(() => relationshipRepo.listAll(), []) ?? NO_RELATIONSHIPS
+  const relTypes = useLiveQuery(() => relationshipRepo.listTypes(), []) ?? NO_REL_TYPES
 
-  const full = useMemo(() => buildGraphData(pages), [pages])
+  const full = useMemo(
+    () => buildGraphData(pages, relationships, relTypes),
+    [pages, relationships, relTypes],
+  )
 
   const wiki = useWikiLinkNavigation()
   const {
@@ -36,6 +53,7 @@ export default function GraphRoute() {
     panelOpen, setPanelOpen,
     tags, toggleTag, tagMode, setTagMode,
     colorBy, setColorBy,
+    hiddenRelTypes, toggleRelType, toggleRelGroup,
     minDegree, setMinDegree,
     depth, setDepth,
     cam, setCam,
@@ -96,12 +114,30 @@ export default function GraphRoute() {
     [counts, selectedTags, showAllTags],
   )
 
+  // Only types actually used by a relationship get a chip: a world that has
+  // never used the feature shows no new controls in an already-dense toolbar,
+  // and an unused custom type is not a filter anyone needs.
+  const relGroups = useMemo(() => {
+    const used = new Set(relationships.map((r) => r.typeId))
+    const byGroup = new Map<RelationshipGroup, RelationshipType[]>()
+    for (const t of relTypes) {
+      if (!used.has(t.id)) continue
+      const list = byGroup.get(t.group)
+      if (list) list.push(t)
+      else byGroup.set(t.group, [t])
+    }
+    return GROUP_ORDER.flatMap((group) => {
+      const types = byGroup.get(group)
+      return types ? [{ group, types }] : []
+    })
+  }, [relationships, relTypes])
+
   const tagFilter = useMemo<TagFilter>(
     () => (selectedTags.size > 0 ? { tags: [...selectedTags], mode: tagMode } : NO_TAG_FILTER),
     [selectedTags, tagMode],
   )
 
-  const filtered = useMemo(() => {
+  const filtered = useMemo<DrawnGraphData>(() => {
     const hopSet = depthFocus ? nodesWithinHops(full.links, depthFocus, depth) : null
     const nodes = full.nodes.filter(
       (n) =>
@@ -113,12 +149,18 @@ export default function GraphRoute() {
         (hopSet == null || hopSet.has(n.id)),
     )
     const visible = new Set(nodes.map((n) => n.id))
-    const links = full.links.filter((l) => visible.has(l.source) && visible.has(l.target))
-    return {
-      nodes: nodes.map((n) => ({ ...n })),
-      links: links.map((l) => ({ ...l })),
-    }
-  }, [full, hidden, hiddenStatuses, tagFilter, showGhosts, minDegree, depth, depthFocus, colorBy])
+    // Node filter first, then endpoint survival, then styling — which also
+    // decides whether the edge is drawn at all: a link whose every relationship
+    // type is hidden and which has no wiki link underneath is dropped here.
+    // linkStyle may swap an edge's ends; edgeKey is order-independent, so the
+    // path highlight still matches these against full.links.
+    const links = full.links.flatMap<DrawnLink>((l) => {
+      if (!visible.has(l.source) || !visible.has(l.target)) return []
+      const style = linkStyle(l, hiddenRelTypes)
+      return style ? [{ ...l, ...style }] : []
+    })
+    return { nodes: nodes.map((n) => ({ ...n })), links }
+  }, [full, hidden, hiddenStatuses, tagFilter, showGhosts, minDegree, depth, depthFocus, colorBy, hiddenRelTypes])
 
   // A page can be deleted while its id still sits in an endpoint; drop it by
   // derivation rather than by writing state from an effect.
@@ -299,6 +341,40 @@ export default function GraphRoute() {
                 {tagMode === 'all' ? '⋂ Match all' : '⋃ Match any'}
               </button>
             )}
+          </div>
+        )}
+
+        {relGroups.length > 0 && (
+          <div className="graph-rel-chips">
+            {relGroups.map(({ group, types }) => {
+              const ids = types.map((t) => t.id)
+              const allHidden = ids.every((id) => hiddenRelTypes.has(id))
+              return (
+                <div className="graph-rel-group" key={group}>
+                  <button
+                    className={`graph-group-btn${allHidden ? ' off' : ''}`}
+                    title={`Show or hide every ${GROUP_LABELS[group].toLowerCase()} relationship`}
+                    onClick={() => toggleRelGroup(ids)}
+                  >
+                    {GROUP_LABELS[group]}
+                  </button>
+                  {types.map((t) => (
+                    <button
+                      key={t.id}
+                      className={`graph-chip${hiddenRelTypes.has(t.id) ? ' off' : ''}`}
+                      style={{
+                        borderColor: t.color,
+                        color: hiddenRelTypes.has(t.id) ? undefined : t.color,
+                      }}
+                      onClick={() => toggleRelType(t.id)}
+                    >
+                      <span className="dot" style={{ background: t.color }} />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )
+            })}
           </div>
         )}
 

@@ -39,6 +39,9 @@ const EXPECTED_FUNCTIONS = [
   'saveSnapshot', 'getSnapshots', 'deleteSnapshot',
   // manuscript.ts
   'listScenesForBook',
+  // relationships.ts
+  'addRelationship', 'updateRelationshipNote', 'removeRelationship', 'getRelationsFor',
+  'getAllRelationships',
 ] as const
 
 describe('db barrel', () => {

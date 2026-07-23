@@ -5,8 +5,8 @@ import ForceGraph2D, {
   type NodeObject,
   type LinkObject,
 } from 'react-force-graph-2d'
-import { type GraphData, type GraphNode, type GraphLink, edgeKey } from '../db'
-import { nodeFill, PATH_ACCENT, type ColorBy } from '../graphColor'
+import { type GraphNode, edgeKey } from '../db'
+import { nodeFill, PATH_ACCENT, type ColorBy, type DrawnLink, type DrawnGraphData } from '../graphColor'
 import { radiusFor } from '../graphGeometry'
 import type { GraphCam } from '../useGraphPrefs'
 import type { TagFilter } from '../tagFilter'
@@ -16,7 +16,7 @@ import GraphMinimap from './GraphMinimap'
 // swaps link source/target from an id string to the resolved node object), so
 // the canvas callbacks see these richer shapes.
 type GNode = NodeObject<GraphNode>
-type GLink = LinkObject<GraphNode, GraphLink>
+type GLink = LinkObject<GraphNode, DrawnLink>
 
 // A link end is an id string before the simulation runs and the resolved node
 // object after, so accept either shape.
@@ -51,7 +51,7 @@ export default function GraphView({
   initialCam,
   onCamChange,
 }: {
-  data: GraphData
+  data: DrawnGraphData
   showArrows: boolean
   colorBy: ColorBy
   tagFilter: TagFilter
@@ -239,33 +239,33 @@ export default function GraphView({
     fgRef.current.zoomToFit(450, 60, (n: GNode) => ids.has(String(n.id)))
   }, [pathKey])
 
+  // Rest and lit colours are precomputed by linkStyle in GraphRoute's filter
+  // memo, so this only layers the render-time states on top: the path
+  // highlight, and the dimming of everything outside the focus neighbourhood.
   const linkColor = useCallback(
     (link: GLink) => {
       const onPath = pathEdges?.has(edgeKey(endId(link.source), endId(link.target)))
       if (pathEdges) return onPath ? PATH_ACCENT : 'rgba(160,160,160,0.08)'
-      // Mutual (A↔B) links read as the stronger ties: brighter and bluer at rest
-      // than the greyer one-way links.
-      if (neighbourIds == null) return link.mutual ? 'rgba(150,180,255,0.5)' : 'rgba(160,160,160,0.28)'
+      if (neighbourIds == null) return link.color
       const active = neighbourIds.has(endId(link.source)) && neighbourIds.has(endId(link.target))
-      if (!active) return 'rgba(160,160,160,0.08)'
-      return link.mutual ? 'rgba(190,210,255,0.95)' : 'rgba(170,185,225,0.7)'
+      return active ? link.activeColor : 'rgba(160,160,160,0.08)'
     },
     [pathEdges, neighbourIds],
   )
 
-  // Mutual links also draw thicker, so reciprocity reads even without colour;
-  // a path hop draws thicker still.
+  // A path hop draws thicker than anything else; otherwise the width comes with
+  // the link.
   const linkWidth = useCallback(
     (link: GLink) => {
       if (pathEdges?.has(edgeKey(endId(link.source), endId(link.target)))) return 4
-      return link.mutual ? 2.5 : 1
+      return link.width
     },
     [pathEdges],
   )
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <ForceGraph2D<GraphNode, GraphLink>
+      <ForceGraph2D<GraphNode, DrawnLink>
         ref={fgRef}
         width={size.width}
         height={size.height}
@@ -281,7 +281,9 @@ export default function GraphView({
       linkColor={linkColor}
       linkWidth={linkWidth}
       linkDirectionalArrowColor={linkColor}
-      linkDirectionalArrowLength={showArrows ? 4 : 0}
+      linkLabel={(link: GLink) => link.labels}
+      linkDirectionalArrowLength={(link: GLink) =>
+        link.arrow === 'always' || (link.arrow === 'toggle' && showArrows) ? 4 : 0}
       linkDirectionalArrowRelPos={1}
       onNodeHover={(node) => setHoverId(node ? String(node.id) : null)}
       onNodeClick={(node: GNode) => {

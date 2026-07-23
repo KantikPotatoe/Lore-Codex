@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildGraphData, nodesWithinHops, connectedComponents, shortestPath, findPath, edgeKey, type GraphLink, type LorePage } from '../db'
+import { buildGraphData, nodesWithinHops, connectedComponents, shortestPath, findPath, edgeKey, type GraphLink, type LorePage, type Relationship, type RelationshipType } from '../db'
 import type { Infobox, InfoboxField } from './types'
 
 // buildGraphData is a pure function over a page array, so these tests pass pages
@@ -33,9 +33,19 @@ function link(title: string): string {
   return `<a data-wikilink data-title="${title}">${title}</a>`
 }
 
+/** A relationship type; `inverse` equal to `label` makes it symmetric. */
+function relType(id: string, label: string, inverse: string, opts: Partial<RelationshipType> = {}): RelationshipType {
+  return { id, label, inverse, color: '#e0a458', group: 'kin', order: 0, builtin: false, ...opts }
+}
+function rel(id: string, fromId: string, toId: string, typeId: string): Relationship {
+  return { id, fromId, toId, typeId, note: '', createdAt: 0 }
+}
+const PARENT = relType('parent-of', 'Parent of', 'Child of', { order: 0 })
+const ALLY = relType('ally-of', 'Ally of', 'Ally of', { color: '#7eb09b', group: 'faction', order: 3 })
+
 describe('buildGraphData', () => {
   it('makes a node per page, including link-less pages (lone dots)', () => {
-    const data = buildGraphData([page('a', 'A'), page('b', 'B')])
+    const data = buildGraphData([page('a', 'A'), page('b', 'B')], [], [])
     expect(data.nodes.map((n) => n.id).sort()).toEqual(['a', 'b'])
     expect(data.links).toEqual([])
     expect(data.nodes.every((n) => n.degree === 0)).toBe(true)
@@ -45,23 +55,23 @@ describe('buildGraphData', () => {
     const data = buildGraphData([
       page('a', 'A', { content: link('B') }),
       page('b', 'B'),
-    ])
-    expect(data.links).toEqual([{ source: 'a', target: 'b', mutual: false }])
+    ], [], [])
+    expect(data.links).toEqual([{ source: 'a', target: 'b', mutual: false, wiki: true, relations: [] }])
     expect(data.nodes.find((n) => n.id === 'a')!.degree).toBe(1)
     expect(data.nodes.find((n) => n.id === 'b')!.degree).toBe(1)
   })
 
   it('creates a ghost node (not a real edge) for a link to a missing target', () => {
-    const data = buildGraphData([page('a', 'A', { content: link('Ghost') })])
+    const data = buildGraphData([page('a', 'A', { content: link('Ghost') })], [], [])
     // The real node has no real neighbours.
     expect(data.nodes.find((n) => n.id === 'a')!.degree).toBe(0)
     // A ghost node and a ghost link are emitted instead of being silently dropped.
     expect(data.nodes.some((n) => n.ghost)).toBe(true)
-    expect(data.links).toEqual([{ source: 'a', target: 'ghost:ghost', mutual: false }])
+    expect(data.links).toEqual([{ source: 'a', target: 'ghost:ghost', mutual: false, wiki: true, relations: [] }])
   })
 
   it('drops self-links', () => {
-    const data = buildGraphData([page('a', 'A', { content: link('A') })])
+    const data = buildGraphData([page('a', 'A', { content: link('A') })], [], [])
     expect(data.links).toEqual([])
     expect(data.nodes[0].degree).toBe(0)
   })
@@ -70,7 +80,7 @@ describe('buildGraphData', () => {
     const data = buildGraphData([
       page('a', 'A', { content: link('B') }),
       page('b', 'B', { content: link('A') }),
-    ])
+    ], [], [])
     expect(data.links).toHaveLength(1)
     expect(data.links[0].mutual).toBe(true)
     expect(data.nodes.find((n) => n.id === 'a')!.degree).toBe(1)
@@ -81,7 +91,7 @@ describe('buildGraphData', () => {
     const data = buildGraphData([
       page('a', 'A', { content: link('B') }),
       page('b', 'B'),
-    ])
+    ], [], [])
     expect(data.links[0].mutual).toBe(false)
   })
 
@@ -90,7 +100,7 @@ describe('buildGraphData', () => {
       page('a', 'A', { status: 'Complete' }),
       page('b', 'B', { status: 'WIP' }), // retired status → default
       page('c', 'C'), // no status → default
-    ])
+    ], [], [])
     expect(data.nodes.find((n) => n.id === 'a')!.status).toBe('Complete')
     expect(data.nodes.find((n) => n.id === 'b')!.status).toBe('Draft')
     expect(data.nodes.find((n) => n.id === 'c')!.status).toBe('Draft')
@@ -101,7 +111,7 @@ describe('buildGraphData', () => {
       page('hub', 'Hub', { content: link('A') + link('B') + link('A') }),
       page('a', 'A'),
       page('b', 'B'),
-    ])
+    ], [], [])
     expect(data.nodes.find((n) => n.id === 'hub')!.degree).toBe(2)
     // The duplicate A link does not produce a second edge.
     expect(data.links).toHaveLength(2)
@@ -111,16 +121,16 @@ describe('buildGraphData', () => {
     const data = buildGraphData([
       page('a', 'A', { content: link('gOnDoR') }),
       page('g', 'Gondor'),
-    ])
-    expect(data.links).toEqual([{ source: 'a', target: 'g', mutual: false }])
+    ], [], [])
+    expect(data.links).toEqual([{ source: 'a', target: 'g', mutual: false, wiki: true, relations: [] }])
   })
 
   it('reads links from infobox ref fields too', () => {
     const data = buildGraphData([
       page('a', 'A', { infobox: infobox([field('[[B]]')]) }),
       page('b', 'B'),
-    ])
-    expect(data.links).toEqual([{ source: 'a', target: 'b', mutual: false }])
+    ], [], [])
+    expect(data.links).toEqual([{ source: 'a', target: 'b', mutual: false, wiki: true, relations: [] }])
   })
 })
 
@@ -144,13 +154,13 @@ function ghostPage(partial: Partial<LorePage> & { id: string; title: string }): 
 describe('buildGraphData ghost nodes', () => {
   it('turns a link to a missing page into one ghost node', () => {
     const pages = [ghostPage({ id: 'a', title: 'Sam', content: `<p>${link('Mordor')}</p>` })]
-    const { nodes, links } = buildGraphData(pages)
+    const { nodes, links } = buildGraphData(pages, [], [])
 
     const ghost = nodes.find((n) => n.ghost)
     expect(ghost).toBeDefined()
     expect(ghost!.id).toBe('ghost:mordor')
     expect(ghost!.degree).toBe(1)
-    expect(links).toContainEqual({ source: 'a', target: 'ghost:mordor', mutual: false })
+    expect(links).toContainEqual({ source: 'a', target: 'ghost:mordor', mutual: false, wiki: true, relations: [] })
   })
 
   it('collapses two linkers to the same missing title into one ghost (degree 2)', () => {
@@ -158,14 +168,14 @@ describe('buildGraphData ghost nodes', () => {
       ghostPage({ id: 'a', title: 'Sam', content: `<p>${link('Mordor')}</p>` }),
       ghostPage({ id: 'b', title: 'Frodo', content: `<p>${link('Mordor')}</p>` }),
     ]
-    const ghosts = buildGraphData(pages).nodes.filter((n) => n.ghost)
+    const ghosts = buildGraphData(pages, [], []).nodes.filter((n) => n.ghost)
     expect(ghosts).toHaveLength(1)
     expect(ghosts[0].degree).toBe(2)
   })
 
   it('prettifies the lowercased link text to a title-cased label', () => {
     const pages = [ghostPage({ id: 'a', title: 'Sam', content: `<p>${link('the shire')}</p>` })]
-    const ghost = buildGraphData(pages).nodes.find((n) => n.ghost)!
+    const ghost = buildGraphData(pages, [], []).nodes.find((n) => n.ghost)!
     expect(ghost.title).toBe('The Shire')
   })
 
@@ -174,7 +184,7 @@ describe('buildGraphData ghost nodes', () => {
       ghostPage({ id: 'a', title: 'Sam', content: `<p>${link('Frodo')}</p>` }),
       ghostPage({ id: 'b', title: 'Frodo' }),
     ]
-    expect(buildGraphData(pages).nodes.some((n) => n.ghost)).toBe(false)
+    expect(buildGraphData(pages, [], []).nodes.some((n) => n.ghost)).toBe(false)
   })
 
   it('leaves real-node degree unaffected by outgoing ghost links', () => {
@@ -182,7 +192,7 @@ describe('buildGraphData ghost nodes', () => {
       ghostPage({ id: 'a', title: 'Sam', content: `<p>${link('Frodo')} ${link('Mordor')}</p>` }),
       ghostPage({ id: 'b', title: 'Frodo' }),
     ]
-    const sam = buildGraphData(pages).nodes.find((n) => n.id === 'a')!
+    const sam = buildGraphData(pages, [], []).nodes.find((n) => n.id === 'a')!
     expect(sam.degree).toBe(1) // only the real Frodo edge counts
   })
 })
@@ -426,5 +436,118 @@ describe('findPath', () => {
       { source: { id: 'b' }, target: { id: 'c' } },
     ]
     expect(findPath(drawn, full, 'a', 'c')).toEqual({ kind: 'path', nodes: ['a', 'b', 'c'] })
+  })
+})
+
+describe('buildGraphData relationship edges', () => {
+  const A = page('a', 'A')
+  const B = page('b', 'B')
+
+  it('creates an edge for a relationship with no wiki link between the pages', () => {
+    const data = buildGraphData([A, B], [rel('r1', 'a', 'b', 'parent-of')], [PARENT])
+    expect(data.links).toHaveLength(1)
+    expect(data.links[0].wiki).toBe(false)
+    expect(data.links[0].source).toBe('a')
+    expect(data.links[0].target).toBe('b')
+    expect(data.links[0].relations.map((r) => r.typeId)).toEqual(['parent-of'])
+  })
+
+  it('raises degree, so a relationship-only page is not isolated', () => {
+    const data = buildGraphData([A, B], [rel('r1', 'a', 'b', 'parent-of')], [PARENT])
+    expect(data.nodes.find((n) => n.id === 'a')!.degree).toBe(1)
+    expect(data.nodes.find((n) => n.id === 'b')!.degree).toBe(1)
+  })
+
+  it('collapses a relationship and a wiki link on the same pair into one edge', () => {
+    const data = buildGraphData(
+      [page('a', 'A', { content: link('B') }), B],
+      [rel('r1', 'a', 'b', 'parent-of')],
+      [PARENT],
+    )
+    expect(data.links).toHaveLength(1)
+    expect(data.links[0].wiki).toBe(true)
+    expect(data.links[0].relations).toHaveLength(1)
+  })
+
+  it('orders relations by type order', () => {
+    const data = buildGraphData(
+      [A, B],
+      [rel('r1', 'a', 'b', 'ally-of'), rel('r2', 'a', 'b', 'parent-of')],
+      [ALLY, PARENT],
+    )
+    expect(data.links[0].relations.map((r) => r.typeId)).toEqual(['parent-of', 'ally-of'])
+  })
+
+  it('breaks an order tie by type id, so the colour never reshuffles', () => {
+    // Same order; only the id can decide. Rows are supplied in the reverse of
+    // the expected result, so a stable-sort no-op would fail this.
+    const zeta = relType('zeta', 'Zeta of', 'Zeta by', { order: 7 })
+    const alpha = relType('alpha', 'Alpha of', 'Alpha by', { order: 7 })
+    const data = buildGraphData(
+      [A, B],
+      [rel('r1', 'a', 'b', 'zeta'), rel('r2', 'a', 'b', 'alpha')],
+      [zeta, alpha],
+    )
+    expect(data.links[0].relations.map((r) => r.typeId)).toEqual(['alpha', 'zeta'])
+  })
+
+  it('orients the edge from the lowest-order row and flags the others reversed', () => {
+    // ally-of is stored b→a, parent-of a→b. parent-of has the lower order, so
+    // the edge runs a→b and the ally row is against that orientation.
+    const data = buildGraphData(
+      [A, B],
+      [rel('r1', 'b', 'a', 'ally-of'), rel('r2', 'a', 'b', 'parent-of')],
+      [ALLY, PARENT],
+    )
+    const edge = data.links[0]
+    expect(edge.source).toBe('a')
+    expect(edge.target).toBe('b')
+    expect(edge.relations.find((r) => r.typeId === 'parent-of')!.reversed).toBe(false)
+    expect(edge.relations.find((r) => r.typeId === 'ally-of')!.reversed).toBe(true)
+  })
+
+  it('stores both readings: label along the edge, inverseLabel against it', () => {
+    const data = buildGraphData([A, B], [rel('r1', 'a', 'b', 'parent-of')], [PARENT])
+    const r = data.links[0].relations[0]
+    expect(r.label).toBe('Parent of')
+    expect(r.inverseLabel).toBe('Child of')
+    expect(r.directed).toBe(true)
+  })
+
+  it('gives a symmetric type the same text both ways and marks it undirected', () => {
+    const data = buildGraphData([A, B], [rel('r1', 'a', 'b', 'ally-of')], [ALLY])
+    const r = data.links[0].relations[0]
+    expect(r.label).toBe('Ally of')
+    expect(r.inverseLabel).toBe('Ally of')
+    expect(r.directed).toBe(false)
+  })
+
+  it('reads a reversed row from the drawn edge, not from storage', () => {
+    // Only row runs b→a, so the edge runs b→a and reads "Parent of" forward.
+    const data = buildGraphData([A, B], [rel('r1', 'b', 'a', 'parent-of')], [PARENT])
+    const edge = data.links[0]
+    expect(edge.source).toBe('b')
+    expect(edge.relations[0].label).toBe('Parent of')
+    expect(edge.relations[0].inverseLabel).toBe('Child of')
+    expect(edge.relations[0].reversed).toBe(false)
+  })
+
+  it('drops unusable rows: self, unknown type, missing endpoint', () => {
+    const data = buildGraphData(
+      [A, B],
+      [
+        rel('r1', 'a', 'a', 'parent-of'),
+        rel('r2', 'a', 'b', 'no-such-type'),
+        rel('r3', 'a', 'gone', 'parent-of'),
+      ],
+      [PARENT],
+    )
+    expect(data.links).toEqual([])
+    expect(data.nodes.every((n) => n.degree === 0)).toBe(true)
+  })
+
+  it('never creates a ghost node from a relationship', () => {
+    const data = buildGraphData([A], [rel('r1', 'a', 'gone', 'parent-of')], [PARENT])
+    expect(data.nodes.some((n) => n.ghost)).toBe(false)
   })
 })
