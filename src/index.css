@@ -1183,6 +1183,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
   z-index: 500; max-width: 420px; padding: 14px 18px; text-align: center;
   background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
   color: var(--ink-faint); font-size: 13px; line-height: 1.5;
+  pointer-events: none;
 }
 .map-body { position: relative; flex: 1; min-height: 0; }
 .map-canvas { position: absolute; inset: 0; background: #0e0c09; }

@@ -363,12 +363,11 @@ export async function exportSnapshot(): Promise<string> {
  *  whitespace or a double-quote (a legitimate base64/percent data URL has neither).
  *  Guards the HTML-export sink, which interpolates these into raw markup. */
 function isCleanImageDataUrl(v: unknown): v is string {
-  return (
-    typeof v === 'string' &&
-    v.startsWith('data:image/') &&
-    !v.startsWith('data:image/svg+xml') &&
-    !/[\s"]/.test(v)
-  )
+  if (typeof v !== 'string' || /[\s"]/.test(v)) return false
+  // MIME essences are case-insensitive, so the guard must be too: `startsWith`
+  // on the raw string let `data:image/SVG+xml` past both clauses and into the DB.
+  const head = v.slice(0, 40).toLowerCase()
+  return head.startsWith('data:image/') && !head.startsWith('data:image/svg+xml')
 }
 
 function sanitizeBackup(data: BackupData): BackupData {
@@ -394,12 +393,13 @@ function sanitizeBackup(data: BackupData): BackupData {
           : {}),
       })),
     events: asArray(data.events).map((e) => ({ ...e, description: sanitizeHtml(e.description) })),
-    // Map images feed L.imageOverlay and the HTML export's raw markup. Upload
-    // used to launder every map through a JPEG re-encode; #246 removed that, so
-    // this is now the only check on the path. Blank rather than drop (the
-    // treatment `images` gets below): pins and regions are keyed by mapId, so
-    // dropping the map row would strand them as unreachable data. A blanked map
-    // keeps its pins and is repaired by re-uploading the image.
+    // Map images feed L.imageOverlay. Upload used to launder every map through
+    // a JPEG re-encode; #246 removed that, so this is now the only check on
+    // the import path; upload is gated by `isImportableType`. Blank rather
+    // than drop (the treatment `images` gets below): pins and regions are
+    // keyed by mapId, so dropping the map row would strand them as
+    // unreachable data. A blanked map keeps its pins and is repaired by
+    // re-uploading the image.
     maps: asArray(data.maps).map((m) => ({
       ...m,
       image: isCleanImageDataUrl(m.image) ? m.image : '',

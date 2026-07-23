@@ -179,4 +179,17 @@ describe('sanitizeBackup — map images', () => {
     await importAll(JSON.stringify({ pages: [], maps: [mapRow(png)] }))
     expect((await db.maps.get('m1'))?.image).toBe(png)
   })
+
+  it('blanks an uppercase-MIME SVG map image (case-insensitive MIME essence)', async () => {
+    // MIME essences are case-insensitive; a naive startsWith check on the raw
+    // string lets `data:image/SVG+xml` past both the image/ and non-svg checks.
+    // base64-encoded and quote/whitespace-free so only the case-sensitivity bug
+    // is under test, not the separate whitespace/quote guard.
+    const svgB64 = btoa('<svg onload="alert(1)"/>')
+    await importAll(JSON.stringify({
+      pages: [],
+      maps: [mapRow(`data:image/SVG+xml;base64,${svgB64}`)],
+    }))
+    expect((await db.maps.get('m1'))?.image).toBe('')
+  })
 })

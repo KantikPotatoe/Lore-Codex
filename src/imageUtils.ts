@@ -122,13 +122,18 @@ async function importOffThread(file: File, maxDim: number): Promise<ImportedImag
   // <img> will render — CSS image-orientation defaults to from-image — so an
   // EXIF-rotated JPEG stored verbatim still lays out correctly.
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  const { width, height } = bitmap
+  const plan = planImageImport(file.type, width, height, maxDim)
+  if (plan.kind !== 'resize') {
+    // Verbatim path: the bitmap was only needed to measure width/height, both
+    // already read above. Close it now — before the FileReader base64-encodes
+    // the file — instead of holding up to 268 MB of decoded RGBA retained for
+    // the duration of an ~80 MB encode it no longer contributes to.
+    bitmap.close()
+    // 'reject' is unreachable — importImage checked the type already.
+    return { dataUrl: await blobToDataUrl(file), width, height, downscaledFrom: null }
+  }
   try {
-    const { width, height } = bitmap
-    const plan = planImageImport(file.type, width, height, maxDim)
-    if (plan.kind !== 'resize') {
-      // 'reject' is unreachable — importImage checked the type already.
-      return { dataUrl: await blobToDataUrl(file), width, height, downscaledFrom: null }
-    }
     const canvas = new OffscreenCanvas(plan.width, plan.height)
     canvas.getContext('2d')!.drawImage(bitmap, 0, 0, plan.width, plan.height)
     const blob = await canvas.convertToBlob({ type: plan.mime, quality: plan.quality })

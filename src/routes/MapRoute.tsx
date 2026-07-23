@@ -11,6 +11,7 @@ import MapPreviewCard from '../components/MapPreviewCard'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { importImage, UnsupportedImageError } from '../imageUtils'
+import { IMPORTABLE_IMAGE_TYPES } from '../imageImport'
 import { useEscapeKey } from '../useEscapeKey'
 
 // Leaflet decodes the full raster, so this caps decode memory (8192² is already
@@ -209,6 +210,7 @@ export default function MapRoute() {
     setShowFind(false)
     setFocusTarget(null)
     setPanelMode('preview')
+    setImportNotice(null)
   }
 
   // Select + centre on a pin/region. Bumping nonce re-pans even if it was already
@@ -370,7 +372,7 @@ export default function MapRoute() {
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept={IMPORTABLE_IMAGE_TYPES.join(',')}
           hidden
           onChange={handleUpload}
         />
@@ -416,7 +418,7 @@ export default function MapRoute() {
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept={IMPORTABLE_IMAGE_TYPES.join(',')}
           hidden
           onChange={handleUpload}
         />
