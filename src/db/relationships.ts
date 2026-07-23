@@ -1,6 +1,6 @@
 import { db, uid, now } from './schema'
 import { isSymmetric, resolveRelation, type ResolvedRelation } from '../relations'
-import type { LorePage } from './types'
+import type { LorePage, Relationship } from './types'
 
 // ---------------------------------------------------------------------------
 // Relationship edges (#175)
@@ -126,4 +126,14 @@ export async function getRelationsFor(pageId: string): Promise<PageRelation[]> {
       a.other.title.toLowerCase().localeCompare(b.other.title.toLowerCase()),
   )
   return out
+}
+
+/** Every relationship row, unresolved and unsorted — the graph's edge source.
+ *
+ *  Deliberately raw, unlike getRelationsFor: the graph resolves each row
+ *  against a *drawn edge's* orientation rather than a viewing page's, so
+ *  per-page resolution here would be thrown away. `buildGraphData` does the
+ *  resolving, through the same resolveRelation() helper. */
+export async function getAllRelationships(): Promise<Relationship[]> {
+  return db.relationships.toArray()
 }

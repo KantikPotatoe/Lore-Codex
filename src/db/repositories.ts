@@ -64,6 +64,7 @@ import {
   updateRelationshipNote,
   removeRelationship,
   getRelationsFor,
+  getAllRelationships,
   type PageRelation,
 } from './relationships'
 import type {
@@ -80,6 +81,7 @@ import type {
   Plotline,
   Beat,
   RelationshipType,
+  Relationship,
 } from './types'
 
 /** A change to a stored record: either a partial patch or a mutator run against
@@ -336,6 +338,8 @@ export interface RelationshipRepository {
   countOfType(id: string): Promise<number>
   seedTypes(): Promise<void>
 
+  /** Every relationship row in the world — the graph's edge source (#137). */
+  listAll(): Promise<Relationship[]>
   /** Every relationship touching a page, from that page's point of view. */
   listFor(pageId: string): Promise<PageRelation[]>
   /** Returns the new row id, or null when refused (self / duplicate / bad type). */
@@ -353,6 +357,7 @@ export const relationshipRepo: RelationshipRepository = {
   countOfType: countRelationshipsOfType,
   seedTypes: seedRelationshipTypes,
 
+  listAll: getAllRelationships,
   listFor: getRelationsFor,
   add: addRelationship,
   updateNote: updateRelationshipNote,
