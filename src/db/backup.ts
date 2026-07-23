@@ -363,12 +363,11 @@ export async function exportSnapshot(): Promise<string> {
  *  whitespace or a double-quote (a legitimate base64/percent data URL has neither).
  *  Guards the HTML-export sink, which interpolates these into raw markup. */
 function isCleanImageDataUrl(v: unknown): v is string {
-  return (
-    typeof v === 'string' &&
-    v.startsWith('data:image/') &&
-    !v.startsWith('data:image/svg+xml') &&
-    !/[\s"]/.test(v)
-  )
+  if (typeof v !== 'string' || /[\s"]/.test(v)) return false
+  // MIME essences are case-insensitive, so the guard must be too: `startsWith`
+  // on the raw string let `data:image/SVG+xml` past both clauses and into the DB.
+  const head = v.slice(0, 40).toLowerCase()
+  return head.startsWith('data:image/') && !head.startsWith('data:image/svg+xml')
 }
 
 function sanitizeBackup(data: BackupData): BackupData {
@@ -394,6 +393,30 @@ function sanitizeBackup(data: BackupData): BackupData {
           : {}),
       })),
     events: asArray(data.events).map((e) => ({ ...e, description: sanitizeHtml(e.description) })),
+    // Map images feed L.imageOverlay. Upload used to launder every map through
+    // a JPEG re-encode; #246 removed that, so this is now the only check on
+    // the import path; upload is gated by `isImportableType`. Blank rather
+    // than drop (the treatment `images` gets below): pins and regions are
+    // keyed by mapId, so dropping the map row would strand them as
+    // unreachable data. A blanked map keeps its pins and is repaired by
+    // re-uploading the image.
+    //
+    // width/height feed Leaflet's CRS.Simple bounds ([[0,0],[height,width]]);
+    // a hand-edited or truncated backup missing them yields [[0,0],[NaN,NaN]],
+    // which throws inside L.latLng and drops the whole /map route into the
+    // ErrorBoundary with no in-app way back. Coerce to a finite positive
+    // placeholder (the map draws at the wrong aspect until re-uploaded, but the
+    // route survives and its pins stay reachable — same spirit as blanking the
+    // image). Rows that aren't objects with a string id can't be a valid pin
+    // target and would abort bulkAdd, so drop them like `pages` does.
+    maps: asArray(data.maps)
+      .filter((m): m is WorldMap => !!m && typeof m === 'object' && typeof (m as WorldMap).id === 'string')
+      .map((m) => ({
+        ...m,
+        image: isCleanImageDataUrl(m.image) ? m.image : '',
+        width: Number.isFinite(m.width) && m.width > 0 ? m.width : 1000,
+        height: Number.isFinite(m.height) && m.height > 0 ? m.height : 1000,
+      })),
     // Scene prose is HTML from the editor; scrub it at the import boundary like page
     // content. synopsis/notes/title are plain text (React-escaped), left untouched.
     scenes: asArray(data.scenes).map((s) => ({ ...s, content: sanitizeHtml(s.content) })),

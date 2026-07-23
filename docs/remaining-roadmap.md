@@ -52,9 +52,18 @@ Sources: `roadmap.md`, `graph-improvement-ideas.md`, `map-roadmap.md`,
 ---
 
 ## Maps
-- 🔴 `blocked` **Map resolution** — quality is capped by browser-storage compression;
-  unblocks at desktop-transition **Phase 3a** (assets stored as real files instead of
-  data-URLs in IndexedDB — see `desktop-transition-investigation.md` §9). _roadmap #13._
+- 🔴 `blocked` **Map resolution** — still capped, but by *storage*, not quality: #246
+  removed the unconditional JPEG re-encode, so a map within 8192px is now stored as
+  its original bytes. What remains is that images are data-URLs in IndexedDB, which
+  `exportAll()` re-serializes into the world mirror on every write. Unblocks at
+  desktop-transition **Phase 3a** (assets as real files, `.lore` as a zip container —
+  see `desktop-transition-investigation.md` §9). _roadmap #13._
+- 🟡 **Map upload formats narrowed to PNG/JPEG/WebP** (#246). The old `image/*` +
+  JPEG-transcode path accepted anything the browser could decode (AVIF, GIF, BMP, TIFF);
+  those now show the "unsupported" dialog. Deliberate — the strict allowlist is what keeps
+  SVG out and lets maps be stored verbatim — but a real regression for AVIF map exports.
+  Re-adding them cheaply means a `transcode` outcome in `planImageImport` (canvas → PNG for
+  decodable non-allowlisted rasters, SVG still rejected), not loosening the allowlist.
 
 > Map phases 1–4 (typed pins, wiki integration, regions, management), pins-inside-regions,
 > and preview-before-edit have all shipped.

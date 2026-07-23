@@ -145,3 +145,78 @@ describe('importAll — XSS sanitization (roadmap #8)', () => {
     expect(stored?.content).toContain('<table')
   })
 })
+
+describe('sanitizeBackup — map images', () => {
+  const mapRow = (image: string) => ({
+    id: 'm1', name: 'Known World', image, width: 100, height: 80, createdAt: 1,
+  })
+
+  it('blanks an SVG map image but keeps the map and its pins', async () => {
+    // Blank, don't drop: pins/regions are keyed by mapId, so dropping the map
+    // row would strand them as unreachable data.
+    await importAll(JSON.stringify({
+      pages: [],
+      maps: [mapRow('data:image/svg+xml,<svg onload="alert(1)"/>')],
+      pins: [{ id: 'pin1', mapId: 'm1', lat: 1, lng: 2, label: 'Keep me', pageId: null }],
+    }))
+    const m = await db.maps.get('m1')
+    expect(m).toBeTruthy()
+    expect(m?.image).toBe('')
+    expect(m?.name).toBe('Known World')
+    expect(await db.pins.get('pin1')).toBeTruthy()
+  })
+
+  it('blanks a non-data-URL and anything that could break out of src="…"', async () => {
+    await importAll(JSON.stringify({ pages: [], maps: [mapRow('https://evil.example/x.png')] }))
+    expect((await db.maps.get('m1'))?.image).toBe('')
+
+    await importAll(JSON.stringify({ pages: [], maps: [mapRow('data:image/png;base64,AA" onerror="alert(1)')] }))
+    expect((await db.maps.get('m1'))?.image).toBe('')
+  })
+
+  it('leaves a clean raster data-URL untouched', async () => {
+    const png = 'data:image/png;base64,iVBORw0KGgo='
+    await importAll(JSON.stringify({ pages: [], maps: [mapRow(png)] }))
+    expect((await db.maps.get('m1'))?.image).toBe(png)
+  })
+
+  it('blanks an uppercase-MIME SVG map image (case-insensitive MIME essence)', async () => {
+    // MIME essences are case-insensitive; a naive startsWith check on the raw
+    // string lets `data:image/SVG+xml` past both the image/ and non-svg checks.
+    // base64-encoded and quote/whitespace-free so only the case-sensitivity bug
+    // is under test, not the separate whitespace/quote guard.
+    const svgB64 = btoa('<svg onload="alert(1)"/>')
+    await importAll(JSON.stringify({
+      pages: [],
+      maps: [mapRow(`data:image/SVG+xml;base64,${svgB64}`)],
+    }))
+    expect((await db.maps.get('m1'))?.image).toBe('')
+  })
+
+  it('coerces a map missing width/height to a finite placeholder and keeps its pins', async () => {
+    // A hand-edited/truncated backup with no dimensions would yield Leaflet
+    // bounds of [[0,0],[NaN,NaN]], crashing the whole /map route. Keep the row
+    // usable (pins are keyed by mapId) rather than dropping or crashing.
+    await importAll(JSON.stringify({
+      pages: [],
+      maps: [{ id: 'm1', name: 'Known World', image: 'data:image/png;base64,iVBORw0KGgo=', createdAt: 1 }],
+      pins: [{ id: 'pin1', mapId: 'm1', lat: 1, lng: 2, label: 'Keep me', pageId: null }],
+    }))
+    const m = await db.maps.get('m1')
+    expect(m).toBeTruthy()
+    expect(Number.isFinite(m?.width)).toBe(true)
+    expect(m!.width).toBeGreaterThan(0)
+    expect(Number.isFinite(m?.height)).toBe(true)
+    expect(m!.height).toBeGreaterThan(0)
+    expect(await db.pins.get('pin1')).toBeTruthy()
+  })
+
+  it('drops a non-object map row so it cannot abort the import transaction', async () => {
+    await importAll(JSON.stringify({
+      pages: [],
+      maps: [null, mapRow('data:image/png;base64,iVBORw0KGgo=')],
+    }))
+    expect(await db.maps.get('m1')).toBeTruthy()
+    expect(await db.maps.count()).toBe(1)
+  })
+})

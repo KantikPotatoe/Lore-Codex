@@ -10,8 +10,25 @@ import MapView, { type PinMarkerStyle, type FocusTarget } from '../components/Ma
 import MapPreviewCard from '../components/MapPreviewCard'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { compressImage } from '../imageUtils'
+import { importImage, UnsupportedImageError } from '../imageUtils'
+import { IMPORTABLE_IMAGE_TYPES } from '../imageImport'
 import { useEscapeKey } from '../useEscapeKey'
+
+// Leaflet decodes the full raster, so this caps decode memory (8192² is already
+// ~268 MB of RGBA), not file size. Anything within it is stored untouched.
+const MAP_MAX_DIM = 8192
+
+// Human-readable size of the decoded bytes behind a base64 data URL, for the
+// import notice. Reads the base64 length (4 chars → 3 bytes, less padding)
+// rather than atob-decoding the whole ~80 MB string just to measure it.
+function dataUrlSize(dataUrl: string): string {
+  const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0
+  const bytes = Math.max(0, Math.floor(b64.length * 3 / 4) - padding)
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 export default function MapRoute() {
   const navigate = useNavigate()
@@ -30,6 +47,11 @@ export default function MapRoute() {
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null)
   const [showFind, setShowFind] = useState(false)
   const [findQuery, setFindQuery] = useState('')
+
+  // Upload feedback: a downscale used to be entirely silent, and an unusable
+  // file used to fail with nothing shown at all.
+  const [importNotice, setImportNotice] = useState<string | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
 
   const [searchParams] = useSearchParams()
   const focusPinId = searchParams.get('pin')
@@ -200,6 +222,7 @@ export default function MapRoute() {
     setShowFind(false)
     setFocusTarget(null)
     setPanelMode('preview')
+    setImportNotice(null)
   }
 
   // Select + centre on a pin/region. Bumping nonce re-pans even if it was already
@@ -273,13 +296,35 @@ export default function MapRoute() {
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (!file) return
-    const dataUrl = await compressImage(file, 8192, 0.92)
-    const { width, height } = await imageSize(dataUrl)
-    const name = file.name.replace(/\.[^.]+$/, '')
-    const id = await mapRepo.addMap(name, dataUrl, width, height)
-    setActiveId(id)
+    // Reset the input up front, not on the success path: a throw used to leave
+    // the old value in place, so re-picking the same file fired no change event.
     e.target.value = ''
+    if (!file) return
+    setImportNotice(null)
+    try {
+      const { dataUrl, width, height, downscaledFrom } = await importImage(file, MAP_MAX_DIM)
+      const name = file.name.replace(/\.[^.]+$/, '')
+      const id = await mapRepo.addMap(name, dataUrl, width, height)
+      setActiveId(id)
+      // Always report — full-quality storage is the expensive case, and it used
+      // to be the one with no feedback at all. A verbatim map lands in the world
+      // mirror (rewritten while you edit) and every rotating exit backup, so the
+      // stored size is worth surfacing, not just the downscale.
+      const size = dataUrlSize(dataUrl)
+      setImportNotice(
+        downscaledFrom
+          ? `Resized ${downscaledFrom.width}×${downscaledFrom.height} → ${width}×${height} ` +
+            `(${MAP_MAX_DIM}px limit) and stored at ${size}.`
+          : `Stored at full quality, ${width}×${height} (${size}). ` +
+            `Large maps grow every backup and the world mirror.`,
+      )
+    } catch (err) {
+      setImportError(
+        err instanceof UnsupportedImageError
+          ? 'That file type is not supported. Use a PNG, JPEG, or WebP image.'
+          : 'That image could not be read. It may be corrupt, or a variant this app cannot decode.',
+      )
+    }
   }
 
   async function handleMapClick(lat: number, lng: number) {
@@ -317,16 +362,39 @@ export default function MapRoute() {
     setPanelMode('preview')
   }
 
+  // Rendered in both the empty-state and main branches: an unsupported file can
+  // be picked before any map exists, and the early return would otherwise
+  // swallow the dialog.
+  const importErrorDialog = (
+    <ConfirmDialog
+      open={importError !== null}
+      title="Could not import that image"
+      confirmLabel="OK"
+      hideCancel
+      onConfirm={() => setImportError(null)}
+      onCancel={() => setImportError(null)}
+    >
+      <p>{importError}</p>
+    </ConfirmDialog>
+  )
+
   // ---- No maps yet -------------------------------------------------------
   if (maps.length === 0) {
     return (
       <EmptyState
         icon="🗺️"
         title="No map yet"
-        message="Upload an image of your world (PNG or JPG) to start dropping pins."
+        message="Upload an image of your world (PNG, JPEG, or WebP) to start dropping pins."
       >
         <button className="primary-btn" onClick={() => fileRef.current?.click()}>⭱ Upload a map image</button>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={handleUpload} />
+        <input
+          ref={fileRef}
+          type="file"
+          accept={IMPORTABLE_IMAGE_TYPES.join(',')}
+          hidden
+          onChange={handleUpload}
+        />
+        {importErrorDialog}
       </EmptyState>
     )
   }
@@ -365,7 +433,13 @@ export default function MapRoute() {
           {drawMode ? '✓ Click to draw, click first point to close' : '▱ Add region'}
         </button>
         <button className="ghost-btn" onClick={() => fileRef.current?.click()}>⭱ New map</button>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={handleUpload} />
+        <input
+          ref={fileRef}
+          type="file"
+          accept={IMPORTABLE_IMAGE_TYPES.join(',')}
+          hidden
+          onChange={handleUpload}
+        />
         <button
           className="ghost-btn danger"
           onClick={() => currentMap && setConfirmDeleteMap(true)}
@@ -380,6 +454,13 @@ export default function MapRoute() {
         </button>
         <span className="map-hint">{pins.length} pins · {regions.length} regions</span>
       </div>
+
+      {importNotice && (
+        <div className="map-import-notice">
+          <span>{importNotice}</span>
+          <button className="ghost-btn" onClick={() => setImportNotice(null)}>Dismiss</button>
+        </div>
+      )}
 
       <div className="map-body">
         {currentMap && (
@@ -608,15 +689,8 @@ export default function MapRoute() {
       >
         Delete “{currentMap?.name}” and all its pins? This cannot be undone.
       </ConfirmDialog>
+
+      {importErrorDialog}
     </div>
   )
-}
-
-function imageSize(src: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
-    img.onerror = reject
-    img.src = src
-  })
 }

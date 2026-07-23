@@ -1172,6 +1172,19 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .map-crumb-current { color: var(--ink); font-weight: 600; padding: 2px 4px; }
 .map-crumb-sep { color: var(--ink-faint); }
 .map-hint { margin-left: auto; color: var(--ink-faint); font-size: 13px; }
+.map-import-notice {
+  display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+  border-bottom: 1px solid var(--border); background: var(--bg-2);
+  color: var(--ink-faint); font-size: 13px; flex-shrink: 0;
+}
+.map-import-notice span { flex: 1; }
+.map-image-missing {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 500; max-width: 420px; padding: 14px 18px; text-align: center;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+  color: var(--ink-faint); font-size: 13px; line-height: 1.5;
+  pointer-events: none;
+}
 .map-body { position: relative; flex: 1; min-height: 0; }
 .map-canvas { position: absolute; inset: 0; background: #0e0c09; }
 
