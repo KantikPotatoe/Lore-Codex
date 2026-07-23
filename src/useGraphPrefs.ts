@@ -37,6 +37,10 @@ interface SavedView {
   /** Which dimension drives node colour: page type, status, or a highlighted tag. */
   colorBy: ColorBy
   cam: GraphCam | null
+  /** Relationship type ids whose edges are hidden. Stores HIDDEN rather than
+   *  shown, like `hidden`/`hiddenStatuses`: a relationship type created after
+   *  this row was last written must be visible by default. */
+  hiddenRelTypes: string[]
 }
 
 type Pins = Record<string, { x: number; y: number }>
@@ -56,6 +60,7 @@ const DEFAULT_VIEW: SavedView = {
   depth: 0,
   colorBy: 'type',
   cam: null,
+  hiddenRelTypes: [],
 }
 const NO_PINS: Pins = {}
 
@@ -89,6 +94,9 @@ export interface GraphPrefs {
   pinNode: (id: string, x: number, y: number) => void
   clearPins: () => void
   prunePins: (validIds: Set<string>) => void
+  hiddenRelTypes: Set<string>
+  toggleRelType: (id: string) => void
+  toggleRelGroup: (typeIds: string[]) => void
 }
 
 /** Fold a row written before multi-tag filtering into the current shape. Safe
@@ -140,6 +148,7 @@ export function useGraphPrefs(): GraphPrefs {
 
   const hidden = useMemo(() => new Set(view.hidden), [view.hidden])
   const hiddenStatuses = useMemo(() => new Set(view.hiddenStatuses), [view.hiddenStatuses])
+  const hiddenRelTypes = useMemo(() => new Set(view.hiddenRelTypes), [view.hiddenRelTypes])
 
   const toggleCategory = useCallback((cat: string) => {
     const next = new Set(view.hidden)
@@ -153,6 +162,26 @@ export function useGraphPrefs(): GraphPrefs {
     if (next.has(status)) next.delete(status)
     else next.add(status)
     writeView({ ...view, hiddenStatuses: [...next] })
+  }, [view, writeView])
+
+  const toggleRelType = useCallback((id: string) => {
+    const next = new Set(view.hiddenRelTypes)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    writeView({ ...view, hiddenRelTypes: [...next] })
+  }, [view, writeView])
+
+  /** Hide a whole group when all of it is visible; otherwise reveal all of it.
+   *  A half-hidden group therefore reveals rather than inverting, which is what
+   *  a user clicking the header of a partly-off group expects. */
+  const toggleRelGroup = useCallback((typeIds: string[]) => {
+    const next = new Set(view.hiddenRelTypes)
+    const allVisible = typeIds.every((id) => !next.has(id))
+    for (const id of typeIds) {
+      if (allVisible) next.add(id)
+      else next.delete(id)
+    }
+    writeView({ ...view, hiddenRelTypes: [...next] })
   }, [view, writeView])
 
   const setShowArrows = useCallback((v: boolean) => writeView({ ...view, showArrows: v }), [view, writeView])
@@ -203,5 +232,6 @@ export function useGraphPrefs(): GraphPrefs {
     colorBy: view.colorBy, setColorBy,
     cam: view.cam, setCam,
     pins, pinNode, clearPins, prunePins,
+    hiddenRelTypes, toggleRelType, toggleRelGroup,
   }
 }

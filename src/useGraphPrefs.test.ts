@@ -14,7 +14,7 @@ describe('migrateView', () => {
   const base = {
     hidden: [], hiddenStatuses: [], showArrows: false, showGhosts: true, threeD: false,
     panelOpen: false, tags: [], tagMode: 'any' as const, minDegree: 0, depth: 0,
-    colorBy: 'type' as const, cam: null,
+    colorBy: 'type' as const, cam: null, hiddenRelTypes: [],
   }
 
   it('folds a legacy tag into tags and drops the field', () => {
@@ -256,5 +256,53 @@ describe('useGraphPrefs', () => {
     })
     act(() => result.current.prunePins(new Set(['keep'])))
     await waitFor(() => expect(result.current.pins).toEqual({ keep: { x: 1, y: 1 } }))
+  })
+})
+
+describe('hiddenRelTypes', () => {
+  it('defaults to nothing hidden, so a type created later is visible', async () => {
+    // A row written before this field existed.
+    await setMeta('graph-view', {
+      hidden: [], hiddenStatuses: [], showArrows: false, showGhosts: true, threeD: false,
+      panelOpen: false, tags: [], tagMode: 'any', minDegree: 0, depth: 0,
+      colorBy: 'type', cam: null,
+    })
+    const { result } = renderHook(() => useGraphPrefs())
+    await waitFor(() => expect(result.current.hiddenRelTypes).toEqual(new Set()))
+  })
+
+  it('toggles one type in and out of the hidden set', async () => {
+    const { result } = renderHook(() => useGraphPrefs())
+    await waitFor(() => {
+      act(() => result.current.toggleRelType('ally-of'))
+      expect(result.current.hiddenRelTypes).toEqual(new Set(['ally-of']))
+    })
+
+    act(() => result.current.toggleRelType('ally-of'))
+    await waitFor(() => expect(result.current.hiddenRelTypes).toEqual(new Set()))
+  })
+
+  it('hides a whole group when all of it is visible, and reveals it otherwise', async () => {
+    const { result } = renderHook(() => useGraphPrefs())
+    await waitFor(() => {
+      act(() => result.current.toggleRelGroup(['ally-of', 'enemy-of']))
+      expect(result.current.hiddenRelTypes).toEqual(new Set(['ally-of', 'enemy-of']))
+    })
+
+    // Partially visible counts as "not all visible", so the group reveals.
+    act(() => result.current.toggleRelType('ally-of'))
+    await waitFor(() => expect(result.current.hiddenRelTypes).toEqual(new Set(['enemy-of'])))
+    act(() => result.current.toggleRelGroup(['ally-of', 'enemy-of']))
+    await waitFor(() => expect(result.current.hiddenRelTypes).toEqual(new Set()))
+  })
+
+  it('persists the hidden set to the graph-view meta row', async () => {
+    const { result } = renderHook(() => useGraphPrefs())
+    await waitFor(() => {
+      act(() => result.current.toggleRelType('parent-of'))
+      expect(result.current.hiddenRelTypes).toEqual(new Set(['parent-of']))
+    })
+    const row = await getMeta<{ hiddenRelTypes: string[] }>('graph-view')
+    expect(row?.hiddenRelTypes).toEqual(['parent-of'])
   })
 })
