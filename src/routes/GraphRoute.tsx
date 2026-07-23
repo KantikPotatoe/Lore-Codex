@@ -8,7 +8,7 @@ import GraphPathControls from '../components/GraphPathControls'
 import EmptyState from '../components/EmptyState'
 import HubsOrphansPanel from '../components/HubsOrphansPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { islandColorOf, type ColorBy } from '../graphColor'
+import { islandColorOf, linkStyle, type ColorBy, type DrawnLink, type DrawnGraphData } from '../graphColor'
 import { getLore, currentLoreId } from '../lores'
 import { buildScene, sceneToSvg, svgBlob, sceneToPng, downloadBlob, graphFilename } from '../graphExport'
 import { matchesTags, NO_TAG_FILTER, type TagFilter } from '../tagFilter'
@@ -43,6 +43,7 @@ export default function GraphRoute() {
     panelOpen, setPanelOpen,
     tags, toggleTag, tagMode, setTagMode,
     colorBy, setColorBy,
+    hiddenRelTypes,
     minDegree, setMinDegree,
     depth, setDepth,
     cam, setCam,
@@ -108,7 +109,7 @@ export default function GraphRoute() {
     [selectedTags, tagMode],
   )
 
-  const filtered = useMemo(() => {
+  const filtered = useMemo<DrawnGraphData>(() => {
     const hopSet = depthFocus ? nodesWithinHops(full.links, depthFocus, depth) : null
     const nodes = full.nodes.filter(
       (n) =>
@@ -120,12 +121,18 @@ export default function GraphRoute() {
         (hopSet == null || hopSet.has(n.id)),
     )
     const visible = new Set(nodes.map((n) => n.id))
-    const links = full.links.filter((l) => visible.has(l.source) && visible.has(l.target))
-    return {
-      nodes: nodes.map((n) => ({ ...n })),
-      links: links.map((l) => ({ ...l })),
-    }
-  }, [full, hidden, hiddenStatuses, tagFilter, showGhosts, minDegree, depth, depthFocus, colorBy])
+    // Node filter first, then endpoint survival, then styling — which also
+    // decides whether the edge is drawn at all: a link whose every relationship
+    // type is hidden and which has no wiki link underneath is dropped here.
+    // linkStyle may swap an edge's ends; edgeKey is order-independent, so the
+    // path highlight still matches these against full.links.
+    const links = full.links.flatMap<DrawnLink>((l) => {
+      if (!visible.has(l.source) || !visible.has(l.target)) return []
+      const style = linkStyle(l, hiddenRelTypes)
+      return style ? [{ ...l, ...style }] : []
+    })
+    return { nodes: nodes.map((n) => ({ ...n })), links }
+  }, [full, hidden, hiddenStatuses, tagFilter, showGhosts, minDegree, depth, depthFocus, colorBy, hiddenRelTypes])
 
   // A page can be deleted while its id still sits in an endpoint; drop it by
   // derivation rather than by writing state from an effect.
