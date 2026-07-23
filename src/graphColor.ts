@@ -1,4 +1,4 @@
-import { categoryColor, statusColor, type GraphNode } from './db'
+import { categoryColor, statusColor, type GraphNode, type GraphLink } from './db'
 import { matchesTags, type TagFilter } from './tagFilter'
 
 /** Which dimension drives a graph node's fill colour. */
@@ -66,4 +66,105 @@ export function nodeFill(
   }
   if (colorBy === 'island') return islandColors?.get(node.id) ?? MUTED
   return categoryColor(node.category)
+}
+
+// ---------------------------------------------------------------------------
+// Link styling (#137) — the single authority
+// ---------------------------------------------------------------------------
+// GraphView and graphExport used to derive rest-state link colour separately,
+// with graphExport carrying hand-copied constants and a comment admitting it.
+// A third styling dimension would have been the copy that drifted, so both now
+// read what this computes once, in GraphRoute's filter memo.
+
+/** When a link's arrow is drawn. A relationship's direction is meaning (parent
+ *  vs child), so it is not the user's to toggle; a wiki link's direction is
+ *  trivia about who typed the link, so it is. */
+export type ArrowMode = 'always' | 'never' | 'toggle'
+
+export interface LinkStyle {
+  /** Orientation after the visible primary relation is applied — may swap the
+   *  input's ends so the arrow can always be drawn at the target. */
+  source: string
+  target: string
+  /** At rest. */
+  color: string
+  /** Inside the hover/selection focus neighbourhood. */
+  activeColor: string
+  width: number
+  arrow: ArrowMode
+  /** Hover tooltip text; '' for a wiki-only edge. */
+  labels: string
+}
+
+/** A filtered link carrying its own presentation. */
+export type DrawnLink = GraphLink & LinkStyle
+
+/** The filtered graph as the renderers receive it. */
+export interface DrawnGraphData {
+  nodes: GraphNode[]
+  links: DrawnLink[]
+}
+
+// Rest and lit styling for wiki links, unchanged from what GraphView drew
+// before — now stated once.
+const MUTUAL = { color: 'rgba(150,180,255,0.5)', active: 'rgba(190,210,255,0.95)', width: 2.5 }
+const ONEWAY = { color: 'rgba(160,160,160,0.28)', active: 'rgba(170,185,225,0.7)', width: 1 }
+
+// A typed edge is the strongest statement on the canvas, so it draws at the
+// mutual width; the type's hue is what separates it from a mutual wiki link.
+const RELATION_WIDTH = 2.5
+const RELATION_REST_ALPHA = 0.75
+
+/** '#rrggbb' + alpha → 'rgba(r, g, b, a)'. Input that isn't six-digit hex is
+ *  returned unchanged: a relationship type's colour is user-editable, and a
+ *  hand-entered 'tomato' should render as tomato rather than blank the edge. */
+export function withAlpha(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return hex
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
+
+/**
+ * Rest-state presentation for one link, or null when it should not be drawn at
+ * all — every relationship on it is filtered out and there is no wiki link
+ * underneath.
+ *
+ * `link.relations` arrives sorted lowest-`order`-first from buildGraphData, so
+ * the first visible entry is the primary: it supplies the colour, the arrow
+ * mode, and the orientation.
+ */
+export function linkStyle(link: GraphLink, hiddenRelTypes: Set<string>): LinkStyle | null {
+  const visible = link.relations.filter((r) => !hiddenRelTypes.has(r.typeId))
+
+  if (visible.length === 0) {
+    if (!link.wiki) return null
+    const s = link.mutual ? MUTUAL : ONEWAY
+    return {
+      source: link.source,
+      target: link.target,
+      color: s.color,
+      activeColor: s.active,
+      width: s.width,
+      arrow: 'toggle',
+      labels: '',
+    }
+  }
+
+  // Hiding the type that oriented the edge can promote one stored the other way
+  // round. Swapping here keeps the arrow drawable at the target end, which is
+  // the only position react-force-graph offers.
+  const primary = visible[0]
+  const swap = primary.reversed
+  return {
+    source: swap ? link.target : link.source,
+    target: swap ? link.source : link.target,
+    color: withAlpha(primary.color, RELATION_REST_ALPHA),
+    activeColor: primary.color,
+    width: RELATION_WIDTH,
+    arrow: primary.directed ? 'always' : 'never',
+    // Per-edge, not per-relation: once the orientation flips, every label on
+    // the edge reads the other way.
+    labels: visible.map((r) => (swap ? r.inverseLabel : r.label)).join(' · '),
+  }
 }
