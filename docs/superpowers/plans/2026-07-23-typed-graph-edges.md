@@ -14,8 +14,8 @@
 
 - **Import from the barrel.** UI and helper modules import data-layer API from `'../db'` / `'./db'`, never from a `src/db/*` file directly. New public data-layer API must be reachable through `src/db/index.ts`.
 - **Repository seam.** Components, routes and hooks reach data through `pageRepo` / `relationshipRepo` / etc. — never the `db` singleton. Lint-enforced via `no-restricted-imports`.
-- **`src/db/graph.ts` stays pure.** No React, no Dexie, no `db` import. It takes plain arrays and returns plain data.
-- **`src/graphColor.ts` stays pure.** Type-only imports from `./db`; no runtime Dexie import.
+- **`buildGraphData` stays a pure function of its arguments.** No I/O, no db reads inside it — it takes plain arrays and returns plain data. (`src/db/graph.ts` does import `linkedTitles`/`pageStatus`, which transitively reach the Dexie singleton at module load; that is existing and fine. The rule is about the function's behaviour, not its import graph.)
+- **`src/graphColor.ts` takes no new runtime dependency.** It already imports `categoryColor`/`statusColor` from `./db` at runtime — keep using those, and add nothing beyond type imports. No React, no Dexie tables.
 - **TypeScript `strict`.** No `any`. No non-null assertion on a value that can genuinely be undefined.
 - **Verification gate:** `npm run lint && npm run build && npm run test:run` must all pass before the PR.
 - **PR label:** `version:minor` (new feature). Branch is `feat/137-typed-graph-edges`, already created off `origin/main`.
