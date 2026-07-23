@@ -95,13 +95,27 @@ export async function getRelationsFor(pageId: string): Promise<PageRelation[]> {
     return r ? [r] : []
   })
 
-  const otherIds = [...new Set(resolved.map((r) => r.otherId))]
+  // Collapse rows that resolve to the SAME displayed fact — same type, same far
+  // page, same label. This happens when a type is edited symmetric after both
+  // A→B and B→A were stored under it (the insert-time reversed-pair guard only
+  // fires for types already symmetric, so it can't catch a later edit). Keeping
+  // type.id in the key means two distinct types that merely share a label are
+  // left as two rows. First occurrence wins; the other row still exists.
+  const seen = new Set<string>()
+  const deduped = resolved.filter((r) => {
+    const key = `${r.type.id} ${r.otherId} ${r.label}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  const otherIds = [...new Set(deduped.map((r) => r.otherId))]
   const pages = await db.pages.bulkGet(otherIds)
   const pageById = new Map(
     pages.flatMap((p) => (p ? [[p.id, p] as const] : [])),
   )
 
-  const out: PageRelation[] = resolved.flatMap((r) => {
+  const out: PageRelation[] = deduped.flatMap((r) => {
     const other = pageById.get(r.otherId)
     return other ? [{ ...r, other }] : []
   })

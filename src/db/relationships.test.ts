@@ -100,6 +100,44 @@ describe('getRelationsFor', () => {
     expect(rows.map((r) => r.other.title)).toEqual(['Agravain', 'bors', 'Cador'])
   })
 
+  // A type can turn symmetric AFTER both directions were stored: A→B and B→A
+  // are legal under an asymmetric type, but if the type is later edited so
+  // label === inverse, both rows resolve to the same {label, otherId} pair.
+  // The insert-time reversed-pair guard cannot catch this — it already passed.
+  // getRelationsFor collapses the visible duplicate; both rows still exist.
+  it('collapses two rows that resolve to the same fact after a retroactive symmetry edit', async () => {
+    await db.relationshipTypes.add({
+      id: 'bond', label: 'Bonded to', inverse: 'Sworn to',
+      color: '#888', group: 'social', order: 9, builtin: false,
+    })
+    await db.relationships.bulkAdd([
+      { id: 'r1', fromId: 'uther', toId: 'arthur', typeId: 'bond', note: '', createdAt: 1 },
+      { id: 'r2', fromId: 'arthur', toId: 'uther', typeId: 'bond', note: '', createdAt: 2 },
+    ])
+    // Both rows are visible while the type is asymmetric (distinct labels).
+    expect((await getRelationsFor('uther')).map((r) => r.label)).toEqual(['Bonded to', 'Sworn to'])
+
+    // Make it symmetric after the fact.
+    await db.relationshipTypes.update('bond', { inverse: 'Bonded to' })
+
+    const rows = await getRelationsFor('uther')
+    expect(rows.map((r) => [r.label, r.other.title])).toEqual([['Bonded to', 'Arthur']])
+  })
+
+  // Two different types that happen to share a label must NOT be collapsed —
+  // they are genuinely distinct relations. Guards the dedup key includes type.id.
+  it('does not collapse same-label relations under different types', async () => {
+    await db.relationshipTypes.bulkAdd([
+      { id: 't-a', label: 'Tied to', inverse: 'Tied to', color: '#111', group: 'social', order: 7, builtin: false },
+      { id: 't-b', label: 'Tied to', inverse: 'Tied to', color: '#222', group: 'faction', order: 8, builtin: false },
+    ])
+    await db.relationships.bulkAdd([
+      { id: 'r1', fromId: 'uther', toId: 'arthur', typeId: 't-a', note: '', createdAt: 1 },
+      { id: 'r2', fromId: 'uther', toId: 'arthur', typeId: 't-b', note: '', createdAt: 2 },
+    ])
+    expect(await getRelationsFor('uther')).toHaveLength(2)
+  })
+
   it('skips rows whose other page no longer exists', async () => {
     await addRelationship('uther', 'arthur', 'parent-of')
     await db.pages.delete('arthur')

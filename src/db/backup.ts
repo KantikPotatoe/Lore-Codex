@@ -412,12 +412,15 @@ function sanitizeBackup(data: BackupData): BackupData {
     })(),
     // Drop relationship edges whose endpoints aren't in this backup's page set —
     // an untrusted or hand-edited backup could carry dangling ids, and a
-    // half-resolvable relationship renders as a blank row. The `note` is plain
-    // text rendered as text (React-escaped), so it needs no HTML sanitizing.
+    // half-resolvable relationship renders as a blank row. Self-loops are dropped
+    // too: addRelationship refuses fromId === toId at runtime, but a hand-edited
+    // backup bypasses that, and getRelationsFor would match such a row on both
+    // its indexes and render it twice. The `note` is plain text rendered as text
+    // (React-escaped), so it needs no HTML sanitizing.
     relationships: (() => {
       const pageIds = new Set(asArray(data.pages).map((p) => p.id))
       return asArray(data.relationships).filter(
-        (r) => pageIds.has(r.fromId) && pageIds.has(r.toId),
+        (r) => r.fromId !== r.toId && pageIds.has(r.fromId) && pageIds.has(r.toId),
       )
     })(),
     // Meta values are arbitrary JSON rendered only as React text (settings,

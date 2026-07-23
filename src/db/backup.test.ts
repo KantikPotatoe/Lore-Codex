@@ -562,4 +562,23 @@ describe('typed relationships in backups (#175)', () => {
     expect((await db.relationships.toArray()).map((r) => r.id)).toEqual(['ok'])
     expect(data.relationships).toHaveLength(2) // parseBackup itself does not filter
   })
+
+  it('drops a self-loop edge a hand-crafted backup could carry', async () => {
+    // addRelationship refuses fromId === toId at runtime, but a hand-edited
+    // backup bypasses that path. Left in, getRelationsFor would match the row on
+    // both the fromId and toId indexes and render it twice (duplicate React key).
+    const crafted = JSON.stringify({
+      schemaVersion: 15,
+      pages: [
+        { id: 'uther', title: 'Uther', category: 'Character',
+          content: '', summary: '', tags: [], createdAt: 1, updatedAt: 1 },
+      ],
+      relationshipTypes: [], meta: [],
+      relationships: [
+        { id: 'loop', fromId: 'uther', toId: 'uther', typeId: 't', note: '', createdAt: 1 },
+      ],
+    })
+    await importAll(crafted)
+    expect(await db.relationships.count()).toBe(0)
+  })
 })
