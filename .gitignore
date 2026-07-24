@@ -30,7 +30,9 @@ src-tauri/gen/schemas/
 **/*.rs.bk
 
 # Claude Code local settings, skills & worktrees
-.claude/
+# (.claude/rules/ is tracked — path-scoped project docs split out of CLAUDE.md)
+.claude/*
+!.claude/rules/
 .superpowers/
 AUDIT_INSTRUCTIONS.md
 AUDIT_REPORT.md

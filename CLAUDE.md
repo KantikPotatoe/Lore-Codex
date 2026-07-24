@@ -8,17 +8,9 @@ Guidance for Claude Code working in this repo.
 
 ## Commands
 
-```bash
-npm run dev        # Vite dev server (hot reload)
-npm run build      # tsc -b + vite build → dist/
-npm run lint       # ESLint
-npm run preview    # serve built dist/
-npm test           # Vitest (watch)
-npm run test:run   # Vitest (CI, one-shot)
-npm run tauri dev    # desktop shell w/ hot reload (needs Rust toolchain)
-npm run tauri build  # desktop NSIS installer → src-tauri/target/release/bundle/
-```
+Standard scripts are in `package.json`. Non-obvious bits:
 
+- `npm run tauri dev` / `npm run tauri build` need a **Rust toolchain**; the build emits an NSIS installer to `src-tauri/target/release/bundle/`.
 - **Port pinned to 5174** (`strictPort` in `vite.config.ts`; `start-lore-codex.cmd` opens Firefox there; `src-tauri/tauri.conf.json` `devUrl` points at it too). IndexedDB is origin-keyed, so a drifting port shows an empty DB that looks like lost data — change it in **all** places or none.
 - TS `strict`. CI (`.github/workflows/ci.yml`) runs lint + build + test on PRs/pushes to `main`; run all three before claiming done.
 - Tests: Vitest + happy-dom + fake-indexeddb (`*.test.{ts,tsx}`). **DOMPurify tests need jsdom** — add `// @vitest-environment jsdom` (happy-dom's parser lets `<script>` survive).
@@ -47,20 +39,7 @@ Trunk-based: short-lived branches off `main`, one PR each, **squash-merge**, lab
 
 Single source of truth (types, schema, CRUD, templates, backlinks, graph, export/import) behind a **barrel `index.ts` that re-exports everything**. Always import from `'../db'`; **re-export new public API from `index.ts`** (`barrel.test.ts` fails otherwise).
 
-| Module | Holds |
-|---|---|
-| `types.ts` | data-model interfaces (no runtime code) |
-| `schema.ts` | `LoreDB` + version ladder + `db` singleton, `getMeta`/`setMeta`, category/status defs, `uid()`/`now()` |
-| `templates.ts` | page types: built-ins, seeding, infobox/template CRUD |
-| `pages.ts` | page CRUD, `renamePage` link-rewriting, backlinks |
-| `maps.ts` | maps/pins CRUD + `pinType`, nested maps/regions |
-| `images.ts` | image gallery CRUD |
-| `graph.ts` | `buildGraphData` |
-| `calendar.ts` | timeline calendar/event CRUD (distinct from pure `src/calendar.ts`) |
-| `backup.ts` | `exportAll`/`importAll`/`parseBackup` + versioning + import sanitization (`CURRENT_SCHEMA_VERSION` mirrors Dexie store version) |
-| `snapshots.ts` | snapshot CRUD |
-| `manuscript.ts` | manuscript authoring CRUD: `Book`→`Chapter`→`Scene`, plotline/beat grid, story structures, word counts, `sceneAppearances()` |
-| `worldHealth.ts` | `computeWorldHealth(pages)` — pure: broken links, orphans (no incoming links), stubs |
+Two name collisions worth knowing before you open the wrong file: `db/calendar.ts` is timeline calendar/event **CRUD**, distinct from the pure date math in `src/calendar.ts`; and `db/worldHealth.ts`'s "orphan" means *no incoming links*, which is not the graph view's "isolated" (`degree === 0`).
 
 **Per-lore DB:** `db = new LoreDB(dbNameFor(currentLoreId()))` binds at module load, so the active world is fixed for the page's lifetime. `switchLore()` and deleting the active world call `window.location.reload()` to rebind.
 
@@ -74,23 +53,7 @@ Single source of truth (types, schema, CRUD, templates, backlinks, graph, export
 
 `/` is special-cased (full-screen `LoreSelectorRoute`, no shell); every other path renders in the `<Sidebar>` + `<main>` shell with `<BackupBanner>` + `<StorageErrorBanner>`. `App.tsx` mounts global overlays (`SearchModal`, `WikiLinkPopover`), drives the incremental search index (`liveQuery` on `db.pages` → `syncIndex()`), and on start runs `installStorageErrorListener`, `bootstrapDefaultLore`, `requestPersistentStorage`, `seedTemplates`, `seedDefaultCalendar`, `maybeTakeSnapshot`.
 
-| Path | Component | Purpose |
-|---|---|---|
-| `/` | `LoreSelectorRoute` | world picker (create/rename/banner/delete/switch), no shell |
-| `/home` | `HomeRoute` | editable overview: hero/about, stats, recently edited |
-| `/page/:id` | `PageRoute` | view/edit: header, editor, infobox, backlinks |
-| `/browse/:category` | `CategoryRoute` | page-card grid for a category (`BrowseCard`s) |
-| `/tag/:tag` | `TagRoute` | page-card grid for a tag |
-| `/map` | `MapRoute` | Leaflet map with pins/regions |
-| `/graph` | `GraphRoute` | force-directed relationship graph |
-| `/timeline` | `TimelineRoute` | timeline (list or axis view) |
-| `/manuscript` | `ManuscriptRoute` | book library (grid of books + word-count stats) |
-| `/book/:bookId` | `BookRoute` | book workspace: Write / Grid views, EPUB / Print-PDF compile |
-| `/templates` | `TemplatesRoute` | manage page-type templates |
-| `/settings` | `SettingsRoute` | per-lore settings, backup/import, HTML export, snapshots, delete world |
-| `/health` | `HealthRoute` | world health: broken links, orphans, stubs |
-
-Sidebar groups pages by category (headers link to `/browse/:category`); its search box is read-only and opens `SearchModal` on focus.
+The route table is in `App.tsx`. Sidebar groups pages by category (headers link to `/browse/:category`); its search box is read-only and opens `SearchModal` on focus.
 
 ### Multiple worlds — `src/loreId.ts` + `src/lores.ts`
 
@@ -113,21 +76,15 @@ Tiptap with `StarterKit` (Link → external `ext-link`, new tab), `WikiLink` (`[
 
 ### Manuscript authoring — `src/db/manuscript.ts` + `ManuscriptRoute`/`BookRoute`
 
-The author's real novel, distinct from wiki pages and the in-world Document page type. Per-lore, id-based tables (Dexie stores added in **v11**), all cascade on delete: `Book`→`Chapter`→`Scene` (rich-text `content`, cached `wordCount` recomputed on `updateScene`, `SceneStatus` = Outline→Draft→Revised→Done via `SCENE_STATUSES`, separate from page `STATUSES`). Scenes carry POV/cast/location **page refs** (id-based) → `sceneAppearances(pageId)` lists every scene referencing a page (by ref or inline `[[wiki-link]]`), surfaced on the page. A **Plottr-style grid** of `Plotline` lanes × `Beat` cells (`kind:'plot'`); a `kind:'structure'` lane holds a built-in story structure (`manuscriptStructures.ts`: Save the Cat / Hero's Journey / Snowflake) whose beats align to scenes — deleting an aligned scene reverts its structure beat to unplaced (`sceneId=null`) rather than deleting it (`detachBeatsForScene`). `ManuscriptRoute` = book library; `BookRoute` = workspace with **Write** (`BookWriteView`: `BinderTree` + `SceneEditor` + `SceneMetaPanel`) and **Grid** (`BookGridView` + `StructureControls`) views, plus EPUB / Print-PDF compile buttons. **Export (`src/manuscriptExport.ts`):** pure `buildEpub()` (path→content map, valid EPUB 3 with nav, `mimetype` stored first) + `compileBookHtml()` (self-contained print/Save-as-PDF doc); `exportBookEpub()`/`printBook()` are the DB+download/print wrappers. Manuscript tables are **included in backups** (`exportAll`/`importAll`, scene `content` sanitized on import).
+The author's real novel, distinct from wiki pages and the in-world Document page type. Per-lore, id-based tables (Dexie stores added in **v11**), all cascade on delete: `Book`→`Chapter`→`Scene`, plus a Plottr-style plotline/beat grid. Manuscript tables are **included in backups** (scene `content` sanitized on import).
+
+→ Details in `.claude/rules/manuscript.md` (loads when you touch manuscript files).
 
 ### Relationship graph — `GraphView.tsx` + `GraphRoute`
 
-`buildGraphData(pages, relationships, types)` → nodes+links: each page a node (lone pages = isolated dots, intentional), self-links dropped. Typed relationships are a second, independent edge source alongside resolved wiki links — a relationship implies no wiki link, so a typed edge can connect two pages the wiki graph alone would draw as isolated dots. One edge per unordered pair: a pair carrying any relationship is styled by its lowest-`order` type and oriented from that row, absorbing the wiki edge into it. `GraphLink` carries both `wiki` and `relations`; each `RelationEdge` stores both readings (`label` along the edge, `inverseLabel` against it) because the drawn orientation can change at filter time (see below). `degree` counts relationship neighbours too and is computed on the **unfiltered** graph, so hiding a relationship type leaves node sizes and the `minDegree` survival filter unchanged — the same way hiding a category already behaves. **Runs on demand in `GraphRoute`'s `useMemo`** (not per-save). Filtering clones nodes/links (the force sim mutates them); derives `hubs`/**isolated** pages (`degree === 0`) in `HubsOrphansPanel` — distinct from the world-health dashboard's "orphan" (no *incoming* links; an isolated page is always an orphan, but a page with only outgoing links is an orphan without being isolated).
+`buildGraphData(pages, relationships, types)` → nodes+links, with typed relationships as a second edge source alongside resolved wiki links. `linkStyle()` in `src/graphColor.ts` is the single styling authority. Note the vocabulary clash: the graph's **isolated** (`degree === 0`) is not the world-health dashboard's **orphan** (no *incoming* links).
 
-**Typed-edge styling (`linkStyle(link, hiddenRelTypes)` in `src/graphColor.ts`)** is the single styling authority, called once in `GraphRoute`'s filter memo; `GraphView` and `graphExport.buildScene` read its precomputed `DrawnLink` rather than deriving colour/width/arrow themselves — which is why `graphExport` no longer hand-mirrors constants from `GraphView`. It returns `null` to mean "drop this edge" (every relationship on it hidden, no wiki link underneath). Arrows: asymmetric relationship types always draw one, symmetric types never do, wiki-only edges keep the existing user toggle. Hiding the type that oriented an edge can promote the next-lowest-`order` type stored the other way round; `linkStyle` swaps source/target so the arrow still draws at the target end, and flips every joined label with it. Toolbar chips group relationship types by `group` and persist **hidden** ids (not shown ids) in `hiddenRelTypes` on the `graph-view` meta row, so a type created later is visible by default. `GraphView3D` receives the same filtered links (correct edges, correct `degree`) but still renders them with the old mutual/one-way styling — 3D typed-edge styling is a follow-up.
-
-Relationship-type `label`/`inverse` are free text — editable in the Relationship-types admin and, since they travel unsanitized through backup import, potentially attacker-controlled — and `linkStyle` HTML-escapes them before joining into `labels`, because that string reaches react-force-graph's `linkLabel` prop, which float-tooltip renders via `.html()` (innerHTML), bypassing React's escaping. `GraphView3D`'s `nodeLabel="title"` has the same class of sink; it's out of scope here and tracked separately.
-
-**Shortest-path highlight (`shortestPath`/`findPath`, pure, in `db/graph.ts`):** two `PagePicker`s in `GraphPathControls` pick From/To endpoints; BFS runs over the **drawn** (filtered) links so every highlighted hop is on screen, and the **full** links are consulted only to tell `kind:'hidden'` ("your filters hide it") from `kind:'none'` ("not connected"). Ties break by node id, so the same pair always yields the same chain. `GraphView` reuses its hover/selection dim machinery for the chain, and the path **outranks hover** so a stray mouse move can't wipe the answer; endpoints get a gold ring, node fills stay their category colour. Endpoints are ephemeral route state (a persisted path would resurrect a stale highlight). 2D only, like the selection pulse and depth filter. The search (`shortestPath`/`findPath`, like `connectedComponents`) reads link endpoints through the shared `endId`/`LinkEnd` helpers, because the force sim mutates a drawn link's `source`/`target` from an id string into the resolved node object in place; a string-only reader silently fails post-render. (`edgeKey` takes already-resolved ids — its callers wrap them in `endId` first.)
-
-**Multi-tag filter (`src/tagFilter.ts` + `orderTagChips` in `src/tags.ts`, both pure):** the toolbar's tag chips hold a *set* of tags plus a `TagMode` (`'any'`/`'all'`), persisted in the `graph-view` meta row; a legacy single `tag` string is read-migrated by `migrateView` and dropped on the next write. `matchesTags` is the one predicate — the node filter and colour-by-tag accenting both use it, so "colour by tag + Match all" lights up exactly the intersection the filter would show. An empty selection means "no filter" to `matchesTags` but "highlight nothing" to `nodeFill`, which is why `nodeFill` checks `tags.length` itself. Chips are count-ordered and capped at 12 with a "+N more" disclosure; selected tags are always shown. A selected tag can vanish from the data (its last page deleted or retagged) while staying in the persisted selection, since `toggleTag` only ever adds/removes what's clicked. `GraphRoute` therefore derives the effective selection by intersecting the persisted `tags` with the tags actually present in `tagCounts`, and never writes the pruned set back — the same derive-don't-write-back pattern `fromValid`/`toValid` use above for stale path endpoints. That's what lets the selection resurrect if the tag returns; pruning the stored row would destroy it permanently.
-
-**Pre-hydration write race (`useGraphPrefs.ts`):** the initial `zoomToFit` fires `onZoomEnd` → `setCam` before the async `useLiveQuery` reads for the `graph-view`/`graph-pins` rows resolve, so an unguarded `writeView({ ...view, cam })` persisted `DEFAULT_VIEW` over the user's saved row on every visit to `/graph` — and the resulting `viewDraft` then masked the real hydration for the rest of the page's life. `getMeta` returns `undefined` both while loading and when no row exists, so the queries now resolve `?? null`, making `undefined` uniquely mean "still loading"; `writeView`/`writePins` check that and drop (never queue) any write attempted before hydration.
+→ Details in `.claude/rules/graph.md` (loads when you touch graph files): typed-edge styling and arrow orientation, the `linkLabel` innerHTML escaping sink, shortest-path highlight, multi-tag filter, and the `useGraphPrefs` pre-hydration write race.
 
 ### Page right sidebar — `Infobox.tsx`, `TableOfContents.tsx`, `Backlinks.tsx`, `PageHistory.tsx`
 
@@ -153,161 +110,38 @@ FlexSearch `Index` (tokenize `'forward'`, res 5), synced on every `db.pages` cha
 
 ### Desktop shell — `src-tauri/` + `src/platform.ts` (transition Phases 0–1)
 
-Tauri v2 wraps the unchanged web app (WebView2; data still in IndexedDB inside the webview). See `docs/desktop-transition-investigation.md` for the full plan. **`src/platform.ts` is the only place allowed to call `@tauri-apps/*` APIs or trigger an `<a download>`** (lint-enforced via `no-restricted-imports`). The seam: `saveFile(data, name, { defaultDir })` (browser download vs native Save-As pre-filled with `defaultDir`; returns `false` on dialog cancel — `downloadBackup()` only stamps `lastBackupAt` when saved) · `openTextFile()` (file input vs native Open; feeds Settings restore and the selector's import wizard) · `writeAppData(relPath, text)` (shell-only, `false` in browser; pre-import safety copies land in `$APPDATA/backups`) · `printHtml(html)` (hidden-iframe print on both targets; `printBook` uses it — no `window.open`) · `pickDirectory()` (shell-only native folder picker; the path is a **hint that pre-fills the Save dialog, never a write grant** — Tauri only scopes fs writes to paths picked in the *current* session's dialog, so a folder remembered from an earlier session can't be written to) · `onCloseRequested(handler)` (shell-only; intercepts window close, awaits `handler` — wrapped so a failing/hanging handler can never wedge the window shut — then destroys the window; a no-op in the browser). `App.tsx` wires the close handler to `backupOnExit()` (`src/backup.ts`), racing it against a 5s timeout so a hung export can't leave the app unclosable. Because `pickDirectory()`'s result is never a write grant, `backupOnExit()` writes to `$APPDATA/backups` instead of the user's chosen folder, and — unlike a normal backup — deliberately does **not** stamp `LAST_BACKUP_KEY`: an `$APPDATA` copy hasn't left the machine, so silencing the backup-reminder banner would be a lie. The only new permission this needed is `core:window:allow-destroy` (no new fs scope, no new Rust deps). **Migration wizard:** `LoreSelectorRoute`'s "Import World" → `parseBackup` → `importLoreFromBackup(name, json)` (`lores.ts`: registers a world *without* switching, imports via `importBackupInto(target, json)` — the parameterized twin of `importAll` — then the caller `switchLore`s; App-start seeding fills missing built-ins). **No host `alert()`/`confirm()`** — use `ConfirmDialog` (`hideCancel` for notices); wry renders host dialogs unreliably. Shell permissions live in `src-tauri/capabilities/default.json` (dialog save/open + writes to dialog-picked paths + `$APPDATA` writes; keep minimal); CSP is set in `tauri.conf.json` (`img-src data: blob:` is load-bearing). Rust side stays config-only (`lib.rs` registers dialog/fs plugins). `tauri.conf.json` reads `version` from `package.json`; `release.yml` builds the installer on every `v*` tag, and `desktop.yml` runs `cargo check` on `windows-latest` for PRs touching `src-tauri/**` or `package.json` (`build.rs` validates the config, the semver it reads from `package.json`, and the capability ACL — so those regressions fail on the PR, not at release). Fonts are self-hosted via `@fontsource` imports in `main.tsx` (keep `index.html` CDN-free). Web build/tests are unaffected — the shell path is behind feature detection.
+Tauri v2 wraps the unchanged web app (WebView2; data still in IndexedDB inside the webview). See `docs/desktop-transition-investigation.md` for the full plan. Three rules that apply everywhere, not just in shell code:
+
+- **`src/platform.ts` is the only place allowed to call `@tauri-apps/*` APIs or trigger an `<a download>`** (lint-enforced via `no-restricted-imports`).
+- **No host `alert()`/`confirm()`** — use `ConfirmDialog` (`hideCancel` for notices); wry renders host dialogs unreliably.
+- **Fonts are self-hosted** via `@fontsource` imports in `main.tsx` — keep `index.html` CDN-free.
+
+→ Details in `.claude/rules/desktop-shell.md` (loads when you touch `src-tauri/**` or `platform.ts`): the full seam inventory, the close-handler/`backupOnExit` interaction, the migration wizard, capabilities/CSP, and the release/`cargo check` workflows.
 
 ### Auto-updater — `src/updater.ts` + `useUpdateCheck.ts` + `UpdateBanner.tsx`
 
-Desktop only. `tauri-plugin-updater` fetches a **minisign-signed** `latest.json`
-from `releases/latest/download/` on the GitHub repo; `release.yml` emits and
-signs it via `includeUpdaterJson: true` plus the `TAURI_SIGNING_PRIVATE_KEY`
-secrets. The pubkey is committed in `tauri.conf.json`; **losing the private key
-permanently strands every installed copy** (`docs/updater-key.md`). Signing
-also requires `bundle.createUpdaterArtifacts: true` in `tauri.conf.json`
-itself — it defaults to `false`, and without it the bundler emits no updater
-artifact and no `.sig` at all, so the release ships with no `latest.json`
-regardless of whether the workflow secrets are set. This is the single least
-discoverable requirement in the whole feature.
+Desktop only, via `tauri-plugin-updater`. The update check is the app's **only**
+outbound request — governed by the device-level `autoUpdateCheck` pref, and off
+means Lore Codex never reaches the network on its own. That is what keeps the
+local-first claim honest, so **don't add unasked network calls.**
 
-`platform.ts` owns the only `@tauri-apps/plugin-updater` import and returns an
-**`UpdateInfo` handle** (`version`/`notes`/`download()`/`install()`) rather than
-free functions — `install()` must act on the same plugin `Update` instance
-`check()` returned, and a module-level "current update" would race. Download and
-install are **separate calls on purpose**: on Windows the NSIS installer
-terminates the running app, so installing must be a second, explicit click.
-
-`updater.ts` is pure (`shouldCheck` 24h throttle — a future timestamp counts as
-due, so a clock rollback can't wedge checking off, and a non-finite
-`lastCheckedAt` counts as due too, since `coerceSettings` accepts `NaN`
-— `typeof NaN === 'number'` — and `NaN` fails every comparison, so an
-unguarded check would silently disable update checking forever; `isDismissed`
-is plain string identity, since the plugin decides what's *newer*).
-`useUpdateCheck` is the one state machine both consumers read — literally one,
-via `UpdateCheckProvider`/`useSharedUpdateCheck` (`src/UpdateCheckContext.tsx`),
-which wraps the sidebar shell in `App.tsx`. Calling the hook directly in a
-second component would give it its own `pending` handle, letting the banner
-dismiss a version the other instance had already downloaded; the shared hook
-throws outside the provider rather than falling back silently. Automatic
-checks fail **silently**; manual "Check now" in Settings surfaces errors and
-bypasses both throttle and dismissal. `lastUpdateCheckAt` is stamped only on a
-**successful** check — a failed one hasn't learned anything, and muting checks
-for 24h over one network blip would be worse than retrying next launch.
-
-`dismiss()` refuses to run once a check has produced a live handle and moved
-past `available` (so `downloading`/`ready`/`installing`/post-install `error`
-are all refused, deliberately broader than the states today's UI can dismiss
-from): dismissing a downloaded update would both clear the update
-handle and record the version as dismissed, stranding an installer already on
-disk that `install()` would then no-op on and that automatic checks would
-never re-offer. Neither the banner nor the Settings panel renders a dismiss
-control once an update is downloaded.
-
-The check is the app's **only** outbound request, governed by the device-level
-`autoUpdateCheck` pref (`appSettings.ts`, registry DB — structurally incapable
-of travelling in a world backup). Off means automatic checks stop entirely —
-Lore Codex never reaches the network on its own — while the explicit "Check
-now" button in Settings still reaches it when the user clicks it. That
-distinction is what keeps the local-first claim honest: nothing outbound
-happens unasked.
+→ Details in `.claude/rules/updater.md` (loads when you touch updater files):
+minisign signing and the `createUpdaterArtifacts` trap, the `UpdateInfo` handle,
+the `shouldCheck`/`NaN` guards, the shared-hook requirement, and why `dismiss()`
+refuses after download.
 
 ### World mirror — `src/worldMirror.ts` + `worldMirrorSync.ts` + `worldIndex.ts` + `worldRecovery.ts`
 
-Desktop only. Each world auto-mirrors to `<app-data>/worlds/<loreId>.lore` —
-the `exportAll()` JSON **verbatim**, so `parseBackup`'s validation and
-`MIGRATIONS` ladder restore it and no second format needs versioning. Written
-**temp-then-rename** (`fs:allow-rename`), so a crash or the close-handler
-timeout can never leave a truncated file where a good mirror was.
+Desktop only. Each world auto-mirrors to `<app-data>/worlds/<loreId>.lore` — the
+`exportAll()` JSON **verbatim**, written temp-then-rename. **`BackupBanner` and
+`backupOnExit` both stay**: the mirror lives in `$APPDATA`, so it has not left
+the machine and must never stamp `LAST_BACKUP_KEY` or silence the backup
+reminder. The exit backup is a week of *history*; the mirror is *currency*.
 
-**Cadence.** `worldMirror.ts` is pure (`shouldMirror`: a quiet window so writes
-fall between editing bursts, an interval floor so a long session doesn't
-rewrite tens of MB every 30s, a **staleness ceiling** that overrides the quiet
-window after 10 min, and the non-finite/future-timestamp guards `shouldCheck`
-carries). The ceiling exists because the quiet window is otherwise unreachable
-for a steady typist — `PageRoute` commits content after 500ms, so
-`lastChangeAt` slides forward faster than 30s can elapse and no write fired for
-the whole session (#233). It measures from a **session-start anchor** until the
-first write of the page-life lands, not from `lastMirrorAt` alone: that starts
-at 0 every page-life, so a ceiling measured from it is true on the *first* poll
-of every launch and would force a multi-MB export mid-burst. The floor is
-evaluated on every path including the stale one, which keeps
-`MIRROR_MAX_STALE_MS >= MIRROR_FLOOR_MS` a tuning choice, not a correctness
-dependency. **There is no dirty flag** — `worldMirrorSync.ts` polls
-a mirror-specific `mirrorChangeTime()`, *not* `latestChangeTime()` (that sees
-only 6 of the 15 tables `exportAll()` writes, and `BackupBanner`/`backupOnExit`
-depend on exactly that shape, so it stays as-is). `mirrorChangeTime()` combines
-those six indexed reads with a `count()` on each of the other eleven, so an add
-or delete registers even with no timestamp to read. It is **not** complete: an
-in-place edit to a row on those eleven is invisible between polls, and
-`maps`/`calendars` notice an add but not an edit. `flushWorldMirror()` on close
-is the deliberate backstop for all of it — unconditional, writing whenever the
-world has any content. `lastMirrorAt` is module state, not persisted. The poll
-loop (`startMirrorLoop`) is **gated on `isTauri()`**, not left to the seam's
-browser no-op: a mirror attempt calls `exportAll()` *before* reaching the seam,
-and the no-op never advances `lastMirrorAt`, so an ungated loop would
-re-serialize the whole database every 30s for the life of a browser session and
-discard it.
-
-**The load-bearing guard: `write()` refuses when `activeLoreId` has no row in
-the registry DB.** Without it, the recovery launch is a data-loss mechanism —
-`App.tsx` seeds templates and a calendar into the freshly-evicted (empty) DB,
-and the loop then renames *that* over the good `.lore` within 30s while the
-panel still advertises the pre-clobber timestamp. Stated as a precondition in
-`write()` rather than at a caller so poll and close-flush are covered together.
-
-**Suspension is epoch-based, not just depth.** `write()` captures
-`suspendEpoch` before `exportAll()` and re-checks it after, because a
-suspension raised *and released* during an in-flight export would otherwise let
-the stale payload commit. Attempts are dropped, never queued — a deferred write
-fires against the state it was meant to avoid. Suspension wraps `importAll()`
-and `restoreSnapshot()` in `SettingsRoute` (both are `clear()` + `bulkAdd` over
-the active DB) **and `restoreWorld` in `LoreSelectorRoute`**: restore reuses the
-world's original id, so it targets the *active* DB — the older comment claiming
-the selector needs no guard was invalidated by that change.
-
-**The index is a union, never a replace** (`worldIndex.ts`, pure:
-`mergeWorldIndex`/`markWorldMirrored`/`dropWorldFromIndex`). Rebuilding
-`registry.json` from the registry DB — the volatile store this feature exists
-to survive — meant an eviction erased the pointers to the files that survived.
-Entries leave only via an explicit drop (`deleteLore`, or a rollback that
-created the entry). `mirroredAt` is stamped **only by a real write**; `null`
-means no file exists, and `plannedRecovery` excludes those. The file carries a
-`{version, worlds}` envelope: legacy bare arrays migrate forward, and a
-*newer* version reads as unreadable so an older build can't flatten it.
-`readRegistryMirror()` distinguishes **absent from unreadable**
-(`fs:allow-exists`) and every writer refuses on unreadable — a shrinking write
-must never follow a failed read. All three writers serialize through
-`withRegistryMirrorLock`; unlocked, a drop racing a stamp resurrects a deleted
-entry and two writers share one tmp path. `registry.json` existing at all is
-what keeps `fs:allow-read-dir` ungranted.
-
-**Recovery.** `bootstrapDefaultLore()` declines to seed when the registry is
-empty *and* the disk index names a world with a real `mirroredAt` — that
-combination means the store was lost, not a first run. Without it, a wiped
-profile (which takes `localStorage`, so `lore-bootstrapped` is unset) re-seeds
-`default` and `plannedRecovery` filters the single-world user out of their own
-recovery. `App.tsx` chains `bootstrapDefaultLore().then(syncRegistryMirror)` so
-the read precedes the write. `LoreSelectorRoute` offers matching worlds;
-**nothing is written without a click**, and worlds with `mirroredAt: null` are
-listed separately as lost-with-no-copy rather than hidden. Deleting a world
-trashes its `.lore` to `worlds/trash/` *before* re-indexing.
-
-**Observability is part of the feature.** Settings shows the mirror's path,
-last successful write, last error, and whether the index is readable — because
-a mirror that has never once succeeded is otherwise indistinguishable from one
-working perfectly until recovery day.
-
-**`BackupBanner` and `backupOnExit` both stay.** The mirror lives in `$APPDATA`
-— it has not left the machine, so it must not stamp `LAST_BACKUP_KEY` or
-silence the backup reminder, the same reasoning already written into
-`backupOnExit`. The weekday-rotating exit backup is a week of *history*; the
-mirror is *currency*. The mirror flushes **first** on close (it is atomic;
-`backupOnExit`'s write is not) and its rejection is caught, so a failing mirror
-can't take the exit backup down with it.
-
-**Testing note.** Mirror logic must be proved against the real-DB harness
-(`worldMirrorSync.realdb.test.ts`, which mocks only `platform.ts`). Two
-Criticals reached review because every mirror test mocked `./db` wholesale and
-the fixtures could not represent the failure; when the real harness was added,
-19 of 28 existing tests broke — they had never seeded a registry row.
+→ Details in `.claude/rules/world-mirror.md` (loads when you touch mirror
+files): the `shouldMirror` cadence and staleness ceiling, the registry-row guard
+in `write()`, epoch-based suspension, the union-never-replace index, recovery,
+and the real-DB test harness requirement.
 
 ### Other
 
