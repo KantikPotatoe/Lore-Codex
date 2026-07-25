@@ -5,7 +5,7 @@ import ForceGraph3D, {
   type LinkObject,
 } from 'react-force-graph-3d'
 import { type GraphData, type GraphNode, type GraphLink } from '../db'
-import { nodeFill, type ColorBy } from '../graphColor'
+import { nodeFill, nodeTooltip, type ColorBy } from '../graphColor'
 import type { TagFilter } from '../tagFilter'
 
 // The 3D view is a "wow" companion to the 2D canvas: same data, simpler
@@ -70,7 +70,10 @@ export default function GraphView3D({
         height={size.height}
         graphData={data}
         nodeId="id"
-        nodeLabel="title"
+        // Not `nodeLabel="title"`: the hover label lands in an innerHTML sink
+        // (see `nodeTooltip`), and page titles arrive unsanitized from backup
+        // import.
+        nodeLabel={(node: GNode) => nodeTooltip(node)}
         nodeColor={nodeColor}
         nodeVal={(node: GNode) => radiusFor(node.degree)}
         nodeOpacity={0.9}

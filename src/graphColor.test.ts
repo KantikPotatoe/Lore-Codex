@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nodeFill, linkStyle, withAlpha, TAG_ACCENT, MUTED, ISLAND_PALETTE, islandColorOf } from './graphColor'
+import { nodeFill, nodeTooltip, linkStyle, withAlpha, TAG_ACCENT, MUTED, ISLAND_PALETTE, islandColorOf } from './graphColor'
 import { categoryColor, statusColor, type GraphNode, type GraphLink, type RelationEdge } from './db'
 import { NO_TAG_FILTER, type TagFilter } from './tagFilter'
 
@@ -52,6 +52,26 @@ describe('nodeFill island mode', () => {
 
   it('mutes when no island map is provided', () => {
     expect(nodeFill(node({ id: 'p1' }), 'island', NO_TAG_FILTER)).toBe(MUTED)
+  })
+})
+
+describe('nodeTooltip', () => {
+  it('returns the title unchanged when it holds no markup', () => {
+    expect(nodeTooltip(node({ title: 'Aldric the Grey' }))).toBe('Aldric the Grey')
+  })
+
+  it('HTML-escapes the title, since the hover label reaches an innerHTML sink', () => {
+    // Page titles are user-editable and, unlike page `content`, are written
+    // verbatim by importAll — a crafted backup controls this string. GraphView3D
+    // feeds it to react-force-graph's `nodeLabel`, which float-tooltip renders
+    // via d3 `.html()`.
+    expect(nodeTooltip(node({ title: '<img src=x onerror=alert(1)>' }))).toBe(
+      '&lt;img src=x onerror=alert(1)&gt;',
+    )
+  })
+
+  it('escapes & before < and >, so the escaping cannot double-encode itself', () => {
+    expect(nodeTooltip(node({ title: 'Foo & <bar>' }))).toBe('Foo &amp; &lt;bar&gt;')
   })
 })
 
