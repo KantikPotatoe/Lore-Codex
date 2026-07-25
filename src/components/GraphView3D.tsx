@@ -4,16 +4,23 @@ import ForceGraph3D, {
   type NodeObject,
   type LinkObject,
 } from 'react-force-graph-3d'
-import { type GraphData, type GraphNode, type GraphLink } from '../db'
-import { nodeFill, nodeTooltip, type ColorBy } from '../graphColor'
+import { type GraphNode } from '../db'
+import {
+  nodeFill,
+  nodeTooltip,
+  type ColorBy,
+  type DrawnLink,
+  type DrawnGraphData,
+} from '../graphColor'
 import type { TagFilter } from '../tagFilter'
 
 // The 3D view is a "wow" companion to the 2D canvas: same data, simpler
 // interaction. Nodes are coloured by category (ghosts muted), sized by degree;
-// mutual links draw thicker and bluer. A single click opens a real page or
+// links carry their relationship type's colour, or the wiki mutual/one-way
+// styling when untyped. A single click opens a real page or
 // offers to create a ghost — no focus/pulse choreography like the 2D view.
 type GNode = NodeObject<GraphNode>
-type GLink = LinkObject<GraphNode, GraphLink>
+type GLink = LinkObject<GraphNode, DrawnLink>
 
 const GHOST_COLOR = '#8a8270'
 
@@ -29,7 +36,7 @@ export default function GraphView3D({
   islandColors,
   onGhostClick,
 }: {
-  data: GraphData
+  data: DrawnGraphData
   showArrows: boolean
   colorBy: ColorBy
   tagFilter: TagFilter
@@ -57,15 +64,15 @@ export default function GraphView3D({
     (node: GNode) => (node.ghost ? GHOST_COLOR : nodeFill(node, colorBy, tagFilter, islandColors)),
     [colorBy, tagFilter, islandColors],
   )
-  const linkColor = useCallback(
-    (link: GLink) => (link.mutual ? 'rgba(150,180,255,0.8)' : 'rgba(160,160,160,0.4)'),
-    [],
-  )
-  const linkWidth = useCallback((link: GLink) => (link.mutual ? 1.4 : 0.5), [])
+  // Colour and width are precomputed by linkStyle in GraphRoute's filter memo,
+  // on the 3D tier. Unlike the 2D view there is no lit state to layer on top:
+  // 3D has no hover/focus dimming, so `activeColor` goes unused here.
+  const linkColor = useCallback((link: GLink) => link.color3d, [])
+  const linkWidth = useCallback((link: GLink) => link.width3d, [])
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height: '100%' }}>
-      <ForceGraph3D<GraphNode, GraphLink>
+      <ForceGraph3D<GraphNode, DrawnLink>
         width={size.width}
         height={size.height}
         graphData={data}
@@ -79,8 +86,16 @@ export default function GraphView3D({
         nodeOpacity={0.9}
         linkColor={linkColor}
         linkWidth={linkWidth}
+        // Same escaped string the 2D view shows, and the same float-tooltip
+        // innerHTML sink (#244). Wiki-only edges carry '' and render nothing.
+        linkLabel={(link: GLink) => link.labels}
         linkDirectionalArrowColor={linkColor}
-        linkDirectionalArrowLength={showArrows ? 3 : 0}
+        // Asymmetric relationship types are always arrowed and symmetric ones
+        // never are — direction is meaning, not the user's to toggle. Only
+        // wiki-only edges follow the toggle. Length 3, not 2D's 4: the 3D
+        // arrowhead sits on a thinner line.
+        linkDirectionalArrowLength={(link: GLink) =>
+          link.arrow === 'always' || (link.arrow === 'toggle' && showArrows) ? 3 : 0}
         linkDirectionalArrowRelPos={1}
         onNodeClick={(node: GNode) => {
           if (node.ghost) onGhostClick(node.title)
