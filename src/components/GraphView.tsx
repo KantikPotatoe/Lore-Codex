@@ -217,6 +217,43 @@ export default function GraphView({
     return () => cancelAnimationFrame(raf)
   }, [initialCam, size.width])
 
+  // The other half of the camera: reporting it back up. react-kapsule
+  // propagates each changed prop by calling the vanilla force-graph setter from
+  // inside its own render body (react-kapsule.mjs:105-110), and force-graph's
+  // width/height/graphData setters re-zoom through `zoom.scaleTo`, which fires
+  // d3-zoom's `end` event — and so `onZoomEnd` — synchronously. Calling a
+  // GraphRoute state setter from there is a setState during ForceGraph2D's
+  // render (#252), the same path that produced the pre-hydration write race in
+  // `useGraphPrefs` (see .claude/rules/graph.md). Hand the report to a timeout
+  // so the write always lands after the render phase, whoever triggered it.
+  // A timeout rather than rAF deliberately: rAF is frozen in a background tab,
+  // which would strand the last camera of a gesture until the tab is looked at.
+  const camTimer = useRef<number | null>(null)
+  const pendingCam = useRef<GraphCam | null>(null)
+  useEffect(() => () => {
+    if (camTimer.current != null) window.clearTimeout(camTimer.current)
+    // Clearing is not enough: StrictMode's dev double-mount runs this cleanup
+    // between the two mounts while keeping the refs, so a timer id left behind
+    // here would look like "a flush is already scheduled" forever and silently
+    // swallow every later camera.
+    camTimer.current = null
+  }, [])
+
+  const reportCam = useCallback((cam: GraphCam) => {
+    // Keep only the newest report: a mount emits several as the container is
+    // measured and the data lands, and only the last one is the real camera.
+    // Rescheduling (rather than letting the first report own the slot) means a
+    // stale timer id can never latch this closed.
+    pendingCam.current = cam
+    if (camTimer.current != null) window.clearTimeout(camTimer.current)
+    camTimer.current = window.setTimeout(() => {
+      camTimer.current = null
+      const next = pendingCam.current
+      pendingCam.current = null
+      if (next) onCamChange(next)
+    }, 0)
+  }, [onCamChange])
+
   // Ease the camera to the selected node. Coordinates are populated on the
   // node objects by the running simulation.
   useEffect(() => {
@@ -315,7 +352,8 @@ export default function GraphView({
       onZoomEnd={(t: { k: number; x: number; y: number }) => {
         // force-graph reports the gesture-end transform merged with the current
         // graph-space centre, so x/y are already in the form centerAt() expects.
-        onCamChange({ k: t.k, x: t.x, y: t.y })
+        // Deferred — this can be called mid-render; see reportCam above.
+        reportCam({ k: t.k, x: t.x, y: t.y })
       }}
       backgroundColor="#15130f"
       />
