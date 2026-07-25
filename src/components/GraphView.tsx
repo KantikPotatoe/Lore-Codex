@@ -6,7 +6,7 @@ import ForceGraph2D, {
   type LinkObject,
 } from 'react-force-graph-2d'
 import { type GraphNode, edgeKey } from '../db'
-import { nodeFill, PATH_ACCENT, type ColorBy, type DrawnLink, type DrawnGraphData } from '../graphColor'
+import { nodeFill, PATH_ACCENT, drawsArrow, type ColorBy, type DrawnLink, type DrawnGraphData } from '../graphColor'
 import { radiusFor } from '../graphGeometry'
 import type { GraphCam } from '../useGraphPrefs'
 import type { TagFilter } from '../tagFilter'
@@ -282,8 +282,7 @@ export default function GraphView({
       linkWidth={linkWidth}
       linkDirectionalArrowColor={linkColor}
       linkLabel={(link: GLink) => link.labels}
-      linkDirectionalArrowLength={(link: GLink) =>
-        link.arrow === 'always' || (link.arrow === 'toggle' && showArrows) ? 4 : 0}
+      linkDirectionalArrowLength={(link: GLink) => (drawsArrow(link.arrow, showArrows) ? 4 : 0)}
       linkDirectionalArrowRelPos={1}
       onNodeHover={(node) => setHoverId(node ? String(node.id) : null)}
       onNodeClick={(node: GNode) => {

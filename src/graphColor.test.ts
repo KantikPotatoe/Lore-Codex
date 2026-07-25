@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nodeFill, nodeTooltip, linkStyle, withAlpha, TAG_ACCENT, MUTED, ISLAND_PALETTE, islandColorOf } from './graphColor'
+import { nodeFill, nodeTooltip, linkStyle, withAlpha, drawsArrow, TAG_ACCENT, MUTED, ISLAND_PALETTE, islandColorOf } from './graphColor'
 import { categoryColor, statusColor, type GraphNode, type GraphLink, type RelationEdge } from './db'
 import { NO_TAG_FILTER, type TagFilter } from './tagFilter'
 
@@ -249,5 +249,22 @@ describe('linkStyle', () => {
     expect(s.target).toBe('a')
     expect(s.color3d).toBe('#e0a458')
     expect(s.width3d).toBe(1.4)
+  })
+})
+
+describe('drawsArrow', () => {
+  it('always draws for an asymmetric relation, regardless of the toggle', () => {
+    expect(drawsArrow('always', false)).toBe(true)
+    expect(drawsArrow('always', true)).toBe(true)
+  })
+
+  it('never draws for a symmetric relation, regardless of the toggle', () => {
+    expect(drawsArrow('never', true)).toBe(false)
+    expect(drawsArrow('never', false)).toBe(false)
+  })
+
+  it('follows the toggle for a wiki-only edge', () => {
+    expect(drawsArrow('toggle', true)).toBe(true)
+    expect(drawsArrow('toggle', false)).toBe(false)
   })
 })

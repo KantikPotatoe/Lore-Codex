@@ -97,13 +97,24 @@ export function nodeTooltip(node: GraphNode): string {
 // ---------------------------------------------------------------------------
 // GraphView and graphExport used to derive rest-state link colour separately,
 // with graphExport carrying hand-copied constants and a comment admitting it.
-// A third styling dimension would have been the copy that drifted, so both now
-// read what this computes once, in GraphRoute's filter memo.
+// A third styling dimension would have been the copy that drifted, so all
+// three consumers — GraphView, GraphView3D and graphExport — now read what
+// this computes once, in GraphRoute's filter memo.
 
 /** When a link's arrow is drawn. A relationship's direction is meaning (parent
  *  vs child), so it is not the user's to toggle; a wiki link's direction is
  *  trivia about who typed the link, so it is. */
 export type ArrowMode = 'always' | 'never' | 'toggle'
+
+/** Whether a link draws its arrowhead. The mode is data (`linkStyle` decides
+ *  it from the relationship type); this is its one interpretation, shared so a
+ *  new ArrowMode member cannot silently mean "no arrow" in one view only. Each
+ *  view keeps its own arrow *length* — that is per-view calibration. */
+export function drawsArrow(arrow: ArrowMode, showArrows: boolean): boolean {
+  if (arrow === 'always') return true
+  if (arrow === 'never') return false
+  return showArrows
+}
 
 export interface LinkStyle {
   /** Orientation after the visible primary relation is applied — may swap the
@@ -153,11 +164,10 @@ const ONEWAY = {
 
 // A typed edge is the strongest statement on the canvas, so it draws at the
 // mutual width; the type's hue is what separates it from a mutual wiki link.
-const RELATION_WIDTH = 2.5
+const RELATION_WIDTH = MUTUAL.width
 const RELATION_REST_ALPHA = 0.75
-// In 3D the typed edge goes to full opacity: the ~1.5x the wiki pair gains
-// going into 3D would put 0.75 past 1. Width matches the 3D mutual width, for
-// the same reason RELATION_WIDTH matches the 2D one.
+// Width matches the 3D mutual width, for the same reason RELATION_WIDTH
+// matches the 2D one.
 const RELATION_WIDTH_3D = MUTUAL.width3d
 
 /** '#rrggbb' + alpha → 'rgba(r, g, b, a)'. Input that isn't six-digit hex is
@@ -209,6 +219,9 @@ export function linkStyle(link: GraphLink, hiddenRelTypes: Set<string>): LinkSty
     color: withAlpha(primary.color, RELATION_REST_ALPHA),
     activeColor: primary.color,
     width: RELATION_WIDTH,
+    // Full opacity, not RELATION_REST_ALPHA: the ~1.5x alpha boost the wiki
+    // pair gets going into 3D would put 0.75 past 1, so the typed edge skips
+    // the rest-state fade in 3D rather than clip.
     color3d: primary.color,
     width3d: RELATION_WIDTH_3D,
     arrow: primary.directed ? 'always' : 'never',

@@ -8,6 +8,7 @@ import { type GraphNode } from '../db'
 import {
   nodeFill,
   nodeTooltip,
+  drawsArrow,
   type ColorBy,
   type DrawnLink,
   type DrawnGraphData,
@@ -69,6 +70,12 @@ export default function GraphView3D({
   // 3D has no hover/focus dimming, so `activeColor` goes unused here.
   const linkColor = useCallback((link: GLink) => link.color3d, [])
   const linkWidth = useCallback((link: GLink) => link.width3d, [])
+  const linkLabel = useCallback((link: GLink) => link.labels, [])
+  // Length 3, not 2D's 4: the 3D arrowhead sits on a thinner line.
+  const linkArrowLength = useCallback(
+    (link: GLink) => (drawsArrow(link.arrow, showArrows) ? 3 : 0),
+    [showArrows],
+  )
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height: '100%' }}>
@@ -88,14 +95,13 @@ export default function GraphView3D({
         linkWidth={linkWidth}
         // Same escaped string the 2D view shows, and the same float-tooltip
         // innerHTML sink (#244). Wiki-only edges carry '' and render nothing.
-        linkLabel={(link: GLink) => link.labels}
+        linkLabel={linkLabel}
         linkDirectionalArrowColor={linkColor}
         // Asymmetric relationship types are always arrowed and symmetric ones
         // never are — direction is meaning, not the user's to toggle. Only
-        // wiki-only edges follow the toggle. Length 3, not 2D's 4: the 3D
-        // arrowhead sits on a thinner line.
-        linkDirectionalArrowLength={(link: GLink) =>
-          link.arrow === 'always' || (link.arrow === 'toggle' && showArrows) ? 3 : 0}
+        // wiki-only edges follow the toggle (`drawsArrow`, shared with 2D so a
+        // new ArrowMode member can't silently mean "no arrow" in one view only).
+        linkDirectionalArrowLength={linkArrowLength}
         linkDirectionalArrowRelPos={1}
         onNodeClick={(node: GNode) => {
           if (node.ghost) onGhostClick(node.title)
