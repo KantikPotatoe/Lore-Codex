@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nodeFill, nodeTooltip, linkStyle, withAlpha, TAG_ACCENT, MUTED, ISLAND_PALETTE, islandColorOf } from './graphColor'
+import { nodeFill, nodeTooltip, linkStyle, withAlpha, drawsArrow, TAG_ACCENT, MUTED, ISLAND_PALETTE, islandColorOf } from './graphColor'
 import { categoryColor, statusColor, type GraphNode, type GraphLink, type RelationEdge } from './db'
 import { NO_TAG_FILTER, type TagFilter } from './tagFilter'
 
@@ -213,5 +213,58 @@ describe('linkStyle', () => {
       relations: [relation({ label: 'Foo & <bar>', inverseLabel: 'x' })],
     })
     expect(linkStyle(link, NONE_HIDDEN)!.labels).toBe('Foo &amp; &lt;bar&gt;')
+  })
+
+  it('gives a typed edge the type colour at full opacity and the mutual width in 3D', () => {
+    const s = linkStyle(graphLink({ relations: [relation()] }), NONE_HIDDEN)!
+    expect(s.color3d).toBe('#e0a458')
+    expect(s.width3d).toBe(1.4)
+  })
+
+  it('keeps the brighter, thinner 3D calibration for a mutual wiki link', () => {
+    const s = linkStyle(graphLink({ mutual: true }), NONE_HIDDEN)!
+    expect(s.color3d).toBe('rgba(150,180,255,0.8)')
+    expect(s.width3d).toBe(1.4)
+  })
+
+  it('keeps the brighter, thinner 3D calibration for a one-way wiki link', () => {
+    const s = linkStyle(graphLink(), NONE_HIDDEN)!
+    expect(s.color3d).toBe('rgba(160,160,160,0.4)')
+    expect(s.width3d).toBe(0.5)
+  })
+
+  it('falls back to the 3D wiki tier, not the 2D one, when every type is hidden', () => {
+    // The wiki fall-through is a second return statement; it is the branch most
+    // likely to be left setting only the 2D pair.
+    const s = linkStyle(graphLink({ mutual: true, relations: [relation()] }), new Set(['parent-of']))!
+    // Literals, not a comparison against another linkStyle call: two undefined
+    // fields compare equal, so a cross-check would pass before the fields exist.
+    expect(s.color3d).toBe('rgba(150,180,255,0.8)')
+    expect(s.width3d).toBe(1.4)
+  })
+
+  it('does not change the 3D styling when a promoted relation swaps orientation', () => {
+    const s = linkStyle(graphLink({ relations: [relation({ reversed: true })] }), NONE_HIDDEN)!
+    expect(s.source).toBe('b')
+    expect(s.target).toBe('a')
+    expect(s.color3d).toBe('#e0a458')
+    expect(s.width3d).toBe(1.4)
+  })
+})
+
+describe('drawsArrow', () => {
+  it('always draws for an asymmetric relation, regardless of the toggle', () => {
+    expect(drawsArrow('always', false)).toBe(true)
+    expect(drawsArrow('always', true)).toBe(true)
+  })
+
+  it('never draws for a symmetric relation, regardless of the toggle', () => {
+    expect(drawsArrow('never', true)).toBe(false)
+    expect(drawsArrow('never', false)).toBe(false)
+  })
+
+  it('follows the toggle for a wiki-only edge', () => {
+    expect(drawsArrow('toggle', true)).toBe(true)
+    expect(drawsArrow('toggle', false)).toBe(false)
   })
 })

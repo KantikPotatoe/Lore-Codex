@@ -97,13 +97,24 @@ export function nodeTooltip(node: GraphNode): string {
 // ---------------------------------------------------------------------------
 // GraphView and graphExport used to derive rest-state link colour separately,
 // with graphExport carrying hand-copied constants and a comment admitting it.
-// A third styling dimension would have been the copy that drifted, so both now
-// read what this computes once, in GraphRoute's filter memo.
+// A third styling dimension would have been the copy that drifted, so all
+// three consumers — GraphView, GraphView3D and graphExport — now read what
+// this computes once, in GraphRoute's filter memo.
 
 /** When a link's arrow is drawn. A relationship's direction is meaning (parent
  *  vs child), so it is not the user's to toggle; a wiki link's direction is
  *  trivia about who typed the link, so it is. */
 export type ArrowMode = 'always' | 'never' | 'toggle'
+
+/** Whether a link draws its arrowhead. The mode is data (`linkStyle` decides
+ *  it from the relationship type); this is its one interpretation, shared so a
+ *  new ArrowMode member cannot silently mean "no arrow" in one view only. Each
+ *  view keeps its own arrow *length* — that is per-view calibration. */
+export function drawsArrow(arrow: ArrowMode, showArrows: boolean): boolean {
+  if (arrow === 'always') return true
+  if (arrow === 'never') return false
+  return showArrows
+}
 
 export interface LinkStyle {
   /** Orientation after the visible primary relation is applied — may swap the
@@ -115,6 +126,11 @@ export interface LinkStyle {
   /** Inside the hover/selection focus neighbourhood. */
   activeColor: string
   width: number
+  /** Rest colour on the 3D canvas. 3D is calibrated separately — see the
+   *  constants block below. */
+  color3d: string
+  /** 3D line width, in three.js world units rather than pixels. */
+  width3d: number
   arrow: ArrowMode
   /** Hover tooltip text; '' for a wiki-only edge. */
   labels: string
@@ -130,14 +146,29 @@ export interface DrawnGraphData {
 }
 
 // Rest and lit styling for wiki links, unchanged from what GraphView drew
-// before — now stated once.
-const MUTUAL = { color: 'rgba(150,180,255,0.5)', active: 'rgba(190,210,255,0.95)', width: 2.5 }
-const ONEWAY = { color: 'rgba(160,160,160,0.28)', active: 'rgba(170,185,225,0.7)', width: 1 }
+// before — now stated once. The `3d` pair is a second calibration of the same
+// edge, not drift: 3D links are thin lines over a dark WebGL scene at varying
+// depth, so they need more alpha to read, and three.js line widths are world
+// units rather than pixels, so 2D's 2.5 would render as a slab. Both tiers sit
+// on adjacent lines so that changing one and forgetting the other is visible in
+// the diff. There is no `active3d`: 3D has no hover, focus or path machinery,
+// so it has no lit state.
+const MUTUAL = {
+  color: 'rgba(150,180,255,0.5)', active: 'rgba(190,210,255,0.95)', width: 2.5,
+  color3d: 'rgba(150,180,255,0.8)', width3d: 1.4,
+}
+const ONEWAY = {
+  color: 'rgba(160,160,160,0.28)', active: 'rgba(170,185,225,0.7)', width: 1,
+  color3d: 'rgba(160,160,160,0.4)', width3d: 0.5,
+}
 
 // A typed edge is the strongest statement on the canvas, so it draws at the
 // mutual width; the type's hue is what separates it from a mutual wiki link.
-const RELATION_WIDTH = 2.5
+const RELATION_WIDTH = MUTUAL.width
 const RELATION_REST_ALPHA = 0.75
+// Width matches the 3D mutual width, for the same reason RELATION_WIDTH
+// matches the 2D one.
+const RELATION_WIDTH_3D = MUTUAL.width3d
 
 /** '#rrggbb' + alpha → 'rgba(r, g, b, a)'. Input that isn't six-digit hex is
  *  returned unchanged: a relationship type's colour is user-editable, and a
@@ -170,6 +201,8 @@ export function linkStyle(link: GraphLink, hiddenRelTypes: Set<string>): LinkSty
       color: s.color,
       activeColor: s.active,
       width: s.width,
+      color3d: s.color3d,
+      width3d: s.width3d,
       arrow: 'toggle',
       labels: '',
     }
@@ -186,6 +219,11 @@ export function linkStyle(link: GraphLink, hiddenRelTypes: Set<string>): LinkSty
     color: withAlpha(primary.color, RELATION_REST_ALPHA),
     activeColor: primary.color,
     width: RELATION_WIDTH,
+    // Full opacity, not RELATION_REST_ALPHA: the ~1.5x alpha boost the wiki
+    // pair gets going into 3D would put 0.75 past 1, so the typed edge skips
+    // the rest-state fade in 3D rather than clip.
+    color3d: primary.color,
+    width3d: RELATION_WIDTH_3D,
     arrow: primary.directed ? 'always' : 'never',
     // Per-edge, not per-relation: once the orientation flips, every label on
     // the edge reads the other way.
