@@ -193,14 +193,17 @@ export function buildGraphData(
       return ta.order - tb.order || (ta.id < tb.id ? -1 : ta.id > tb.id ? 1 : 0)
     })
 
-    // Orient from the lowest-order row, unconditionally — including over a wiki
-    // edge that ran the other way, and including for a symmetric type. Safe
-    // because every other consumer (edgeKey, degree, BFS, the depth filter)
-    // treats edges as undirected, and a typed edge's arrow is governed by its
-    // type rather than by the wiki `showArrows` toggle.
+    // A wiki edge's orientation wins; only a relationship-only pair is oriented
+    // from its lowest-order row. The wiki link outlives the relationship's
+    // visibility — hiding the type falls the edge back to wiki styling — so an
+    // orientation overwritten here would leave that fallback pointing the wrong
+    // way (#245). Everything else (edgeKey, degree, BFS, the depth filter)
+    // treats edges as undirected, so this only ever decides which end the arrow
+    // is drawn at, and `linkStyle` swaps back whenever a relation is visible.
+    const existing = byKey.get(key)
     const primary = rows[0]
-    const source = primary.fromId
-    const target = primary.toId
+    const source = existing ? existing.source : primary.fromId
+    const target = existing ? existing.target : primary.toId
 
     const relations: RelationEdge[] = rows.flatMap((row) => {
       const type = typeById.get(row.typeId)!
@@ -222,10 +225,7 @@ export function buildGraphData(
       }]
     })
 
-    const existing = byKey.get(key)
     if (existing) {
-      existing.source = source
-      existing.target = target
       existing.relations = relations
     } else {
       links.push({ source, target, mutual: false, wiki: false, relations })

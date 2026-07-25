@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildGraphData, nodesWithinHops, connectedComponents, shortestPath, findPath, edgeKey, type GraphLink, type LorePage, type Relationship, type RelationshipType } from '../db'
 import type { Infobox, InfoboxField } from './types'
+import { linkStyle } from '../graphColor'
 
 // buildGraphData is a pure function over a page array, so these tests pass pages
 // in directly (no DB). They pin the documented edge rules: a node per page
@@ -549,5 +550,67 @@ describe('buildGraphData relationship edges', () => {
   it('never creates a ghost node from a relationship', () => {
     const data = buildGraphData([A], [rel('r1', 'a', 'gone', 'parent-of')], [PARENT])
     expect(data.nodes.some((n) => n.ghost)).toBe(false)
+  })
+
+  it('keeps the wiki orientation when a relationship is stored the other way (#245)', () => {
+    // A wiki-links to B, so the edge runs a→b. The parent-of row is stored
+    // b→a. The wiki orientation must survive the merge, because hiding
+    // parent-of has to fall back to an arrow that matches the wiki link.
+    const data = buildGraphData(
+      [page('a', 'A', { content: link('B') }), B],
+      [rel('r1', 'b', 'a', 'parent-of')],
+      [PARENT],
+    )
+    expect(data.links).toHaveLength(1)
+    expect(data.links[0].source).toBe('a')
+    expect(data.links[0].target).toBe('b')
+    expect(data.links[0].relations[0].reversed).toBe(true)
+  })
+
+  it('still orients a relationship-only pair from the lowest-order row', () => {
+    // No wiki edge, so there is no orientation to defer to and the primary
+    // row decides — unchanged behaviour.
+    const data = buildGraphData([A, B], [rel('r1', 'b', 'a', 'parent-of')], [PARENT])
+    expect(data.links[0].source).toBe('b')
+    expect(data.links[0].target).toBe('a')
+    expect(data.links[0].relations[0].reversed).toBe(false)
+  })
+
+  it('measures reversed against the wiki orientation for every row on the pair', () => {
+    // parent-of runs b→a, ally-of runs a→b, and the wiki link runs a→b. Both
+    // rows are flagged relative to the wiki orientation, not to each other.
+    const data = buildGraphData(
+      [page('a', 'A', { content: link('B') }), B],
+      [rel('r1', 'b', 'a', 'parent-of'), rel('r2', 'a', 'b', 'ally-of')],
+      [PARENT, ALLY],
+    )
+    const byType = new Map(data.links[0].relations.map((r) => [r.typeId, r.reversed]))
+    expect(byType.get('parent-of')).toBe(true)
+    expect(byType.get('ally-of')).toBe(false)
+  })
+})
+
+describe('shared-edge arrow orientation (#245)', () => {
+  // The end-to-end shape the issue reports: build the graph, then style it the
+  // way GraphRoute's filter memo does. A wiki link runs a→b; a parent-of row is
+  // stored b→a. Whether parent-of is visible decides which reading wins, and
+  // hiding it must not leave the relationship's orientation behind.
+  const pages = [page('a', 'A', { content: link('B') }), page('b', 'B')]
+  const rels = [rel('r1', 'b', 'a', 'parent-of')]
+
+  it('draws the relationship orientation while its type is visible', () => {
+    const built = buildGraphData(pages, rels, [PARENT])
+    const s = linkStyle(built.links[0], new Set<string>())!
+    expect(s.source).toBe('b')
+    expect(s.target).toBe('a')
+    expect(s.arrow).toBe('always')
+  })
+
+  it('falls back to the wiki orientation when the type is hidden', () => {
+    const built = buildGraphData(pages, rels, [PARENT])
+    const s = linkStyle(built.links[0], new Set(['parent-of']))!
+    expect(s.source).toBe('a')
+    expect(s.target).toBe('b')
+    expect(s.arrow).toBe('toggle')
   })
 })
