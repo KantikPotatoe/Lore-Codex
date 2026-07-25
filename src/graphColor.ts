@@ -68,6 +68,30 @@ export function nodeFill(
   return categoryColor(node.category)
 }
 
+// react-force-graph's `nodeLabel`/`linkLabel` props reach float-tooltip's
+// `state.tooltipEl.html(content)` — d3's `.html()`, i.e. innerHTML — so every
+// string this module emits for a hover tooltip bypasses React's escaping and
+// must be escaped here. Both sinks are fed attacker-reachable text: relationship
+// type labels and page titles are free text, editable in the UI and, critically,
+// written verbatim by `importAll` (which scrubs page `content` and event
+// `description`, but not titles or relationship types). `&` must be escaped
+// first, or the entities introduced by the other replacements would themselves
+// get escaped.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/** Hover-tooltip text for a graph node — the title, escaped for the innerHTML
+ *  sink described above (#244). Renderers pass this as a `nodeLabel` accessor
+ *  rather than naming the raw `title` property. */
+export function nodeTooltip(node: GraphNode): string {
+  return escapeHtml(node.title)
+}
+
 // ---------------------------------------------------------------------------
 // Link styling (#137) — the single authority
 // ---------------------------------------------------------------------------
@@ -123,22 +147,6 @@ export function withAlpha(hex: string, alpha: number): string {
   if (!m) return hex
   const n = parseInt(m[1], 16)
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
-}
-
-// Relationship-type labels are free text — editable in the Relationship-types
-// admin and, critically, imported from backup files verbatim (`importAll`
-// bulkAdds `relationshipTypes` unsanitized). `labels` reaches react-force-
-// graph's `linkLabel`, which float-tooltip renders via `.html()` (innerHTML),
-// bypassing React's escaping entirely. Escape here so the one styling
-// authority emits tooltip-safe text no matter what consumes it. `&` must be
-// escaped first, or the entities introduced by the other replacements would
-// themselves get escaped.
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }
 
 /**
