@@ -118,13 +118,24 @@ sees relationship neighbours).
 4. Sort each pair's rows by `type.order`, then `typeId` for a stable tie-break —
    the same determinism `connectedComponents` and `shortestPath` already commit
    to, so an unrelated edit never reshuffles a colour.
-5. **Orient the edge from the lowest-order row**: `source = primary.fromId`,
-   `target = primary.toId`. Unconditional — including when a wiki edge already
-   existed with the opposite orientation, and including when the primary type is
-   symmetric. One rule, no branch. Safe because everything else in the graph
-   (`edgeKey`, `degree`, BFS, the depth filter) treats edges as undirected, and
-   because a typed edge's arrow is governed by §5 rather than by the wiki
-   `showArrows` toggle.
+5. **Orient the edge from the wiki edge when there is one, else from the
+   lowest-order row**: for a pair that already has a wiki edge, keep its
+   `source`/`target`; otherwise `source = primary.fromId`,
+   `target = primary.toId`. Applies regardless of whether the primary type is
+   symmetric.
+
+   Amended by #245. This was originally unconditional — one rule, no branch —
+   on the grounds that everything else in the graph (`edgeKey`, `degree`, BFS,
+   the depth filter) treats edges as undirected. That still holds, and it is
+   still what makes the choice safe. What it missed is that the *wiki* edge
+   outlives the relationship's visibility: hiding the type falls the edge back
+   to wiki styling (§4), and an orientation overwritten here left that fallback
+   drawing its arrow against the only wiki link on the pair. Deferring to the
+   wiki orientation costs one branch and confines orientation-switching to
+   `linkStyle`, where the arrow decision already lives.
+
+   `reversed` (step 6) is unaffected: it is measured against whichever
+   orientation this step chose.
 6. Build each `RelationEdge`: `label` from `resolveRelation(row, type, source)`,
    `inverseLabel` from `resolveRelation(row, type, target)`, and
    `reversed = row.fromId !== source`.
@@ -197,9 +208,12 @@ Behaviour:
   - `width` = 2.5 — a typed edge is the strongest statement on the canvas.
   - If `primary.reversed`, **swap `source`/`target`** so the arrow can always be
     drawn forward. This is why orientation is part of the style rather than
-    fixed at build time: hiding the primary type can promote a relation whose
-    stored row runs the other way, and `linkDirectionalArrowRelPos={1}` only
-    draws at the target end.
+    fixed at build time: the incoming orientation is the wiki edge's (§3 step 5),
+    and hiding a type can promote a relation whose stored row runs the other way,
+    while `linkDirectionalArrowRelPos={1}` only draws at the target end. The
+    swap is therefore what makes a visible relationship orient the edge, and its
+    absence on the fallback path is what makes a hidden one read as the wiki
+    link again.
   - `arrow` = `primary.directed ? 'always' : 'never'`. After the swap the
     primary always reads forward, so no `'backward'` mode is needed.
   - `labels` = every visible relation joined with ` · `, taking `inverseLabel`
