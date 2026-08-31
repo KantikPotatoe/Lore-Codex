@@ -197,6 +197,13 @@ describe('seedTemplates', () => {
     await resetTemplate(a.id)
     expect((await db.templates.get(a.id))!.sections).toEqual(BUILTIN_SECTIONS[a.name])
   })
+
+  it('resetTemplate restores the shipped group', async () => {
+    const a = BUILTIN_TEMPLATES.find((t) => t.name === 'Settlement')!
+    await db.templates.add({ ...a, group: '' }) // user deliberately ungrouped
+    await resetTemplate(a.id)
+    expect((await db.templates.get(a.id))!.group).toBe(BUILTIN_GROUPS[a.name])
+  })
 })
 
 describe('BUILTIN_TEMPLATES structure', () => {

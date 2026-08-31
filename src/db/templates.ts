@@ -356,6 +356,7 @@ export async function resetTemplate(id: string): Promise<void> {
       ...original,
       icon: BUILTIN_ICONS[original.name],
       sections: BUILTIN_SECTIONS[original.name] ?? [],
+      group: BUILTIN_GROUPS[original.name],
     })
   }
 }
