@@ -6,7 +6,7 @@ import TemplatesRoute from './TemplatesRoute'
 
 afterEach(cleanup)
 
-describe('TemplatesRoute - apply-changes prompt', () => {
+describe('TemplatesRoute — apply-changes prompt', () => {
   beforeEach(async () => {
     await db.pages.clear()
     await db.templates.clear()
@@ -26,23 +26,23 @@ describe('TemplatesRoute - apply-changes prompt', () => {
     await screen.findByDisplayValue('Hero')
 
     // Initially quiet: no "you changed this type's rows" message.
-    expect(screen.queryByText(/you changed this type's rows/i)).toBeNull()
+    expect(screen.queryByText(/you changed this type’s rows/i)).toBeNull()
 
     // Edit a row: add a field. The prompt should appear with the page count.
     fireEvent.click(screen.getByText('＋ Add field'))
-    expect(await screen.findByText(/you changed this type's rows/i)).toBeTruthy()
+    expect(await screen.findByText(/you changed this type’s rows/i)).toBeTruthy()
     const applyBtn = screen.getByRole('button', { name: /apply to 2 existing pages/i })
 
     // Apply: prompt collapses and a success note appears.
     fireEvent.click(applyBtn)
     await waitFor(() =>
-      expect(screen.queryByText(/you changed this type's rows/i)).toBeNull(),
+      expect(screen.queryByText(/you changed this type’s rows/i)).toBeNull(),
     )
     expect(screen.getByText(/updated 2 pages/i)).toBeTruthy()
   })
 })
 
-describe('TemplatesRoute - sidebar group', () => {
+describe('TemplatesRoute — sidebar group', () => {
   beforeEach(async () => {
     await db.templates.clear()
     await seedTemplates()
