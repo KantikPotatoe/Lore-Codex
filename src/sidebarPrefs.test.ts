@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { getCollapsedGroups, toggleCollapsedGroup, RECENT_GROUP } from './sidebarPrefs'
+import { getCollapsedGroups, toggleCollapsedGroup, groupCollapseKey, RECENT_GROUP } from './sidebarPrefs'
 
 const L = 'test-lore'
 
@@ -31,5 +31,10 @@ describe('sidebarPrefs', () => {
   it('survives corrupt storage', () => {
     localStorage.setItem('lore:test-lore:collapsedGroups', 'nope')
     expect(getCollapsedGroups(L)).toEqual([])
+  })
+
+  it('namespaces group collapse keys so a group and a type of the same name differ', () => {
+    expect(groupCollapseKey('Places')).toBe('group:Places')
+    expect(groupCollapseKey('Places')).not.toBe('Places')
   })
 })

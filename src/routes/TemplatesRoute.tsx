@@ -194,6 +194,25 @@ export default function TemplatesRoute() {
               )}
             </div>
 
+            <div className="template-color-row">
+              <label className="template-color-label" htmlFor="template-group">Group</label>
+              <input
+                id="template-group"
+                className="template-group-input"
+                list="template-groups"
+                value={selected.group ?? ''}
+                placeholder="None"
+                onChange={(e) => updateTemplate(selected.id, { group: e.target.value })}
+              />
+              <datalist id="template-groups">
+                {[...new Set(
+                  templates.map((t) => t.group?.trim()).filter((g): g is string => !!g),
+                )]
+                  .sort((a, b) => a.localeCompare(b))
+                  .map((g) => <option key={g} value={g} />)}
+              </datalist>
+            </div>
+
             <div className="template-items">
               {selected.items.length === 0 && (
                 <p className="empty-hint">No rows yet. Add a field or a separator below.</p>

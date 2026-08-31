@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { db, createPage, defaultInfobox } from '../db'
+import { db, createPage, defaultInfobox, seedTemplates } from '../db'
 import TemplatesRoute from './TemplatesRoute'
 
 afterEach(cleanup)
@@ -39,5 +39,47 @@ describe('TemplatesRoute — apply-changes prompt', () => {
       expect(screen.queryByText(/you changed this type’s rows/i)).toBeNull(),
     )
     expect(screen.getByText(/updated 2 pages/i)).toBeTruthy()
+  })
+})
+
+describe('TemplatesRoute — sidebar group', () => {
+  beforeEach(async () => {
+    await db.templates.clear()
+    await seedTemplates()
+  })
+
+  it('saves a group onto the selected type and suggests existing groups', async () => {
+    render(<MemoryRouter><TemplatesRoute /></MemoryRouter>)
+
+    // Wait for Settlement to appear, then click it
+    const settlementBtn = await screen.findByRole('button', { name: /Settlement/ })
+    fireEvent.click(settlementBtn)
+
+    // Task 1 backfilled Settlement into "Places".
+    const input = await screen.findByLabelText('Group')
+    expect((input as HTMLInputElement).value).toBe('Places')
+
+    fireEvent.change(input, { target: { value: 'Realms' } })
+
+    await waitFor(async () => {
+      const all = await db.templates.toArray()
+      expect(all.find((t) => t.name === 'Settlement')!.group).toBe('Realms')
+    })
+
+    // The datalist offers the groups currently in use.
+    expect(document.querySelectorAll('#template-groups option').length).toBeGreaterThan(0)
+  })
+
+  it('clearing the field stores the deliberately-ungrouped sentinel', async () => {
+    render(<MemoryRouter><TemplatesRoute /></MemoryRouter>)
+
+    const spellBtn = await screen.findByRole('button', { name: /Spell/ })
+    fireEvent.click(spellBtn)
+    fireEvent.change(await screen.findByLabelText('Group'), { target: { value: '' } })
+
+    await waitFor(async () => {
+      const all = await db.templates.toArray()
+      expect(all.find((t) => t.name === 'Spell')!.group).toBe('')
+    })
   })
 })

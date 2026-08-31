@@ -9,6 +9,7 @@ import {
   BUILTIN_TEMPLATES,
   BUILTIN_ICONS,
   BUILTIN_SECTIONS,
+  BUILTIN_GROUPS,
   type Infobox,
   type InfoboxTemplate,
 } from '../db'
@@ -150,11 +151,58 @@ describe('seedTemplates', () => {
     expect((await db.templates.get(b.id))!.sections).toEqual([]) // untouched
   })
 
+  it('backfills a default group on a built-in that has none, leaving a cleared one alone', async () => {
+    const a = BUILTIN_TEMPLATES.find((t) => t.name === 'Settlement')!
+    await db.templates.add({ ...a, group: undefined })
+    const b = BUILTIN_TEMPLATES.find((t) => t.name === 'Spell')!
+    await db.templates.add({ ...b, group: '' }) // user deliberately ungrouped
+
+    await seedTemplates()
+
+    expect((await db.templates.get(a.id))!.group).toBe(BUILTIN_GROUPS[a.name])
+    expect((await db.templates.get(b.id))!.group).toBe('')
+  })
+
+  it('never assigns a group to a custom type', async () => {
+    await db.templates.add({
+      id: 'custom-1', name: 'Heraldry', color: '#abc', builtin: false, items: [],
+    })
+
+    await seedTemplates()
+
+    expect((await db.templates.get('custom-1'))!.group).toBeUndefined()
+  })
+
+  it('assigns a group to every shipped built-in', async () => {
+    await seedTemplates()
+
+    const all = await db.templates.toArray()
+    const builtins = all.filter((t) => t.builtin)
+    expect(builtins.length).toBe(BUILTIN_TEMPLATES.length)
+    for (const t of builtins) {
+      expect(t.group, `${t.name} has no group`).toBeTruthy()
+    }
+  })
+
+  it('does not use a group name that collides with a type name', () => {
+    const typeNames = new Set(BUILTIN_TEMPLATES.map((t) => t.name))
+    for (const group of new Set(Object.values(BUILTIN_GROUPS))) {
+      expect(typeNames.has(group), `group "${group}" collides with a type name`).toBe(false)
+    }
+  })
+
   it('resetTemplate restores the shipped sections', async () => {
     const a = BUILTIN_TEMPLATES.find((t) => BUILTIN_SECTIONS[t.name])!
     await db.templates.add({ ...a, sections: ['Junk'] })
     await resetTemplate(a.id)
     expect((await db.templates.get(a.id))!.sections).toEqual(BUILTIN_SECTIONS[a.name])
+  })
+
+  it('resetTemplate restores the shipped group', async () => {
+    const a = BUILTIN_TEMPLATES.find((t) => t.name === 'Settlement')!
+    await db.templates.add({ ...a, group: '' }) // user deliberately ungrouped
+    await resetTemplate(a.id)
+    expect((await db.templates.get(a.id))!.group).toBe(BUILTIN_GROUPS[a.name])
   })
 })
 
