@@ -96,11 +96,11 @@ Custom types (`builtin: false`) are never touched, consistent with the rest of
 CLAUDE.md requires bumping `CURRENT_SCHEMA_VERSION` and adding a `MIGRATIONS`
 step "when the exported shape changes", and states that the constant **mirrors
 the Dexie store version**. `group` is not indexed, so no Dexie `version()` block
-changes, and the store version stays at v12.
+changes, and the store version stays at v15.
 
 The field is additive and optional: an older backup simply lacks it, which reads
 as `undefined` — the "never set" state the backfill already handles. `importAll()`
-re-seeds built-ins after importing an older backup, so a v12 backup restored
+re-seeds built-ins after importing an older backup, so a v15 backup restored
 into this build comes out grouped. A backup written by *this* build and restored
 into an older one carries an unknown key that Dexie stores harmlessly.
 

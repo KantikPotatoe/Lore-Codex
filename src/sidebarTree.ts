@@ -69,6 +69,9 @@ export function buildSidebarTree(
     group.count += list.length
   }
 
+  // caseFirst: 'upper' is deliberate here (and nowhere else in src/): it makes
+  // 'Places' sort before 'places'. Dropping it flips that order and breaks the
+  // case-order assertions in src/sidebarTree.test.ts.
   for (const group of groups.values()) {
     group.children.sort((a, b) => a.category.localeCompare(b.category, undefined, { caseFirst: 'upper' }))
   }
