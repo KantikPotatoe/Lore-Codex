@@ -198,7 +198,7 @@ export default function TemplatesRoute() {
               <label className="template-color-label" htmlFor="template-group">Group</label>
               <input
                 id="template-group"
-                className="template-icon-input"
+                className="template-group-input"
                 list="template-groups"
                 value={selected.group ?? ''}
                 placeholder="None"

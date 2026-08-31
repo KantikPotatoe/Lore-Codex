@@ -931,6 +931,7 @@ button.wiki-link { background: none; border-top: none; border-left: none; border
 .template-color-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
 .template-color-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-faint); margin-right: 4px; }
 .template-icon-input { width: 60px; text-align: center; font-size: 18px; background: var(--bg-2); border: 1px solid var(--border); color: var(--ink); border-radius: 7px; padding: 4px; }
+.template-group-input { width: 180px; text-align: left; font-size: 13px; background: var(--bg-2); border: 1px solid var(--border); color: var(--ink); border-radius: 7px; padding: 4px 8px; }
 .color-swatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; padding: 0; box-shadow: 0 0 0 1px rgba(0,0,0,0.25) inset; }
 .color-swatch:hover { border-color: var(--ink-faint); }
 .color-swatch.active { border-color: var(--ink); }
