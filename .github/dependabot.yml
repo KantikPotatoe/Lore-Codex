@@ -1,0 +1,74 @@
+version: 2
+
+# Without this file Dependabot only raises *security* alerts, and nothing opens
+# a PR until something is already vulnerable. That is how the repo drifted five
+# weeks with two high-severity runtime alerts behind a single stale postcss PR.
+# Scheduled version updates keep the lockfile close to upstream so a security
+# bump is a one-line refresh instead of a catch-up.
+#
+# Every entry carries `version:patch`, because version-bump.yml reads the PR
+# label to decide the release bump and no label silently means patch anyway.
+# Stating it keeps dependency PRs consistent with the "always label" rule.
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - version:patch
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps-dev)
+    groups:
+      # One PR for the routine noise. Majors are deliberately excluded so a
+      # breaking bump arrives alone and reviewable, never bundled with ten
+      # harmless patches.
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      # Security fixes travel together and land as one PR regardless of range.
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # The desktop shell has a tracked Cargo.lock, so it drifts the same way the
+  # npm side did. desktop.yml's cargo-check is path-scoped to src-tauri/**, so
+  # these PRs get compiled; pure-web PRs still never wait on it.
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - version:patch
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - version:patch
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - "*"
