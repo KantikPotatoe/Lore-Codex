@@ -3,6 +3,11 @@ import { currentLoreId } from './lores'
 export const RECENT_GROUP = '__recent__'
 export const TAGS_GROUP = '__tags__'
 
+/** Collapse-state key for a type group (#115). Prefixed so a group named
+ *  "Places" and a page type named "Places" never share a collapse state.
+ *  Bare names stay reserved for types, so existing stored keys keep working. */
+export const groupCollapseKey = (name: string): string => `group:${name}`
+
 const keyFor = (loreId: string) => `lore:${loreId}:collapsedGroups`
 
 function read(loreId: string): string[] {

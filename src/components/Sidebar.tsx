@@ -6,8 +6,9 @@ import { getLore, currentLoreId } from '../lores'
 import { pickRandomId } from '../rediscovery'
 import { showPageHover, scheduleWikiHoverClose } from '../wikiLinkHover'
 import { getRecent, pruneRecent, subscribeRecents } from '../recents'
-import { getCollapsedGroups, toggleCollapsedGroup, RECENT_GROUP, TAGS_GROUP } from '../sidebarPrefs'
+import { getCollapsedGroups, toggleCollapsedGroup, groupCollapseKey, RECENT_GROUP, TAGS_GROUP } from '../sidebarPrefs'
 import { tagCounts } from '../tags'
+import { buildSidebarTree, type SidebarNode, type SidebarTypeNode } from '../sidebarTree'
 
 // Stable empty array so the live queries don't hand `useMemo` a fresh `[]`
 // (and force a recompute) on every render while data is still loading.
@@ -28,6 +29,40 @@ function PageLink({ page, active }: { page: LorePage; active: boolean }) {
   )
 }
 
+function TypeGroup({
+  node, collapsed, onToggle, browseCategory, currentId,
+}: {
+  node: SidebarTypeNode
+  collapsed: Set<string>
+  onToggle: (key: string) => void
+  browseCategory: string | null
+  currentId: string | null
+}) {
+  const isCollapsed = collapsed.has(node.category)
+  return (
+    <div className="page-group">
+      <div className="group-head">
+        <button
+          className="group-toggle"
+          aria-expanded={!isCollapsed}
+          onClick={() => onToggle(node.category)}
+        >
+          <span className={isCollapsed ? 'chev' : 'chev chev--open'}>▸</span>
+        </button>
+        <Link
+          to={`/browse/${encodeURIComponent(node.category)}`}
+          className={`group-label${browseCategory === node.category ? ' active' : ''}`}
+          style={{ color: categoryColor(node.category) }}
+        >
+          {node.category} <span className="group-count">{node.pages.length}</span>
+        </Link>
+      </div>
+      {!isCollapsed &&
+        node.pages.map((p) => <PageLink key={p.id} page={p} active={p.id === currentId} />)}
+    </div>
+  )
+}
+
 export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -45,16 +80,8 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
   useEffect(() => subscribeRecents(() => setRecentIds(getRecent(loreId))), [loreId])
   const toggle = (name: string) => setCollapsed(new Set(toggleCollapsedGroup(name, loreId)))
 
-  // Group all pages by category.
-  const grouped = useMemo(() => {
-    const map = new Map<string, typeof pages>()
-    for (const p of pages) {
-      const list = map.get(p.category) ?? []
-      list.push(p)
-      map.set(p.category, list)
-    }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [pages])
+  // Two-level tree: groups and ungrouped types interleaved alphabetically.
+  const tree = useMemo(() => buildSidebarTree(pages, templates), [pages, templates])
 
   const tags = useMemo(() => tagCounts(pages), [pages])
 
@@ -152,31 +179,54 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
           </div>
         )}
 
-        {grouped.length === 0 && <p className="empty-hint">No pages yet. Create your first one!</p>}
-        {grouped.map(([category, items]) => (
-          <div key={category} className="page-group">
-            <div className="group-head">
-              <button
-                className="group-toggle"
-                aria-expanded={!collapsed.has(category)}
-                onClick={() => toggle(category)}
-              >
-                <span className={collapsed.has(category) ? 'chev' : 'chev chev--open'}>▸</span>
-              </button>
-              <Link
-                to={`/browse/${encodeURIComponent(category)}`}
-                className={`group-label${browseCategory === category ? ' active' : ''}`}
-                style={{ color: categoryColor(category) }}
-              >
-                {category} <span className="group-count">{items.length}</span>
-              </Link>
+        {tree.length === 0 && <p className="empty-hint">No pages yet. Create your first one!</p>}
+        {tree.map((node: SidebarNode) =>
+          node.kind === 'type' ? (
+            <TypeGroup
+              key={`type:${node.category}`}
+              node={node}
+              collapsed={collapsed}
+              onToggle={toggle}
+              browseCategory={browseCategory}
+              currentId={currentId}
+            />
+          ) : (
+            <div key={`group:${node.name}`} className="page-group">
+              <div className="group-head">
+                <button
+                  className="group-toggle"
+                  aria-expanded={!collapsed.has(groupCollapseKey(node.name))}
+                  onClick={() => toggle(groupCollapseKey(node.name))}
+                >
+                  <span
+                    className={
+                      collapsed.has(groupCollapseKey(node.name)) ? 'chev' : 'chev chev--open'
+                    }
+                  >
+                    ▸
+                  </span>
+                </button>
+                <span className="group-label group-label-static">
+                  {node.name} <span className="group-count">{node.count}</span>
+                </span>
+              </div>
+              {!collapsed.has(groupCollapseKey(node.name)) && (
+                <div className="page-subgroup">
+                  {node.children.map((child) => (
+                    <TypeGroup
+                      key={child.category}
+                      node={child}
+                      collapsed={collapsed}
+                      onToggle={toggle}
+                      browseCategory={browseCategory}
+                      currentId={currentId}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-            {!collapsed.has(category) &&
-              items.map((p) => (
-                <PageLink key={p.id} page={p} active={p.id === currentId} />
-              ))}
-          </div>
-        ))}
+          ),
+        )}
 
         {tags.length > 0 && (
           <div className="page-group">

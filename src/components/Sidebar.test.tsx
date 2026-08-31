@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
-import { db, createPage } from '../db'
+import { db, createPage, seedTemplates } from '../db'
 import Sidebar from './Sidebar'
 
 afterEach(cleanup)
@@ -91,5 +91,46 @@ describe('Sidebar random page', () => {
     await waitFor(() =>
       expect(screen.getByTestId('loc').textContent).toBe(`/page/${id2}`),
     )
+  })
+})
+
+describe('Sidebar type groups', () => {
+  beforeEach(async () => {
+    await db.pages.clear()
+    await db.templates.clear()
+    await seedTemplates()
+  })
+
+  it('nests a grouped type under its group header with a total count', async () => {
+    await createPage({ title: 'Eldoria', category: 'Settlement' })
+    await createPage({ title: 'Valmara', category: 'Country' })
+
+    renderSidebar()
+
+    // "Places" groups Country + Settlement, so its total is 2. Matched by regex
+    // because the header's text content is "Places 2" (label + count span).
+    const group = await screen.findByText(/^Places/)
+    expect(group.textContent).toContain('2')
+
+    // A group header is not a link; the type header still is.
+    expect(group.closest('a')).toBeNull()
+    const typeLink = await screen.findByRole('link', { name: /Settlement/ })
+    expect(typeLink.getAttribute('href')).toBe('/browse/Settlement')
+  })
+
+  it('collapsing a group hides its child types', async () => {
+    await createPage({ title: 'Eldoria', category: 'Settlement' })
+
+    renderSidebar()
+    await screen.findByText('Eldoria')
+
+    // Target the "Places" group's own toggle, not whichever button happens to
+    // be first — Recent and Tags are collapsible too.
+    const header = (await screen.findByText(/^Places/)).closest('.group-head')!
+    fireEvent.click(header.querySelector('button')!)
+
+    await waitFor(() => expect(screen.queryByText('Eldoria')).toBeNull())
+    // The type header went with it.
+    expect(screen.queryByRole('link', { name: /Settlement/ })).toBeNull()
   })
 })
