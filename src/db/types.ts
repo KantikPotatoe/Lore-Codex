@@ -187,6 +187,10 @@ export interface InfoboxTemplate {
   icon?: string // optional emoji shown on map pins for this type
   items: TemplateItem[]
   sections?: string[] // ordered starter body-section names; absent ⇒ none set yet
+  /** Sidebar group this type belongs to (#115). Absent ⇒ never set, so
+   *  seedTemplates() may backfill it; '' ⇒ deliberately ungrouped by the
+   *  user, and never re-backfilled. */
+  group?: string
   builtin: boolean // true for the shipped starter templates
 }
 

@@ -62,6 +62,21 @@ export const BUILTIN_SECTIONS: Record<string, string[]> = {
   Spell: ['Description', 'Effects', 'Casting', 'History'],
 }
 
+// Default sidebar groups for the shipped page types (#115). Backfilled onto
+// built-ins by seedTemplates() without overwriting a user's choice (mirrors the
+// icon/colour/sections backfill). Two levels only: group → type → pages.
+// No group name equals a type name, so the sidebar never shows a "Culture"
+// group whose only distinct child is "Language".
+export const BUILTIN_GROUPS: Record<string, string> = {
+  Country: 'Places', Geography: 'Places', Settlement: 'Places',
+  Character: 'People', Organization: 'People', Species: 'People',
+  Deity: 'Belief', Religion: 'Belief', Myth: 'Belief',
+  Culture: 'Society', Language: 'Society', Tradition: 'Society',
+  Item: 'Things', Material: 'Things', Technology: 'Things', Spell: 'Things',
+  Conflict: 'Events & Records', Document: 'Events & Records',
+  Condition: 'Events & Records',
+}
+
 // The starter types. Each has a colour and a set of infobox rows; several ship
 // with separators already in place to show how they group related fields.
 export const BUILTIN_TEMPLATES: InfoboxTemplate[] = [
@@ -231,6 +246,16 @@ export async function seedTemplates(): Promise<void> {
     )
     await Promise.all(
       needSections.map((t) => db.templates.update(t.id, { sections: BUILTIN_SECTIONS[t.name] })),
+    )
+
+    // Backfill default sidebar groups the same way. `group: ''` means the user
+    // deliberately ungrouped the type, so `=== undefined` (never set) is the
+    // only state eligible for backfill.
+    const needGroup = afterSeed.filter(
+      (t) => t.builtin && t.group === undefined && BUILTIN_GROUPS[t.name],
+    )
+    await Promise.all(
+      needGroup.map((t) => db.templates.update(t.id, { group: BUILTIN_GROUPS[t.name] })),
     )
   })
 }
