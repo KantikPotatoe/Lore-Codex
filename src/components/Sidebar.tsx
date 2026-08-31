@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { templateRepo, pageRepo, categoryColor, statusColor, pageStatus, type LorePage } from '../db'
+import { templateRepo, pageRepo, categoryColor, statusColor, pageStatus, type LorePage, type InfoboxTemplate } from '../db'
 import { getLore, currentLoreId } from '../lores'
 import { pickRandomId } from '../rediscovery'
 import { showPageHover, scheduleWikiHoverClose } from '../wikiLinkHover'
@@ -13,6 +13,7 @@ import { buildSidebarTree, type SidebarNode, type SidebarTypeNode } from '../sid
 // Stable empty array so the live queries don't hand `useMemo` a fresh `[]`
 // (and force a recompute) on every render while data is still loading.
 const NO_PAGES: LorePage[] = []
+const NO_TEMPLATES: InfoboxTemplate[] = []
 
 function PageLink({ page, active }: { page: LorePage; active: boolean }) {
   return (
@@ -68,7 +69,7 @@ export default function Sidebar({ onOpenSearch }: { onOpenSearch: () => void }) 
   const location = useLocation()
 
   const pages = useLiveQuery(() => pageRepo.listByTitle(), []) ?? NO_PAGES
-  const templates = useLiveQuery(() => templateRepo.list(), []) ?? []
+  const templates = useLiveQuery(() => templateRepo.list(), []) ?? NO_TEMPLATES
   const activeLore = useLiveQuery(() => getLore(currentLoreId()), [])
   const loreName = activeLore?.name ?? 'Lore Codex'
 
