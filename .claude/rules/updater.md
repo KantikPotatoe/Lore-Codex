@@ -10,7 +10,7 @@ paths:
 
 Desktop only. `tauri-plugin-updater` fetches a **minisign-signed** `latest.json`
 from `releases/latest/download/` on the GitHub repo; `release.yml` emits and
-signs it via `includeUpdaterJson: true` plus the `TAURI_SIGNING_PRIVATE_KEY`
+signs it via `uploadUpdaterJson: true` plus the `TAURI_SIGNING_PRIVATE_KEY`
 secrets. The pubkey is committed in `tauri.conf.json`; **losing the private key
 permanently strands every installed copy** (`docs/updater-key.md`). Signing
 also requires `bundle.createUpdaterArtifacts: true` in `tauri.conf.json`
