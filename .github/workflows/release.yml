@@ -55,7 +55,7 @@ jobs:
           releaseBody: 'Windows installer for Lore Codex ${{ github.ref_name }}. Unsigned — SmartScreen will ask for "More info → Run anyway" on first launch.'
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
+          uploadUpdaterJson: true
 
       # tauri-action publishes with an explicit body, and an explicit body
       # suppresses GitHub's own note generation — so the changelog has to be
