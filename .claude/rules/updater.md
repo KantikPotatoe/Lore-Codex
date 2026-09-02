@@ -19,6 +19,22 @@ artifact and no `.sig` at all, so the release ships with no `latest.json`
 regardless of whether the workflow secrets are set. This is the single least
 discoverable requirement in the whole feature.
 
+Two things about `tauri-action` **v1** (bumped from v0 in #256) that both look
+like breakage and are not:
+
+- The input is `uploadUpdaterJson`, renamed from v0's `includeUpdaterJson`.
+  Actions only *warns* on an unknown input, and `uploadUpdaterJson` defaults to
+  `true` — so the stale v0 name would have kept working while reading like it
+  was load-bearing. Check the name against the action's `action.yml`, not
+  against a green build.
+- The `url` in `latest.json` is now an **API** asset URL
+  (`api.github.com/repos/.../releases/assets/<id>`), not a browser download
+  URL. Fetching it by hand returns ~1.7 KB of JSON metadata instead of the
+  installer, which reads as a broken manifest — it isn't. `Update::download`
+  in `tauri-plugin-updater` sets `Accept: application/octet-stream` when the
+  caller hasn't, and with that header the same URL serves the real `.exe`.
+  Don't "fix" this by rewriting the URL.
+
 `platform.ts` owns the only `@tauri-apps/plugin-updater` import and returns an
 **`UpdateInfo` handle** (`version`/`notes`/`download()`/`install()`) rather than
 free functions — `install()` must act on the same plugin `Update` instance
