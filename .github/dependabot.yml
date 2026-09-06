@@ -23,6 +23,22 @@ updates:
     commit-message:
       prefix: chore(deps)
       prefix-development: chore(deps-dev)
+    ignore:
+      # TypeScript 7 (the Go-native compiler) is outside every published
+      # typescript-eslint peer range — 8.69.0, the newest release, still caps at
+      # `typescript@">=4.8.4 <6.1.0"`. A TS 7 bump therefore can't install at
+      # all: `npm ci` dies on ERESOLVE and `verify` fails before lint/build/test
+      # start (that was #259). No combination of versions fixes it from our
+      # side, so the bump is blocked until typescript-eslint ships TS 7 support
+      # — then delete this entry, don't widen it.
+      #
+      # Scoped to majors on purpose: patches and minors inside the supported
+      # line still flow. The cost is that a *major-version* security bump for
+      # typescript would also be suppressed; acceptable for a dev-only compiler
+      # that never ships to users, and cheap to revisit by removing this block.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
     groups:
       # One PR for the routine noise. Majors are deliberately excluded so a
       # breaking bump arrives alone and reviewable, never bundled with ten
